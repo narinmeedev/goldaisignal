@@ -24,6 +24,7 @@ model User {
   activityLogs       ActivityLog[]
 
   // Affiliate System
+  isAffiliate        Boolean       @default(false)
   referralCode       String        @default("")
   referredById       String?
   referredBy         User?         @relation("Referrals", fields: [referredById], references: [id])

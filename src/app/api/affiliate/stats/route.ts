@@ -36,6 +36,10 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    if (!user.isAffiliate && user.role !== 'admin') {
+      return NextResponse.json({ error: 'คุณยังไม่ได้รับการเปิดใช้งานระบบแนะนำเพื่อน (Affiliate) กรุณาติดต่อผู้ดูแลระบบ' }, { status: 403 });
+    }
+
     // 2. Generate referral code if missing (for legacy users)
     if (!user.referralCode) {
       const referralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;

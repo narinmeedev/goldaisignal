@@ -37,6 +37,8 @@ export async function GET() {
         subscriptionEndsAt: true,
         lastLoginAt: true,
         createdAt: true,
+        isAffiliate: true,
+        affiliateRate: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -113,7 +115,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, role, subscriptionPlan, subscriptionStatus, subscriptionEndsAt } = await req.json();
+    const { id, role, subscriptionPlan, subscriptionStatus, subscriptionEndsAt, isAffiliate, affiliateRate } = await req.json();
 
     if (!id) {
       return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
@@ -126,6 +128,8 @@ export async function PUT(req: Request) {
     if (subscriptionEndsAt !== undefined) {
       updateData.subscriptionEndsAt = subscriptionEndsAt ? new Date(subscriptionEndsAt) : null;
     }
+    if (isAffiliate !== undefined) updateData.isAffiliate = isAffiliate;
+    if (affiliateRate !== undefined) updateData.affiliateRate = affiliateRate;
 
     const user = await prisma.user.update({
       where: { id },
@@ -136,7 +140,9 @@ export async function PUT(req: Request) {
         role: true, 
         subscriptionPlan: true, 
         subscriptionStatus: true, 
-        subscriptionEndsAt: true 
+        subscriptionEndsAt: true,
+        isAffiliate: true,
+        affiliateRate: true
       },
     });
 

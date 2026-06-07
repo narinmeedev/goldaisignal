@@ -12,6 +12,8 @@ interface User {
   subscriptionEndsAt?: string;
   lastLoginAt?: string;
   createdAt: string;
+  isAffiliate?: boolean;
+  affiliateRate?: number;
 }
 
 export default function UsersPage() {
@@ -30,7 +32,9 @@ export default function UsersPage() {
     role: '',
     subscriptionPlan: '',
     subscriptionStatus: '',
-    subscriptionEndsAt: ''
+    subscriptionEndsAt: '',
+    isAffiliate: false,
+    affiliateRate: 0.15
   });
 
   const fetchUsers = async () => {
@@ -88,7 +92,9 @@ export default function UsersPage() {
       role: user.role,
       subscriptionPlan: user.subscriptionPlan || 'none',
       subscriptionStatus: user.subscriptionStatus || 'inactive',
-      subscriptionEndsAt: user.subscriptionEndsAt ? new Date(user.subscriptionEndsAt).toISOString().slice(0, 10) : ''
+      subscriptionEndsAt: user.subscriptionEndsAt ? new Date(user.subscriptionEndsAt).toISOString().slice(0, 10) : '',
+      isAffiliate: !!user.isAffiliate,
+      affiliateRate: user.affiliateRate !== undefined ? user.affiliateRate : 0.15
     });
   };
 
@@ -108,7 +114,9 @@ export default function UsersPage() {
           role: editForm.role,
           subscriptionPlan: editForm.subscriptionPlan === 'none' ? null : editForm.subscriptionPlan,
           subscriptionStatus: editForm.subscriptionStatus,
-          subscriptionEndsAt: editForm.subscriptionEndsAt || null
+          subscriptionEndsAt: editForm.subscriptionEndsAt || null,
+          isAffiliate: editForm.isAffiliate,
+          affiliateRate: parseFloat(editForm.affiliateRate as any) || 0
         }),
       });
       const data = await res.json();
@@ -241,6 +249,7 @@ export default function UsersPage() {
                 <th className="px-6 py-4 font-semibold">User</th>
                 <th className="px-6 py-4 font-semibold">Role</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="px-6 py-4 font-semibold">Affiliate</th>
                 <th className="px-6 py-4 font-semibold">Expires</th>
                 <th className="px-6 py-4 font-semibold">Joined At</th>
                 <th className="px-6 py-4 font-semibold">Last Active</th>
@@ -269,6 +278,15 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">{getStatusBadge(user)}</td>
+                  <td className="px-6 py-4">
+                    {user.isAffiliate ? (
+                      <span className="px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[10px] font-bold uppercase font-mono">
+                        YES ({(user.affiliateRate !== undefined ? user.affiliateRate * 100 : 15).toFixed(0)}%)
+                      </span>
+                    ) : (
+                      <span className="text-neutral-500 text-xs">NO</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 font-mono text-[11px] text-neutral-500">
                     {user.subscriptionEndsAt ? new Date(user.subscriptionEndsAt).toLocaleDateString('th-TH') : '-'}
                   </td>
@@ -384,6 +402,32 @@ export default function UsersPage() {
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50 [color-scheme:dark]"
                 />
               </div>
+
+              <div className="flex items-center justify-between p-3 bg-neutral-950 border border-neutral-800 rounded-xl">
+                <span className="text-xs text-neutral-400">สถานะแนะนำเพื่อน (Affiliate)</span>
+                <input
+                  type="checkbox"
+                  checked={editForm.isAffiliate}
+                  onChange={e => setEditForm({...editForm, isAffiliate: e.target.checked})}
+                  className="w-4 h-4 bg-neutral-950 border border-neutral-800 rounded accent-amber-500 cursor-pointer"
+                />
+              </div>
+
+              {editForm.isAffiliate && (
+                <div>
+                  <label className="block text-xs text-neutral-400 mb-1">ค่าคอมมิชชั่น (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={editForm.affiliateRate}
+                    onChange={e => setEditForm({...editForm, affiliateRate: parseFloat(e.target.value) || 0})}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50 font-mono"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1">กำหนดเป็นทศนิยม เช่น 0.15 = 15%, 0.20 = 20%</p>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-3">
                 <button

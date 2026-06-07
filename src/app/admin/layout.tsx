@@ -32,6 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [userRole, setUserRole] = useState<string>('viewer');
   const [userEmail, setUserEmail] = useState<string>('');
+  const [isAffiliate, setIsAffiliate] = useState<boolean>(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [goldPrice, setGoldPrice] = useState(4450.0);
@@ -56,6 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             }
             setUserRole(data.user.role);
             setUserEmail(data.user.email);
+            setIsAffiliate(!!data.user.isAffiliate);
             
             if (data.user.role !== 'admin' && data.user.subscriptionEndsAt) {
               const endsAt = new Date(data.user.subscriptionEndsAt);
@@ -245,9 +247,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
 
-          {/* Navigation Links */}
           <nav className="p-4 space-y-1">
-            {navItems.filter(item => item.roles.includes(userRole)).map((item) => {
+            {navItems.filter(item => {
+              if (item.href === '/admin/affiliate' && userRole !== 'admin' && !isAffiliate) {
+                return false;
+              }
+              return item.roles.includes(userRole);
+            }).map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
               return (

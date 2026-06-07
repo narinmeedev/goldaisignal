@@ -52,6 +52,7 @@ export async function GET() {
       subscriptionPlan: dbUser.subscriptionPlan,
       subscriptionStatus: currentStatus,
       subscriptionEndsAt: dbUser.subscriptionEndsAt,
+      isAffiliate: dbUser.isAffiliate,
     }
   }, { status: 200 });
 
