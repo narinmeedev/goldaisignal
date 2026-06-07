@@ -1,0 +1,173 @@
+datasource db {
+  provider  = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role               String        @default("admin") // admin | viewer
+  subscriptionPlan   String        @default("trial") // trial | monthly
+  subscriptionStatus String        @default("pending") // active | pending | expired
+  subscriptionEndsAt DateTime? 
+  lineId             String?       @unique
+  displayName        String?
+  pictureUrl         String?
+  lastLoginAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  payments           Payment[]
+  activityLogs       ActivityLog[]
+
+  // Affiliate System
+  referralCode       String        @default("")
+  referredById       String?
+  referredBy         User?         @relation("Referrals", fields: [referredById], references: [id])
+  referees           User[]        @relation("Referrals")
+
+  commissions        AffiliateCommission[] @relation("ReferrerCommissions")
+  referredCommissions AffiliateCommission[] @relation("ReferredCommissions")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // REGISTER, LOGIN, SUBMIT_PAYMENT, PAYMENT_APPROVED, PAYMENT_REJECTED
+  details   String?  // JSON string or extra info
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Float
+  slipUrl     String
+  status      String   @default("pending") // pending | approved | rejected
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  commissions AffiliateCommission[]
+}
+
+model AffiliateCommission {
+  id         String   @id @default(uuid())
+  referrerId String
+  referrer   User     @relation("ReferrerCommissions", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId String
+  referred   User     @relation("ReferredCommissions", fields: [referredId], references: [id], onDelete: Cascade)
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount     Float
+  status     String   @default("pending") // pending | approved | paid | cancelled
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id           String   @id @default(uuid())
+  source       String   @default("tradingview")
+  symbol       String
+  timeframe    String
+  rawPayload   String   // Storing JSON string for raw TV payload (SQLite compatible string representation)
+  receivedAt   DateTime @default(now())
+  status       String   @default("pending") // pending | processed | rejected | error
+  errorMessage String?
+}
+
+model Candle {
+  id        String   @id @default(uuid())
+  symbol    String
+  timeframe String   // M15 | H1 | H4
+  time      DateTime // The candle open timestamp
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  createdAt DateTime @default(now())
+
+  @@unique([symbol, timeframe, time])
+}
+
+model Zone {
+  id            String   @id @default(uuid())
+  symbol        String
+  timeframe     String   // e.g., H1 | H4
+  type          String   // SUPPORT | RESISTANCE | LIQUIDITY
+  priceMin      Float
+  priceMax      Float
+  strength      Int      @default(1)
+  touchCount    Int      @default(1)
+  lastTouchedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Signal {
+  id            String       @id @default(uuid())
+  symbol        String
+  timeframe     String
+  direction     String       // BUY | SELL | NO_TRADE
+  entry         Float
+  stopLoss      Float
+  takeProfit1   Float
+  takeProfit2   Float
+  riskReward    Float
+  confidence    Int          @default(0)
+  status        String       @default("pending") // pending | active | win | loss | cancelled
+  reason        String       @default("{}")      // JSON string details of setup filters
+  fakeoutScore  Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  paperTrades   PaperTrade[]
+}
+
+model PaperTrade {
+  id                   String    @id @default(uuid())
+  signalId             String?
+  signal               Signal?   @relation(fields: [signalId], references: [id])
+  symbol               String
+  direction            String    // BUY | SELL
+  entry                Float
+  stopLoss             Float
+  takeProfit1          Float
+  takeProfit2          Float
+  exitPrice            Float?
+  result               String    @default("OPEN") // WIN | LOSS | BE | OPEN
+  rrResult             Float     @default(0.0)    // Final R-multiple result
+  openedAt             DateTime  @default(now())
+  closedAt             DateTime?
+  notes                String?
+  screenshotBeforeUrl  String?
+  screenshotAfterUrl   String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model AiReview {
+  id          String   @id @default(uuid())
+  date        String   @unique // YYYY-MM-DD
+  totalTrades Int
+  winCount    Int
+  lossCount   Int
+  netR        Float
+  bestSetup   String
+  worstSetup  String
+  summary     String
+  ruleChanges String   @default("[]") // JSON string of rule adaptations
+  createdAt   DateTime @default(now())
+}

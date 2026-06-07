@@ -96,6 +96,7 @@ export const minisaas = {
     planName: string;
     slipUrl: string;
     notes?: string | null;
+    status?: string;
   }) => {
     return sendEvent("/api/ingest/payment-order", payload);
   },
