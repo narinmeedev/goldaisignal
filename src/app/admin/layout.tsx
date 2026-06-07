@@ -226,7 +226,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div>
+        <div className="flex-1 overflow-y-auto min-h-0">
           {/* Logo / Brand header */}
           <div className="p-6 flex items-center justify-between lg:justify-start gap-3 border-b border-neutral-900">
             <div className="flex items-center gap-3">
