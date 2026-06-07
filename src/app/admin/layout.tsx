@@ -160,10 +160,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { name: 'แผงควบคุมหลัก', href: '/admin', icon: Activity, roles: ['admin', 'viewer'] },
     { name: 'โซนแนวรับ/แนวต้าน', href: '/admin/zones', icon: Layers, roles: ['admin', 'viewer'] },
+    { name: 'ระบบแนะนำเพื่อน (Affiliate)', href: '/admin/affiliate', icon: Coins, roles: ['admin', 'viewer'] },
     { name: 'ประวัติการชำระเงิน/บิล', href: '/admin/billing', icon: CreditCard, roles: ['admin', 'viewer'] },
     { name: 'ช่วยเหลือ/แจ้งปัญหา', href: '/admin/support', icon: LifeBuoy, roles: ['admin', 'viewer'] },
     { name: 'ระบบผู้ใช้งาน', href: '/admin/users', icon: Users, roles: ['admin'] },
     { name: 'การชำระเงิน', href: '/admin/payments', icon: CreditCard, roles: ['admin'] },
+    { name: 'จัดการ Affiliate', href: '/admin/affiliate-manager', icon: Users, roles: ['admin'] },
     { name: 'ประวัติระบบ (Logs)', href: '/admin/logs', icon: History, roles: ['admin'] },
     { name: 'ตั้งค่าระบบ', href: '/admin/settings', icon: Settings, roles: ['admin'] },
   ];

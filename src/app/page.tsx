@@ -25,6 +25,16 @@ export default function LandingPage() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    // Capture referral code from URL query parameters
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (ref) {
+        localStorage.setItem('referred_by', ref.toUpperCase());
+        console.log('Stored referral code:', ref.toUpperCase());
+      }
+    }
+
     const fetchStats = async () => {
       try {
         const res = await fetch('/api/admin/dashboard-stats?symbol=XAUUSD');

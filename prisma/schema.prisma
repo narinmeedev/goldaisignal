@@ -28,6 +28,7 @@ model User {
   referredById       String?
   referredBy         User?         @relation("Referrals", fields: [referredById], references: [id])
   referees           User[]        @relation("Referrals")
+  affiliateRate      Float         @default(0.15)
 
   commissions        AffiliateCommission[] @relation("ReferrerCommissions")
   referredCommissions AffiliateCommission[] @relation("ReferredCommissions")

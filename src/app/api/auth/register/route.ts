@@ -5,7 +5,7 @@ import { minisaas } from '@/lib/minisaas';
 
 export async function POST(req: Request) {
   try {
-    const { email, password, otp, verificationToken } = await req.json();
+    const { email, password, otp, verificationToken, referralCode: incomingRefCode } = await req.json();
 
     if (!email || !password || password.length < 6) {
       return NextResponse.json(
@@ -67,6 +67,21 @@ export async function POST(req: Request) {
     subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + trialDays);
     let details = `User registered for ${trialDays}-day free trial`;
 
+    // Process Referral sponsor
+    let referredById: string | null = null;
+    if (incomingRefCode) {
+      const sponsor = await prisma.user.findFirst({
+        where: { referralCode: incomingRefCode.trim().toUpperCase() }
+      });
+      if (sponsor) {
+        referredById = sponsor.id;
+        details += ` (referred by user ID: ${sponsor.id})`;
+      }
+    }
+
+    // Generate unique referral code for the new user
+    const referralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
     // Auto-create viewer user
     const user = await prisma.user.create({
       data: {
@@ -76,6 +91,8 @@ export async function POST(req: Request) {
         subscriptionStatus,
         subscriptionPlan,
         subscriptionEndsAt,
+        referralCode,
+        referredById,
       },
     });
 

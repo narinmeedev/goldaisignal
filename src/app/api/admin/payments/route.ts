@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
+import { createCommissionFromPayment } from '@/lib/services/affiliate';
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
@@ -114,6 +115,9 @@ export async function POST(req: Request) {
           details: `Admin approved payment ${paymentId}`
         }
       });
+
+      // Generate affiliate commission if applicable
+      await createCommissionFromPayment(paymentId);
     } else if (action === 'reject') {
        await prisma.payment.update({
         where: { id: paymentId },
@@ -266,6 +270,9 @@ export async function POST(req: Request) {
             details: `SlipOK Auto-Approved via manual Recheck. ${autoApproveNote}`
           }
         });
+
+        // Generate affiliate commission if applicable
+        await createCommissionFromPayment(paymentId);
 
         return NextResponse.json({ success: true, verified: true, message: autoApproveNote });
       } else {

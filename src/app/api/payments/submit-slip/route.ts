@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
+import { createCommissionFromPayment } from '@/lib/services/affiliate';
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
@@ -265,6 +266,9 @@ export async function POST(req: Request) {
           details: `System automatically approved payment ${payment.id}: ${autoApproveNote}`
         }
       });
+
+      // Generate affiliate commission if applicable
+      await createCommissionFromPayment(payment.id);
     } else {
       // Default fallback: Pending manual review locally in GoldaiSignal
       const now = new Date();

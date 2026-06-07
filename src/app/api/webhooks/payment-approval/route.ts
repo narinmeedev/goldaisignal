@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { createCommissionFromPayment } from '@/lib/services/affiliate';
 
 export async function POST(req: Request) {
   // 1. Authenticate using the Mini SaaS Center API Key
@@ -80,6 +81,9 @@ export async function POST(req: Request) {
           details: `Approved centrally via Mini SaaS Center webhook (Order ID: ${orderId})`
         }
       });
+
+      // Generate affiliate commission if applicable
+      await createCommissionFromPayment(orderId);
 
       console.log(`Payment order ${orderId} successfully approved and active VIP subscription applied to user ${payment.user.email}`);
 
