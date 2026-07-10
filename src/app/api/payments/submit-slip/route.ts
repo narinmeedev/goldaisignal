@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
+import { PROMOTIONAL_MONTHLY_PRICE_THB, getPaidDurationDays } from '@/lib/billing';
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
@@ -38,7 +39,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing file or amount' }, { status: 400 });
     }
 
-    const amount = parseFloat(amountStr);
+    const submittedAmount = parseFloat(amountStr);
+    const amount = PROMOTIONAL_MONTHLY_PRICE_THB;
+    if (!Number.isFinite(submittedAmount) || submittedAmount < amount) {
+      return NextResponse.json({ error: `ยอดชำระไม่ถูกต้อง โปรโมชันปัจจุบันคือ ฿${amount}/เดือน` }, { status: 400 });
+    }
     
     // Check if bucket exists, if not, try to create it (Admin key required usually, but we will try)
     // Actually, it's safer to just attempt upload and catch error.
@@ -228,7 +233,7 @@ export async function POST(req: Request) {
       const paidSetting = await prisma.systemSetting.findUnique({
         where: { key: 'PAID_DURATION_DAYS' }
       });
-      const paidDays = paidSetting ? parseInt(paidSetting.value, 10) : 30;
+      const paidDays = getPaidDurationDays(paidSetting?.value);
 
       const now = new Date();
       let newEndDate = new Date(now.getTime() + paidDays * 24 * 60 * 60 * 1000);

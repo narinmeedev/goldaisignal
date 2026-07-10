@@ -1,0 +1,29 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e6]
+      - heading "GOLD AI SIGNAL LAB" [level=1] [ref=e11]
+      - paragraph [ref=e12]: ระบบบอทวิเคราะห์เทรดทองคำ (XAUUSD) อัจฉริยะ
+    - generic [ref=e13]:
+      - heading "เข้าสู่ระบบบัญชีผู้ใช้งาน" [level=2] [ref=e15]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: อีเมลผู้ใช้งาน (Email)
+          - generic [ref=e19]:
+            - img [ref=e20]
+            - textbox "your@email.com" [ref=e23]
+        - generic [ref=e24]:
+          - generic [ref=e25]: รหัสผ่าน (Password)
+          - generic [ref=e26]:
+            - img [ref=e27]
+            - textbox "••••••••••••" [ref=e30]
+        - generic [ref=e31]:
+          - button "ลืมรหัสผ่าน?" [ref=e32] [cursor=pointer]
+          - link "สมัครสมาชิกใหม่" [ref=e33] [cursor=pointer]:
+            - /url: /pricing
+        - button "เข้าสู่ระบบ" [ref=e34] [cursor=pointer]:
+          - text: เข้าสู่ระบบ
+          - img [ref=e35]
+    - paragraph [ref=e37]: ระบบผู้ช่วยอัจฉริยะสำหรับการเทรดทองคำ เวอร์ชั่น 1
+  - button "Open Next.js Dev Tools" [ref=e43] [cursor=pointer]:
+    - img [ref=e44]

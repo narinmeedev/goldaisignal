@@ -19,6 +19,8 @@ import {
   MessageCircle
 } from 'lucide-react';
 import LiveMarketPreview from '@/components/LiveMarketPreview';
+import { fetchDashboardStats } from '@/lib/dashboard-fetch';
+import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 export default function LandingPage() {
   const [stats, setStats] = React.useState<any>(null);
@@ -37,8 +39,7 @@ export default function LandingPage() {
 
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/admin/dashboard-stats?symbol=XAUUSD');
-        const data = await res.json();
+        const data = await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 12000, public: true });
         setStats(data);
       } catch (err) {
         console.error(err);
@@ -51,6 +52,14 @@ export default function LandingPage() {
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const showcasePlan = stats?.marketIntelligence?.XAUUSD?.proactivePlans?.find((plan: any) =>
+    plan.type !== 'WAIT' &&
+    typeof plan.confidence === 'number' &&
+    plan.confidence >= 70
+  );
+  const showcasePrice = (value?: number) =>
+    typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : 'รอ';
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-amber-500/30 selection:text-amber-200 pb-20 md:pb-0 w-full overflow-x-hidden">
@@ -226,22 +235,32 @@ export default function LandingPage() {
               </p>
               <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold px-2 py-1 bg-rose-500/20 text-rose-400 rounded">SELL_MARKET</span>
-                  <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">ความมั่นใจ 89%</span>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded ${
+                    showcasePlan?.type?.includes('BUY')
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : showcasePlan?.type?.includes('SELL')
+                        ? 'bg-rose-500/20 text-rose-400'
+                        : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {showcasePlan?.type || 'WAIT'}
+                  </span>
+                  <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">
+                    {showcasePlan ? `ความมั่นใจ ${showcasePlan.confidence}%` : 'รอแผน >70%'}
+                  </span>
                 </div>
-                <p className="text-sm font-bold mb-4">ขายตามน้ำ (Follow Trend)</p>
+                <p className="text-sm font-bold mb-4">{showcasePlan?.title || 'รอข้อมูล MT5 สดและแผนที่ผ่านเกณฑ์'}</p>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
                   <div className="bg-neutral-900 p-2 rounded-lg">
                     <div className="text-[9px] text-neutral-500 mb-1">ENTRY</div>
-                    <div>$4452.84</div>
+                    <div>{showcasePrice(showcasePlan?.entry)}</div>
                   </div>
                   <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-2 rounded-lg">
                     <div className="text-[9px] mb-1">SL</div>
-                    <div>$4460.84</div>
+                    <div>{showcasePrice(showcasePlan?.stopLoss)}</div>
                   </div>
                   <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2 rounded-lg">
                     <div className="text-[9px] mb-1">TP</div>
-                    <div>$4436.84</div>
+                    <div>{showcasePrice(showcasePlan?.takeProfit)}</div>
                   </div>
                 </div>
               </div>
@@ -276,22 +295,22 @@ export default function LandingPage() {
               <div className="text-center md:text-right shrink-0 w-full md:w-auto border-t md:border-t-0 border-neutral-800 pt-6 md:pt-0">
                 <div className="flex flex-col md:items-end justify-center mb-1">
                   <span className="text-3xl sm:text-4xl font-extrabold text-amber-500">
-                    ฿99
+                    {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}
                   </span>
-                  <span className="text-xs text-neutral-400 font-mono">ต่อเดือน</span>
+                  <span className="text-xs text-neutral-400 font-mono">ต่อเดือน ช่วงโปรโมชัน</span>
                 </div>
                 <div className="text-xs sm:text-sm text-neutral-400 mb-3 font-mono">
-                  (ทดลองใช้ PRO ฟรี 30 วันแรก)
+                  ราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span> / ทดลองฟรี {TRIAL_DURATION_DAYS} วัน
                 </div>
                 <p className="text-emerald-400 text-[10px] sm:text-xs font-bold mb-4 leading-relaxed">
-                  สิทธิ์การทดลองใช้งาน 30 วัน <br />
+                  สิทธิ์การทดลองใช้งาน {TRIAL_DURATION_DAYS} วัน <br />
                   จะถูกมอบให้บัญชีใหม่ทุกบัญชีโดยอัตโนมัติเมื่อสมัครใช้งานสำเร็จ!
                 </p>
                 <Link 
                   href="/pricing" 
                   className="inline-block w-full px-6 sm:px-8 py-3.5 sm:py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-base sm:text-lg font-bold rounded-xl transition-transform hover:-translate-y-1 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
                 >
-                  เริ่มต้นทดลองใช้ฟรี 30 วัน
+                  เริ่มต้นทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน
                 </Link>
               </div>
             </div>
@@ -327,7 +346,7 @@ export default function LandingPage() {
             <CreditCard className="h-5 w-5" />
             <span className="text-[10px] font-medium tracking-wide">ชำระเงิน</span>
           </Link>
-          <a href="https://line.me/ti/p/~" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
+          <a href="https://line.me/R/ti/p/@413aryiz" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
             <MessageCircle className="h-5 w-5" />
             <span className="text-[10px] font-medium tracking-wide">ติดต่อเรา</span>
           </a>

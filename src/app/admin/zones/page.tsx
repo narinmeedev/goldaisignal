@@ -20,9 +20,6 @@ export default function ZonesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Asset Filter Tab State
-  const [selectedAsset, setSelectedAsset] = useState<'ALL' | 'XAUUSD' | 'BTCUSD'>('ALL');
-
   const fetchZones = async () => {
     try {
       const res = await fetch('/api/admin/zones');
@@ -61,11 +58,7 @@ export default function ZonesPage() {
     fetchZones();
   }, []);
 
-  // Filter zones based on tab selection
-  const filteredZones = zones.filter((z) => {
-    if (selectedAsset === 'ALL') return true;
-    return z.symbol.toUpperCase().includes(selectedAsset);
-  });
+  const filteredZones = zones.filter((z) => z.symbol.toUpperCase().includes('XAU'));
 
 
   const support = filteredZones.filter((z) => z.type === 'SUPPORT');
@@ -124,38 +117,10 @@ export default function ZonesPage() {
         </button>
       </div>
 
-      {/* Asset Filter Tabs */}
       <div className="flex bg-neutral-950 p-1 rounded-xl border border-neutral-900 w-full md:w-fit gap-1 text-xs overflow-x-auto hide-scrollbar">
-        <button
-          onClick={() => setSelectedAsset('ALL')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all cursor-pointer ${
-            selectedAsset === 'ALL'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner'
-              : 'text-neutral-500 hover:text-neutral-350'
-          }`}
-        >
-          แสดงทั้งหมด ({zones.length})
-        </button>
-        <button
-          onClick={() => setSelectedAsset('XAUUSD')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all cursor-pointer ${
-            selectedAsset === 'XAUUSD'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner'
-              : 'text-neutral-500 hover:text-neutral-350'
-          }`}
-        >
-          ทองคำ XAUUSD ({zones.filter((z) => z.symbol === 'XAUUSD').length})
-        </button>
-        <button
-          onClick={() => setSelectedAsset('BTCUSD')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all cursor-pointer ${
-            selectedAsset === 'BTCUSD'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner'
-              : 'text-neutral-500 hover:text-neutral-350'
-          }`}
-        >
-          บิตคอยน์ BTCUSD ({zones.filter((z) => z.symbol === 'BTCUSD').length})
-        </button>
+        <div className="px-4 py-2 rounded-lg font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner">
+          ทองคำ XAUUSD ({filteredZones.length})
+        </div>
       </div>
 
       {/* Main Grid View */}

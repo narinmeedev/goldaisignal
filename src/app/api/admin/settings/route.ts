@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { getPaidDurationDays, getTrialDurationDays } from '@/lib/billing';
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
@@ -52,10 +53,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing key or value' }, { status: 400 });
     }
 
+    const normalizedValue =
+      key === 'TRIAL_DURATION_DAYS'
+        ? String(getTrialDurationDays(value))
+        : key === 'PAID_DURATION_DAYS'
+          ? String(getPaidDurationDays(value))
+          : String(value);
+
     const setting = await prisma.systemSetting.upsert({
       where: { key },
-      update: { value: String(value) },
-      create: { key, value: String(value) }
+      update: { value: normalizedValue },
+      create: { key, value: normalizedValue }
     });
 
     return NextResponse.json({ success: true, setting });

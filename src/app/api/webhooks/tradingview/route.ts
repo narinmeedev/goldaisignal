@@ -16,6 +16,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (String(payload.symbol).toUpperCase().includes('BTC')) {
+      return NextResponse.json(
+        { status: 'rejected', decision: 'BTC_DISABLED', error: 'BTCUSD signals are disabled. Gold AI Signal now supports XAUUSD only.' },
+        { status: 400 }
+      );
+    }
+
     const result = await WebhookService.processWebhook({
       secret: payload.secret,
       symbol: payload.symbol,

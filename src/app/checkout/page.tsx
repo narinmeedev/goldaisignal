@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { QrCode, UploadCloud, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { QrCode, UploadCloud, AlertCircle, ArrowLeft, CheckCircle2, Download } from 'lucide-react';
 import generatePayload from 'promptpay-qr';
 import { QRCodeSVG } from 'qrcode.react';
+import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -21,8 +22,7 @@ export default function CheckoutPage() {
   const [isDragging, setIsDragging] = useState(false);
 
   // Configuration (PromptPay)
-  const [isTestMode, setIsTestMode] = useState(false);
-  const AMOUNT = isTestMode ? 0.1 : 99;
+  const AMOUNT = PROMOTIONAL_MONTHLY_PRICE_THB;
   const PROMPTPAY_ID = "รอการตั้งค่าใน public/promptpay.jpg"; // Updated via static image
   const ACCOUNT_NAME = "นาย นรินทร์ จีรัตน์";
 
@@ -32,11 +32,20 @@ export default function CheckoutPage() {
   const [verificationToken, setVerificationToken] = useState('');
   const [isOtpStep, setIsOtpStep] = useState(false);
   const [isAutoApproved, setIsAutoApproved] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     // Check if already logged in
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const checkAuth = async () => {
     try {
@@ -93,9 +102,36 @@ export default function CheckoutPage() {
         if (res.ok) {
           setVerificationToken(data.verificationToken);
           setIsOtpStep(true);
+          setResendCooldown(60); // 60 seconds cooldown
         } else {
           setErrorMsg(data.error || 'Failed to request OTP');
         }
+      }
+    } catch (err) {
+      setErrorMsg('Network error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isLoading) return;
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/auth/register-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setVerificationToken(data.verificationToken);
+        setResendCooldown(60); // 60 seconds cooldown
+        alert('ระบบได้ส่งรหัส OTP ใหม่ไปที่อีเมลของคุณแล้ว');
+      } else {
+        setErrorMsg(data.error || 'Failed to resend OTP');
       }
     } catch (err) {
       setErrorMsg('Network error. Please try again.');
@@ -231,7 +267,7 @@ export default function CheckoutPage() {
             สมัครสมาชิก Gold AI <span className="text-amber-500">PRO</span>
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
-            สิทธิ์ทดลองใช้งานฟรี 30 วันแรก และต่ออายุในราคาปกติ ฿99/เดือน
+            สิทธิ์ทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วันแรก และต่ออายุช่วงโปรโมชัน {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน จากราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)}
           </p>
         </div>
 
@@ -283,6 +319,23 @@ export default function CheckoutPage() {
                 >
                   {isLoading ? 'กำลังตรวจสอบ...' : 'ยืนยันรหัส OTP'}
                 </button>
+
+                <div className="text-center mt-2">
+                  {resendCooldown > 0 ? (
+                    <p className="text-xs text-neutral-500 font-mono">
+                      ส่งรหัสอีกครั้งได้ในอีก {resendCooldown} วินาที
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={isLoading}
+                      className="text-xs text-amber-500 hover:text-amber-400 font-medium transition-colors cursor-pointer bg-transparent border-0 outline-none"
+                    >
+                      ส่งรหัส OTP อีกครั้ง (Resend OTP)
+                    </button>
+                  )}
+                </div>
 
                 <button
                   type="button"
@@ -366,7 +419,7 @@ export default function CheckoutPage() {
                 </span>
                 <p className="text-sm font-bold text-neutral-100 leading-relaxed">
                   ขณะนี้คุณได้สิทธิ์ทดลองใช้ฟรี... <br/>
-                  <span className="text-emerald-400 font-black text-sm">ทดลองใช้งาน PRO ฟรี 30 วันแรก!</span>
+                  <span className="text-emerald-400 font-black text-sm">ทดลองใช้งาน PRO ฟรี {TRIAL_DURATION_DAYS} วันแรก!</span>
                 </p>
                 <button
                   type="button"
@@ -383,22 +436,20 @@ export default function CheckoutPage() {
             <div className="bg-white p-2 rounded-2xl w-48 h-auto mx-auto flex items-center justify-center overflow-hidden">
               <img src="/promptpay.jpg" alt="PromptPay QR Code" className="w-full h-auto object-contain" />
             </div>
+
+            <div className="flex justify-center -mt-2">
+              <a 
+                href="/promptpay.jpg" 
+                download="promptpay_qrcode.jpg"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 hover:border-amber-500/30 text-xs font-bold text-amber-500 rounded-xl transition-all shadow-[0_0_10px_rgba(245,158,11,0.05)] cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5" /> บันทึกรูปภาพ QR Code (เซฟเข้าเครื่อง)
+              </a>
+            </div>
             
             <div className="text-center space-y-2 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
               <p className="text-neutral-400 text-sm">ชื่อบัญชี: <span className="text-neutral-100 font-medium">{ACCOUNT_NAME}</span></p>
               <p className="text-neutral-400 text-sm">ยอดที่ต้องชำระ: <span className="text-amber-500 font-bold text-lg">฿{AMOUNT}</span></p>
-              
-              <div className="pt-2 border-t border-white/5 flex items-center justify-center">
-                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={isTestMode}
-                    onChange={(e) => setIsTestMode(e.target.checked)}
-                    className="rounded border-neutral-800 text-amber-500 focus:ring-amber-500 bg-neutral-950 h-4 w-4"
-                  />
-                  <span className="text-[11px] text-neutral-400 font-medium">เปิดโหมดทดสอบระบบ SlipOK (ชำระ ฿0.10)</span>
-                </label>
-              </div>
             </div>
 
             {errorMsg && (

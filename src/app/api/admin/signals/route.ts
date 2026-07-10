@@ -9,6 +9,9 @@ export async function GET() {
   try {
     const signals = await prisma.signal.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        paperTrades: true
+      }
     });
 
     return NextResponse.json(signals);

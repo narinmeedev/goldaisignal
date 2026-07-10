@@ -21,7 +21,8 @@ import {
   Settings,
   History,
   ShieldAlert,
-  LifeBuoy
+  LifeBuoy,
+  Trophy
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -34,11 +35,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [userEmail, setUserEmail] = useState<string>('');
   const [isAffiliate, setIsAffiliate] = useState<boolean>(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<string>('trial');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>('pending');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [goldPrice, setGoldPrice] = useState(4450.0);
   const [goldBias, setGoldBias] = useState('NEUTRAL');
-  const [btcPrice, setBtcPrice] = useState(68450.0);
-  const [btcBias, setBtcBias] = useState('NEUTRAL');
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
 
   useEffect(() => {
@@ -58,6 +59,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             setUserRole(data.user.role);
             setUserEmail(data.user.email);
             setIsAffiliate(!!data.user.isAffiliate);
+            setSubscriptionPlan(data.user.subscriptionPlan || 'trial');
+            setSubscriptionStatus(data.user.subscriptionStatus || 'pending');
             
             if (data.user.role !== 'admin' && data.user.subscriptionEndsAt) {
               const endsAt = new Date(data.user.subscriptionEndsAt);
@@ -96,7 +99,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     
     fetchMaintenanceStatus();
 
-    // Fetch real-time gold and bitcoin prices from database logs periodically
+    // Fetch real-time gold price from database logs periodically.
     const fetchLatestPrice = async () => {
       try {
         const res = await fetch('/api/admin/latest-price');
@@ -105,10 +108,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           if (data.XAUUSD?.price) {
             setGoldPrice(data.XAUUSD.price);
             setGoldBias(data.XAUUSD.bias || 'NEUTRAL');
-          }
-          if (data.BTCUSD?.price) {
-            setBtcPrice(data.BTCUSD.price);
-            setBtcBias(data.BTCUSD.bias || 'NEUTRAL');
           }
         }
       } catch {
@@ -121,6 +120,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     return () => clearInterval(interval);
   }, [router]);
+
+  // Close mobile sidebar automatically on route change
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
 
   const handleSeedCandles = async () => {
     setIsSeeding(true);
@@ -161,9 +165,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { name: 'แผงควบคุมหลัก', href: '/admin', icon: Activity, roles: ['admin', 'viewer'] },
+    { name: 'ประวัติคัดกรองสัญญาณ', href: '/admin/signals', icon: Terminal, roles: ['admin', 'viewer'] },
+    { name: 'วัดผลประสิทธิภาพ AI', href: '/admin/performance', icon: Trophy, roles: ['admin', 'viewer'] },
     { name: 'โซนแนวรับ/แนวต้าน', href: '/admin/zones', icon: Layers, roles: ['admin', 'viewer'] },
     { name: 'ระบบแนะนำเพื่อน (Affiliate)', href: '/admin/affiliate', icon: Coins, roles: ['admin', 'viewer'] },
     { name: 'ประวัติการชำระเงิน/บิล', href: '/admin/billing', icon: CreditCard, roles: ['admin', 'viewer'] },
+    { name: 'ตั้งค่าบัญชี/โปรไฟล์', href: '/admin/profile', icon: User, roles: ['admin', 'viewer'] },
     { name: 'ช่วยเหลือ/แจ้งปัญหา', href: '/admin/support', icon: LifeBuoy, roles: ['admin', 'viewer'] },
     { name: 'ระบบผู้ใช้งาน', href: '/admin/users', icon: Users, roles: ['admin'] },
     { name: 'การชำระเงิน', href: '/admin/payments', icon: CreditCard, roles: ['admin'] },
@@ -260,6 +267,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={closeSidebar}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     isActive
                       ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner'
@@ -276,6 +284,37 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* User / Sidebar Footer */}
         <div className="p-4 border-t border-neutral-900 bg-neutral-950/50 space-y-3">
+          {/* Account Status / Plan */}
+          <div className="px-3 py-2 bg-neutral-900 border border-white/5 rounded-lg flex flex-col gap-1 shadow-inner">
+            <span className="text-[9px] text-neutral-500 font-mono uppercase tracking-wider">ประเภทบัญชี / สถานะ</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-neutral-200 truncate">
+                {userRole === 'admin' ? (
+                  <span className="text-amber-400 font-black">ADMINISTRATOR</span>
+                ) : subscriptionPlan === 'trial' ? (
+                  <span className="text-neutral-300">TRIAL PLAN (ทดลองฟรี)</span>
+                ) : (
+                  <span className="text-amber-400 font-black">PRO PLAN (รายเดือน)</span>
+                )}
+              </span>
+              {userRole !== 'admin' && (
+                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0 ${
+                  subscriptionStatus === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                  subscriptionStatus === 'pending' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse' :
+                  'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                }`}>
+                  {subscriptionStatus === 'active' ? 'ACTIVE' :
+                   subscriptionStatus === 'pending' ? 'PENDING' : 'EXPIRED'}
+                </span>
+              )}
+            </div>
+            {userRole !== 'admin' && daysRemaining !== null && (
+              <span className="text-[9px] text-neutral-400 font-mono">
+                {daysRemaining > 0 ? `อายุการใช้งานคงเหลือ: ${daysRemaining} วัน` : 'หมดอายุการใช้งาน'}
+              </span>
+            )}
+          </div>
+
           {/* Active status */}
           <div className="px-3 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-lg flex items-center justify-between">
             <span className="text-[11px] text-emerald-400 font-mono font-medium flex items-center gap-1.5">
@@ -309,7 +348,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Main Content Area */}
       <div className="flex-1 lg:pl-64 flex flex-col min-h-screen w-full overflow-x-hidden">
         {/* Top Header */}
-        <header className="h-16 border-b border-neutral-950 bg-neutral-950/90 backdrop-blur-md px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 w-full overflow-hidden">
+        <header className="h-16 border-b border-neutral-950 bg-neutral-950/90 backdrop-blur-md px-2 sm:px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 w-full overflow-hidden">
           <div className="flex items-center gap-3 lg:gap-8 min-w-0 overflow-hidden">
             {/* Hamburger Menu Toggle (Mobile) */}
             <button
@@ -328,17 +367,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <span className="text-xs font-mono font-bold text-amber-400">${goldPrice.toFixed(2)}</span>
                 <span className="text-[10px] text-emerald-400 font-mono flex items-center">
                   ▲ +0.14%
-                </span>
-              </div>
-            </div>
-
-              {/* Bitcoin Live Price Ticker */}
-              <div className="flex items-center gap-1.5 lg:gap-2 shrink-0">
-              <span className="text-xs font-mono text-neutral-400 uppercase tracking-wider">บิตคอยน์ BTCUSD:</span>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/5 border border-amber-500/15 rounded-full shadow-inner">
-                <span className="text-xs font-mono font-bold text-amber-400">${btcPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <span className="text-[10px] text-emerald-400 font-mono flex items-center">
-                  ▲ +1.82%
                 </span>
               </div>
             </div>
@@ -366,7 +394,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         {/* Dashboard Pages Root */}
-        <main className="flex-1 p-4 lg:p-8 bg-gradient-to-b from-neutral-950 via-neutral-950 to-neutral-900 overflow-x-hidden w-full">
+        <main className="flex-1 p-2 sm:p-4 lg:p-8 bg-gradient-to-b from-neutral-950 via-neutral-950 to-neutral-900 overflow-x-hidden w-full">
           {isMaintenanceMode && (
             <div className="mb-6 px-4 py-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3 shadow-[0_0_15px_rgba(244,63,94,0.15)] animate-pulse">
               <ShieldAlert className="h-6 w-6 text-rose-500 shrink-0" />
@@ -398,25 +426,69 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           )}
         </main>
 
-        {/* Sticky Footer Menu for Mobile Market Bias */}
-        <div className="lg:hidden sticky bottom-0 z-40 bg-neutral-950/90 backdrop-blur-xl border-t border-neutral-900 px-4 py-3 flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-neutral-400 font-mono tracking-widest uppercase">XAUUSD Live</span>
-            <span className="text-sm font-bold text-amber-400 font-mono">${goldPrice.toFixed(2)}</span>
+        {/* Sticky Footer Menu for Mobile Market Bias & Bottom Navigation (User Pages Only) */}
+        {userRole !== 'admin' && (
+          <div className="lg:hidden sticky bottom-0 z-40 bg-neutral-950/95 backdrop-blur-xl border-t border-neutral-900 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] flex flex-col w-full safe-bottom">
+            {/* Top Ticker Row */}
+            <div className="flex items-center justify-between px-4 py-1.5 border-b border-neutral-900/60 bg-neutral-950/40">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] text-neutral-500 font-mono tracking-widest uppercase">XAUUSD Live</span>
+                <span className="text-xs font-bold text-amber-400 font-mono">${goldPrice.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] text-neutral-500 font-mono tracking-widest uppercase">Bias Status</span>
+                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border ${
+                  goldBias === 'BULLISH'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : goldBias === 'BEARISH'
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                }`}>
+                  {goldBias === 'BULLISH' ? 'มองขึ้น (BUY)' : goldBias === 'BEARISH' ? 'มองลง (SELL)' : 'ไซด์เวย์'}
+                </span>
+              </div>
+            </div>
+            
+            {/* Bottom Tabs Row */}
+            <div className="grid grid-cols-3 py-1.5 px-1 bg-neutral-950/80">
+              <Link 
+                href="/admin" 
+                className={`flex flex-col items-center justify-center gap-0.5 text-center py-1 rounded-xl transition-all ${
+                  pathname === '/admin' 
+                    ? 'text-amber-400 bg-amber-500/5' 
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                <Activity className="h-5 w-5" />
+                <span className="text-[10px] font-medium">สัญญาณ</span>
+              </Link>
+              
+              <Link 
+                href="/admin/affiliate" 
+                className={`flex flex-col items-center justify-center gap-0.5 text-center py-1 rounded-xl transition-all ${
+                  pathname === '/admin/affiliate' 
+                    ? 'text-amber-400 bg-amber-500/5' 
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                <Coins className="h-5 w-5" />
+                <span className="text-[10px] font-medium">Affiliate</span>
+              </Link>
+              
+              <Link 
+                href="/admin/support" 
+                className={`flex flex-col items-center justify-center gap-0.5 text-center py-1 rounded-xl transition-all ${
+                  pathname === '/admin/support' 
+                    ? 'text-amber-400 bg-amber-500/5' 
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                <LifeBuoy className="h-5 w-5" />
+                <span className="text-[10px] font-medium">ช่วยเหลือ</span>
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[10px] text-neutral-400 font-mono tracking-widest uppercase">Bias Status</span>
-            <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded border ${
-              goldBias === 'BULLISH'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : goldBias === 'BEARISH'
-                ? 'bg-rose-500/10 text-rose-450 border-rose-500/20'
-                : 'bg-neutral-800 text-neutral-400 border-neutral-700'
-            }`}>
-              {goldBias === 'BULLISH' ? 'มองขึ้น (BUY)' : goldBias === 'BEARISH' ? 'มองลง (SELL)' : 'ไซด์เวย์'}
-            </span>
-          </div>
-        </div>
+        )}
 
       </div>
     </div>

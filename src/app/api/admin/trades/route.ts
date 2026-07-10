@@ -8,6 +8,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const trades = await prisma.paperTrade.findMany({
+      where: { symbol: { contains: 'XAU' } },
       orderBy: { openedAt: 'desc' },
       include: {
         signal: true,

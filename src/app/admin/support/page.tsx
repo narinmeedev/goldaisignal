@@ -189,6 +189,29 @@ export default function SupportPage() {
         </div>
       </div>
 
+      {/* LINE Contact Quick Support Banner */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-600/5 to-transparent border border-emerald-500/20 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-lg">
+        <div className="flex gap-4">
+          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+            <MessageSquare className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-emerald-400">💬 ติดต่อแอดมินหรือส่งหลักฐานโดยตรงผ่าน LINE (สะดวกรวดเร็วที่สุด)</h4>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              สอบถามข้อมูล ปรับสถานะ ชำระเงิน หรือแจ้งปัญหาโดยตรงผ่าน LINE ไอดี <span className="font-bold text-emerald-400 font-mono">@413aryiz</span>
+            </p>
+          </div>
+        </div>
+        <a 
+          href="https://line.me/R/ti/p/@413aryiz" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold text-xs rounded-xl shadow-md transition-all shrink-0 cursor-pointer"
+        >
+          แอดไลน์ @413aryiz
+        </a>
+      </div>
+
       {errorMsg && (
         <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 font-mono text-xs shadow-lg">
           {errorMsg}

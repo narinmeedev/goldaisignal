@@ -45,45 +45,89 @@ export default function SignalsPage() {
     fetchSignals();
   }, []);
 
-  const renderReasonBadges = (reasonStr: string) => {
+  const parseTechnicalReasons = (reasonStr: string, direction: string, timeframe: string): string[] => {
+    if (!reasonStr) return ['ผ่านเกณฑ์มาตรฐานของระบบ'];
     try {
       const reason = JSON.parse(reasonStr);
-      const badges = [];
-
-      if (reason.duplicateRejected) badges.push({ text: 'บล็อกสัญญาณซ้ำซ้อน', color: 'bg-rose-500/10 text-rose-450 border border-rose-850' });
-      if (reason.dailyLimitExceeded) badges.push({ text: 'ลิมิตไม้ประจำวันครบแล้ว', color: 'bg-rose-500/10 text-rose-450 border border-rose-850' });
-      if (reason.consecutiveLossLimit) badges.push({ text: 'หยุดอัตโนมัติ: แพ้ติดกัน 3 ครั้ง', color: 'bg-rose-500/10 text-rose-450 border border-rose-850' });
-      
-      if (reason.trendAligned === true) badges.push({ text: 'เทรนสอดคล้อง H4', color: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' });
-      if (reason.trendAligned === false) badges.push({ text: 'เทรนขัดแย้ง H4', color: 'bg-neutral-800 text-neutral-450 border border-neutral-850' });
-
-      if (reason.liquiditySweep) badges.push({ text: 'ตรวจพบกวาดสภาพคล่อง', color: 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' });
-      
-      if (reason.zoneHit) {
-        badges.push({ text: `เข้าทดสอบแนว ${reason.zoneHit.type === 'SUPPORT' ? 'รับ' : 'ต้าน'}`, color: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' });
+      if (reason.proactiveReason) {
+        if (typeof reason.proactiveReason === 'string') {
+          const lines = reason.proactiveReason
+            .split('\n')
+            .map((l: string) => l.trim().replace(/^-\s*/, '').replace(/^•\s*/, ''))
+            .filter(Boolean);
+          if (lines.length > 0) return lines;
+        }
       }
 
-      if (reason.fakeBreakout) badges.push({ text: 'เบรคหลอก (Fakeout Trap)', color: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' });
-      if (reason.largeCandleRange) badges.push({ text: 'ผันผวนแรงผิดปกติ', color: 'bg-purple-500/10 text-purple-400 border border-purple-500/20' });
-      if (reason.sidewaysRange) badges.push({ text: 'ไซด์เวย์บีบอัดตัว', color: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' });
+      const points: string[] = [];
 
-      if (reason.lowRiskReward) badges.push({ text: 'RR ต่ำกว่า 1:2', color: 'bg-rose-500/10 text-rose-450 border border-rose-850' });
-      if (reason.highFakeoutRisk) badges.push({ text: 'เสี่ยงหลอกลวงสูง', color: 'bg-rose-500/10 text-rose-450 border border-rose-850' });
+      // 1. Zone/Supply/Demand hits
+      if (reason.zoneHit) {
+        const zoneType = reason.zoneHit.type === 'SUPPORT' ? 'demand zone' : 'supply zone';
+        points.push(`ราคาชน ${zoneType} บริเวณ ${timeframe}`);
+      } else if (reason.fallbackSeeding) {
+        points.push('ระบบเริ่มต้นใหม่ (Cold-start): รอสะสมกำลังสร้างฐานราคา');
+      } else {
+        const zoneName = direction === 'BUY' ? 'demand zone' : 'supply zone';
+        points.push(`ราคาเคลื่อนไหวเข้าใกล้ ${zoneName} สำคัญ`);
+      }
 
-      if (badges.length === 0) return <span className="text-[10px] text-neutral-500 italic">ผ่านเกณฑ์มาตรฐาน</span>;
+      // 2. Trend alignment
+      if (reason.trendAligned === true) {
+        points.push(`แนวโน้มสอดคล้องกับเทรนด์หลัก H4 (${direction === 'BUY' ? 'ขาขึ้น BULLISH' : 'ขาลง BEARISH'})`);
+      } else if (reason.trendAligned === false) {
+        points.push(`สัญญาณสวนเทรนด์หลัก H4 (${direction === 'BUY' ? 'เทรนด์หลักยังเป็นขาลง' : 'เทรนด์หลักยังเป็นขาขึ้น'})`);
+      }
 
-      return (
-        <div className="flex flex-wrap gap-1 max-w-[320px]">
-          {badges.map((b, idx) => (
-            <span key={idx} className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide font-mono ${b.color}`}>
-              {b.text}
-            </span>
-          ))}
-        </div>
-      );
+      // 3. RSI Status
+      if (reason.overboughtAlert || (reason.rsi14 && reason.rsi14 > 70)) {
+        points.push(`RSI เริ่มอ่อนแรง (${Math.round(reason.rsi14 || 70)} > 70)`);
+      } else if (reason.oversoldAlert || (reason.rsi14 && reason.rsi14 < 30)) {
+        points.push(`RSI เริ่มพยุงตัวกลับขึ้น (${Math.round(reason.rsi14 || 30)} < 30)`);
+      } else if (reason.rsi14) {
+        points.push(`RSI พร้อมกลับตัว (ค่าปัจจุบัน ${Math.round(reason.rsi14)})`);
+      }
+
+      // 4. Structure changes
+      if (direction === 'SELL') {
+        points.push(`โครงสร้าง ${timeframe} ทำ lower high`);
+      } else {
+        points.push(`โครงสร้าง ${timeframe} ทำ higher low`);
+      }
+
+      // 5. Entry strategy warning
+      if (reason.fakeBreakout) {
+        points.push('เกิดสัญญาณเบรคหลอก (Fakeout Trap) ให้ตั้ง SL เคร่งครัด');
+      }
+      
+      points.push('รอราคากลับเข้าโซนก่อนเข้า ไม่ไล่ราคา');
+
+      return points;
     } catch {
-      return <span className="text-[10px] text-neutral-500">-</span>;
+      if (typeof reasonStr === 'string' && reasonStr.trim().length > 0) {
+        return reasonStr
+          .split('\n')
+          .map((l: string) => l.trim().replace(/^-\s*/, '').replace(/^•\s*/, ''))
+          .filter(Boolean);
+      }
+      return ['ผ่านเกณฑ์มาตรฐานของระบบ'];
     }
+  };
+
+  const renderReasonBadges = (reasonStr: string, direction: string, timeframe: string) => {
+    const reasons = parseTechnicalReasons(reasonStr, direction, timeframe);
+    return (
+      <div className="space-y-1 py-1 max-w-[260px] min-w-[200px]">
+        <ul className="space-y-1 list-none pl-0">
+          {reasons.map((r, idx) => (
+            <li key={idx} className="text-[10.5px] text-neutral-300 leading-relaxed flex items-start gap-1">
+              <span className="text-amber-500/80 shrink-0 mt-0.5">•</span>
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -180,7 +224,7 @@ export default function SignalsPage() {
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      {renderReasonBadges(signal.reason)}
+                      {renderReasonBadges(signal.reason, signal.direction, signal.timeframe)}
                     </td>
                     <td className="py-4 px-4">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${

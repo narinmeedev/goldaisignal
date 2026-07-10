@@ -9,6 +9,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const zones = await prisma.zone.findMany({
+      where: { symbol: { contains: 'XAU' } },
       orderBy: [
         { type: 'asc' },
         { priceMin: 'desc' },
@@ -28,6 +29,7 @@ export async function POST() {
   try {
     // 1. Get unique symbol/timeframe combinations from existing candles
     const distinctCandles = await prisma.candle.findMany({
+      where: { symbol: { contains: 'XAU' } },
       select: { symbol: true, timeframe: true },
       distinct: ['symbol', 'timeframe'],
     });
@@ -46,6 +48,7 @@ export async function POST() {
 
     // 3. Return the fresh zones
     const zones = await prisma.zone.findMany({
+      where: { symbol: { contains: 'XAU' } },
       orderBy: [
         { type: 'asc' },
         { priceMin: 'desc' },

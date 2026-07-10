@@ -17,6 +17,9 @@ model User {
   lineId             String?       @unique
   displayName        String?
   pictureUrl         String?
+  bankName           String?
+  bankAccount        String?
+  bankAccountName    String?
   lastLoginAt        DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -29,7 +32,7 @@ model User {
   referredById       String?
   referredBy         User?         @relation("Referrals", fields: [referredById], references: [id])
   referees           User[]        @relation("Referrals")
-  affiliateRate      Float         @default(0.15)
+  affiliateRate      Float         @default(0.35)
 
   commissions        AffiliateCommission[] @relation("ReferrerCommissions")
   referredCommissions AffiliateCommission[] @relation("ReferredCommissions")
@@ -120,22 +123,29 @@ model Zone {
 }
 
 model Signal {
-  id            String       @id @default(uuid())
-  symbol        String
-  timeframe     String
-  direction     String       // BUY | SELL | NO_TRADE
-  entry         Float
-  stopLoss      Float
-  takeProfit1   Float
-  takeProfit2   Float
-  riskReward    Float
-  confidence    Int          @default(0)
-  status        String       @default("pending") // pending | active | win | loss | cancelled
-  reason        String       @default("{}")      // JSON string details of setup filters
-  fakeoutScore  Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  paperTrades   PaperTrade[]
+  id              String       @id @default(uuid())
+  symbol          String
+  timeframe       String
+  direction       String       // BUY | SELL | NO_TRADE
+  entry           Float
+  stopLoss        Float
+  takeProfit1     Float
+  takeProfit2     Float
+  takeProfit3     Float?
+  riskReward      Float
+  confidence      Int          @default(0)
+  status          String       @default("pending") // pending | active | win | loss | cancelled
+  bias            String       @default("Wait")    // Buy | Sell | Wait
+  entryZone       String?
+  riskLevel       String?      // Low | Medium | High
+  marketCondition String?
+  result          String       @default("Pending") // Win | Loss | BE | Pending
+  screenshotUrl   String?      @default("/snapshots/gold_chart_snapshot.jpg")
+  reason          String       @default("{}")      // JSON string details of setup filters
+  fakeoutScore    Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  paperTrades     PaperTrade[]
 }
 
 model PaperTrade {

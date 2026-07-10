@@ -43,7 +43,7 @@ export async function createCommissionFromPayment(paymentId: string) {
       return { success: true, reason: 'Commission already exists', commission: existingCommission };
     }
 
-    // 5. Calculate commission amount based on referrer's affiliateRate (default is 15% / 0.15)
+    // 5. Calculate commission amount based on referrer's affiliateRate (default is 35% / 0.35)
     const commissionAmount = payment.amount * referrer.affiliateRate;
 
     // 6. Create the pending AffiliateCommission record
@@ -62,7 +62,7 @@ export async function createCommissionFromPayment(paymentId: string) {
       data: {
         userId: referrer.id,
         action: 'PAYMENT_APPROVED', // We use this or custom log
-        details: `ได้รับค่าคอมมิชชั่นแนะนำเพื่อน ฿${commissionAmount.toFixed(2)} (15% หรือตามเรทส่วนตัว) จากผู้ใช้ ${payment.user.email} (เลขอ้างอิงออเดอร์: ${paymentId})`
+        details: `ได้รับค่าคอมมิชชั่นแนะนำเพื่อน ฿${commissionAmount.toFixed(2)} (${(referrer.affiliateRate * 100).toFixed(0)}% หรือตามเรทส่วนตัว) จากผู้ใช้ ${payment.user.email} (เลขอ้างอิงออเดอร์: ${paymentId})`
       }
     });
 

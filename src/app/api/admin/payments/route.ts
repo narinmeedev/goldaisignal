@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
+import { getPaidDurationDays } from '@/lib/billing';
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       const paidSetting = await prisma.systemSetting.findUnique({
         where: { key: 'PAID_DURATION_DAYS' }
       });
-      const paidDays = paidSetting ? parseInt(paidSetting.value, 10) : 30;
+      const paidDays = getPaidDurationDays(paidSetting?.value);
 
       const now = new Date();
       let newEndDate = new Date(now.getTime() + paidDays * 24 * 60 * 60 * 1000);
@@ -245,7 +246,7 @@ export async function POST(req: Request) {
         const paidSetting = await prisma.systemSetting.findUnique({
           where: { key: 'PAID_DURATION_DAYS' }
         });
-        const paidDays = paidSetting ? parseInt(paidSetting.value, 10) : 30;
+        const paidDays = getPaidDurationDays(paidSetting?.value);
 
         const now = new Date();
         let newEndDate = new Date(now.getTime() + paidDays * 24 * 60 * 60 * 1000);
@@ -286,4 +287,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

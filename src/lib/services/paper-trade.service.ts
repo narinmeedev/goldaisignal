@@ -1,4 +1,6 @@
 import { prisma } from '../prisma';
+import { StrategyResearchService } from './strategy-research.service';
+import { NotificationService } from './notification.service';
 
 export interface OpenTradeParams {
   signalId: string;
@@ -8,6 +10,8 @@ export interface OpenTradeParams {
   stopLoss: number;
   takeProfit1: number;
   takeProfit2: number;
+  initialResult?: 'PLAN' | 'TESTING' | 'OPEN';
+  notes?: string;
 }
 
 export class PaperTradeService {
@@ -15,7 +19,7 @@ export class PaperTradeService {
    * Opens a new simulated paper trade (initially logged as a proposed plan).
    */
   static async openTrade(params: OpenTradeParams): Promise<any> {
-    const { signalId, symbol, direction, entry, stopLoss, takeProfit1, takeProfit2 } = params;
+    const { signalId, symbol, direction, entry, stopLoss, takeProfit1, takeProfit2, initialResult = 'PLAN', notes } = params;
 
     return prisma.paperTrade.create({
       data: {
@@ -26,9 +30,41 @@ export class PaperTradeService {
         stopLoss,
         takeProfit1,
         takeProfit2,
-        result: 'PLAN', // Saved as a suggested plan for the user to review
+        result: initialResult,
         rrResult: 0.0,
         openedAt: new Date(),
+        notes: notes || (initialResult === 'TESTING'
+          ? 'Forward test from saved plan. Auto-tracks TP/SL before real use.'
+          : 'Saved as a suggested plan for review.'),
+      },
+    });
+  }
+
+  /**
+   * Starts forward-testing a saved plan without marking it as a real active trade.
+   */
+  static async startPlanTest(id: string): Promise<any> {
+    const plan = await prisma.paperTrade.findUnique({
+      where: { id },
+    });
+
+    if (!plan || plan.result !== 'PLAN') {
+      throw new Error('Saved plan not found or already testing.');
+    }
+
+    if (plan.signalId) {
+      await prisma.signal.update({
+        where: { id: plan.signalId },
+        data: { status: 'active' },
+      });
+    }
+
+    return prisma.paperTrade.update({
+      where: { id },
+      data: {
+        result: 'TESTING',
+        openedAt: new Date(),
+        notes: 'Forward test started. Auto-tracks TP/SL for algorithm improvement.',
       },
     });
   }
@@ -41,8 +77,8 @@ export class PaperTradeService {
       where: { id },
     });
 
-    if (!plan || plan.result !== 'PLAN') {
-      throw new Error('Suggested plan not found or already active.');
+    if (!plan || !['PLAN', 'TESTING'].includes(plan.result)) {
+      throw new Error('Suggested plan not found or already active/closed.');
     }
 
     return prisma.paperTrade.update({
@@ -50,6 +86,7 @@ export class PaperTradeService {
       data: {
         result: 'OPEN', // Transition to open position!
         openedAt: new Date(),
+        notes: 'Promoted from saved/test plan to active tracking.',
       },
     });
   }
@@ -104,9 +141,12 @@ export class PaperTradeService {
         where: { id: trade.signalId },
         data: {
           status: result.toLowerCase() === 'win' ? 'win' : result.toLowerCase() === 'loss' ? 'loss' : 'cancelled',
+          result: result === 'WIN' ? 'Win' : result === 'LOSS' ? 'Loss' : result === 'BE' ? 'BE' : 'Pending',
         },
       });
     }
+
+    await StrategyResearchService.refreshStoredReportFromPaperTrades(trade.symbol);
 
     return updatedTrade;
   }
@@ -122,7 +162,7 @@ export class PaperTradeService {
     lowPrice: number
   ): Promise<string[]> {
     const openTrades = await prisma.paperTrade.findMany({
-      where: { symbol, result: 'OPEN' },
+      where: { symbol, result: { in: ['OPEN', 'TESTING'] } },
     });
 
     const closedTradeLogs: string[] = [];
@@ -207,14 +247,86 @@ export class PaperTradeService {
             where: { id: trade.signalId },
             data: {
               status: result.toLowerCase() === 'win' ? 'win' : 'loss',
+              result: result === 'WIN' ? 'Win' : result === 'LOSS' ? 'Loss' : result === 'BE' ? 'BE' : 'Pending',
             },
           });
         }
+
+        // Send mobile notification on closing (TP or SL)
+        const targetIcon = result === 'WIN' ? '✅ TP Hit' : '❌ SL Hit';
+        const positionIcon = direction === 'BUY' ? '🟢 BUY' : '🔴 SELL';
+        const closeMsg = `🏁 *ออเดอร์ชนเป้าหมาย (Trade Executed!)*\n\n*Symbol*: ${trade.symbol}\n*Position*: ${positionIcon}\n*Status*: ${targetIcon}\n*Outcome*: ${result} (${rrResult > 0 ? '+' : ''}${rrResult}R)\n*Exit Price*: $${exitPrice.toFixed(2)}\n*Detail*: ${reason}`;
+        NotificationService.sendNotification(closeMsg).catch(() => {});
 
         closedTradeLogs.push(`Trade ${trade.id.slice(0, 8)} (${direction}) closed as ${result} at $${exitPrice.toFixed(2)} (${rrResult}R)`);
       }
     }
 
+    if (closedTradeLogs.length > 0) {
+      await StrategyResearchService.refreshStoredReportFromPaperTrades(symbol);
+    }
+
     return closedTradeLogs;
+  }
+
+  /**
+   * Evaluates all pending plans (result: 'PLAN') against a new price tick.
+   * If a plan's entry level is touched, triggers the active trade and dispatches mobile notifications.
+   */
+  static async evaluatePendingPlansWithPrice(
+    symbol: string,
+    currentPrice: number
+  ): Promise<string[]> {
+    const pendingPlans = await prisma.paperTrade.findMany({
+      where: { symbol, result: 'PLAN' },
+    });
+
+    const triggeredPlanLogs: string[] = [];
+
+    for (const plan of pendingPlans) {
+      let isTriggered = false;
+      const { direction, entry } = plan;
+
+      if (direction === 'BUY') {
+        if (currentPrice <= entry) {
+          isTriggered = true;
+        }
+      } else {
+        // SELL
+        if (currentPrice >= entry) {
+          isTriggered = true;
+        }
+      }
+
+      if (isTriggered) {
+        // Update plan status to OPEN
+        await prisma.paperTrade.update({
+          where: { id: plan.id },
+          data: {
+            result: 'OPEN',
+            openedAt: new Date(),
+            notes: `Auto-triggered: Price reached entry level at $${currentPrice.toFixed(2)}`,
+          },
+        });
+
+        // Also update parent signal to active
+        if (plan.signalId) {
+          await prisma.signal.update({
+            where: { id: plan.signalId },
+            data: { status: 'active' },
+          });
+        }
+
+        // Notify mobile
+        const sideIcon = direction === 'BUY' ? '🟢 BUY' : '🔴 SELL';
+        const msg = `🔔 *ราคาถึงแนวเข้าออเดอร์ (Entry Target Hit!)*\n\n*Symbol*: ${symbol}\n*Position*: ${sideIcon}\n*Entry Target*: $${entry.toFixed(2)}\n*Triggered Price*: $${currentPrice.toFixed(2)}\n*Time*: ${new Date().toLocaleTimeString('th-TH')}`;
+        
+        NotificationService.sendNotification(msg).catch(() => {});
+
+        triggeredPlanLogs.push(`Plan ${plan.id.slice(0, 8)} (${direction}) triggered at $${currentPrice.toFixed(2)}`);
+      }
+    }
+
+    return triggeredPlanLogs;
   }
 }

@@ -1,0 +1,120 @@
+- generic [ref=f3e2]:
+  - navigation [ref=f3e3]:
+    - generic [ref=f3e4]:
+      - generic [ref=f3e5]:
+        - img [ref=f3e7]
+        - generic [ref=f3e9]:
+          - generic [ref=f3e10]: GOLD AI SIGNAL
+          - generic [ref=f3e11]: Intelligence Lab
+      - generic [ref=f3e12]:
+        - link "เข้าสู่ระบบ" [ref=f3e13] [cursor=pointer]:
+          - /url: /login
+        - link "ทดลองฟรี" [ref=f3e14] [cursor=pointer]:
+          - /url: /pricing
+  - generic [ref=f3e16]:
+    - generic [ref=f3e19]: ระบบ AI วิเคราะห์ตลาดทำงานแบบ Real-time 24/7
+    - heading "เทรดทองคำอย่างมั่นใจ ด้วย สมองกลอัจฉริยะ" [level=1] [ref=f3e20]:
+      - text: เทรดทองคำอย่างมั่นใจ
+      - text: ด้วย สมองกลอัจฉริยะ
+    - paragraph [ref=f3e21]: เลิกเดาทางตลาด! ให้ AI ช่วยวิเคราะห์แนวโน้ม สแกนโซนรับต้าน และวางแผนการเทรด (Entry, SL, TP) ให้คุณแบบอัตโนมัติ แม่นยำ และรู้ทันทุกความผันผวน
+    - generic [ref=f3e22]:
+      - link "เริ่มต้นทดลองใช้งานฟรี" [ref=f3e23] [cursor=pointer]:
+        - /url: /pricing
+        - text: เริ่มต้นทดลองใช้งานฟรี
+        - img [ref=f3e24]
+      - link "ดูฟีเจอร์ทั้งหมด" [ref=f3e26] [cursor=pointer]:
+        - /url: "#features"
+  - generic [ref=f3e30]:
+    - img [ref=f3e31]
+    - generic [ref=f3e33]: กำลังวิเคราะห์ตลาดแบบเรียลไทม์...
+  - generic [ref=f3e35]:
+    - generic [ref=f3e36]:
+      - heading "ฟีเจอร์ระดับโปร ในราคาที่จับต้องได้" [level=2] [ref=f3e37]
+      - paragraph [ref=f3e38]: เครื่องมือวิเคราะห์ตลาดครบวงจร ที่ถูกออกแบบมาเพื่อนักเทรดทองคำโดยเฉพาะ
+    - generic [ref=f3e39]:
+      - generic [ref=f3e40]:
+        - img [ref=f3e42]
+        - heading "ศูนย์วิเคราะห์ตลาด MARKET INTELLIGENCE" [level=3] [ref=f3e44]:
+          - text: ศูนย์วิเคราะห์ตลาด
+          - text: MARKET INTELLIGENCE
+        - paragraph [ref=f3e45]: รู้ทิศทางตลาด (Directional Bias) ก่อนใคร พร้อมมาตรวัดความแรงเทรนด์ (Trend Strength) และประเมินความผันผวน (Volatility) แบบเรียลไทม์
+        - generic [ref=f3e46]:
+          - generic [ref=f3e47]:
+            - generic [ref=f3e48]: ทิศทางตลาด
+            - generic [ref=f3e49]: กำลังประมวลผล...
+          - generic [ref=f3e51]:
+            - generic [ref=f3e52]: ความแรงเทรนด์
+            - generic [ref=f3e53]: ...
+      - generic [ref=f3e56]:
+        - img [ref=f3e58]
+        - heading "เรดาร์สแกนโซน LIVE ZONE RADAR" [level=3] [ref=f3e60]:
+          - text: เรดาร์สแกนโซน
+          - text: LIVE ZONE RADAR
+        - paragraph [ref=f3e61]: สแกนหาแนวรับ-แนวต้านที่แข็งแกร่งที่สุด พร้อมบอกระยะห่างจากราคาปัจจุบัน ให้คุณรู้จุดเข้าทำกำไรที่ได้เปรียบที่สุด
+        - generic [ref=f3e62]:
+          - generic [ref=f3e63]: แนวต้าน (SELL ZONES)
+          - generic [ref=f3e64]:
+            - generic [ref=f3e65]: $4466.20 - $4467.20
+            - generic [ref=f3e66]: +$13.95
+          - generic [ref=f3e67]: แนวรับ (BUY ZONES)
+          - generic [ref=f3e68]:
+            - generic [ref=f3e69]: $4447.06 - $4448.06
+            - generic [ref=f3e70]: "-$4.19"
+      - generic [ref=f3e71]:
+        - img [ref=f3e73]
+        - heading "แผนเทรดแนะนำ PROACTIVE STRATEGIES" [level=3] [ref=f3e81]:
+          - text: แผนเทรดแนะนำ
+          - text: PROACTIVE STRATEGIES
+        - paragraph [ref=f3e82]: AI คำนวณจุดเข้า (Entry), จุดตัดขาดทุน (SL), และจุดทำกำไร (TP) ให้เสร็จสรรพ พร้อมบอกเปอร์เซ็นต์ความมั่นใจในแต่ละแผน
+        - generic [ref=f3e83]:
+          - generic [ref=f3e84]:
+            - generic [ref=f3e85]: SELL_MARKET
+            - generic [ref=f3e86]: ความมั่นใจ 89%
+          - paragraph [ref=f3e87]: ขายตามน้ำ (Follow Trend)
+          - generic [ref=f3e88]:
+            - generic [ref=f3e89]:
+              - generic [ref=f3e90]: ENTRY
+              - generic [ref=f3e91]: $4452.84
+            - generic [ref=f3e92]:
+              - generic [ref=f3e93]: SL
+              - generic [ref=f3e94]: $4460.84
+            - generic [ref=f3e95]:
+              - generic [ref=f3e96]: TP
+              - generic [ref=f3e97]: $4436.84
+  - generic [ref=f3e100]:
+    - img [ref=f3e101]
+    - heading "เริ่มต้นปั้นพอร์ตทองคำวันนี้" [level=2] [ref=f3e104]
+    - paragraph [ref=f3e105]: ระบบพรีเมียมในราคาที่ทุกคนเข้าถึงได้ ไม่มีค่าธรรมเนียมแอบแฝง
+    - generic [ref=f3e107]:
+      - generic [ref=f3e108]:
+        - heading "สมาชิกรายเดือน PRO (PRO Plan)" [level=3] [ref=f3e109]
+        - paragraph [ref=f3e110]: เข้าถึงทุกฟีเจอร์ AI วิเคราะห์และส่งสัญญาณแบบไร้ขีดจำกัด
+        - list [ref=f3e111]:
+          - listitem [ref=f3e112]:
+            - img [ref=f3e113]
+            - text: อัปเดตสถานะตลาดเรียลไทม์ 24/7
+          - listitem [ref=f3e115]:
+            - img [ref=f3e116]
+            - text: สแกนโซนรับ-ต้านอัตโนมัติข้าม Timeframe (MTF)
+          - listitem [ref=f3e118]:
+            - img [ref=f3e119]
+            - text: แผนการเทรดละเอียด (Entry, SL, TP)
+          - listitem [ref=f3e121]:
+            - img [ref=f3e122]
+            - text: ระบบแจ้งเตือนจุดเข้าซื้อขายผ่าน Line/Telegram
+      - generic [ref=f3e124]:
+        - generic [ref=f3e125]:
+          - generic [ref=f3e126]: ฿99
+          - generic [ref=f3e127]: ต่อเดือน
+        - generic [ref=f3e128]: (ทดลองใช้ PRO ฟรี 30 วันแรก)
+        - paragraph [ref=f3e129]:
+          - text: สิทธิ์การทดลองใช้งาน 30 วัน
+          - text: จะถูกมอบให้บัญชีใหม่ทุกบัญชีโดยอัตโนมัติเมื่อสมัครใช้งานสำเร็จ!
+        - link "เริ่มต้นทดลองใช้ฟรี 30 วัน" [ref=f3e130] [cursor=pointer]:
+          - /url: /pricing
+  - contentinfo [ref=f3e131]:
+    - generic [ref=f3e132]:
+      - img [ref=f3e133]
+      - generic [ref=f3e135]: GOLD AI SIGNAL LAB
+    - paragraph [ref=f3e136]: © 2026 Gold AI Signal Lab. All rights reserved.
+    - paragraph [ref=f3e137]: การลงทุนมีความเสี่ยง ข้อมูลที่ให้เป็นเพียงการวิเคราะห์ทางสถิติและ AI ไม่ใช่คำแนะนำทางการเงิน ผู้ลงทุนควรศึกษาข้อมูลก่อนตัดสินใจลงทุน

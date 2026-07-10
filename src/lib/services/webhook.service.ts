@@ -62,6 +62,12 @@ export class WebhookService {
         price
       );
 
+      // 3.2 Update pending plans with the incoming price to check if entry has been reached
+      const triggeredPlanSummaries = await PaperTradeService.evaluatePendingPlansWithPrice(
+        symbol,
+        price
+      );
+
       // 3.5 If it's a raw live price feed tick, bypass signal generation and return immediately
       if (strategy === 'price_feed' || strategy === 'tick') {
         await prisma.webhookEvent.update({

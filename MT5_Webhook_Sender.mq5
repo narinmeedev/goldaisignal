@@ -3,20 +3,23 @@
 //|                        Gold AI Signal Lab - Webhook & Sync       |
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
-#property version   "1.02"
+#property version   "1.03"
 
 //--- Inputs
-input string   ServerURL      = "http://localhost:3000/api/webhooks/tradingview";
-input string   SyncURL        = "http://localhost:3000/api/admin/candles/sync";
+input string   ServerURL      = "https://goldaisig.com/api/webhooks/tradingview";
+input string   SyncURL        = "https://goldaisig.com/api/admin/candles/sync";
 input string   SecretKey      = "GOLD_AI_SECRET";
 input string   StrategyName   = "support_bounce";
 input int      FastMA_Period  = 9;
 input int      SlowMA_Period  = 21;
+input int      CandleSyncSeconds = 15;
+input int      CandleHistoryBars = 500;
 
 int handle_fastMA, handle_slowMA;
 datetime lastAlertTimeBuy = 0, lastAlertTimeSell = 0;
 datetime lastSyncTime = 0;
 datetime lastPriceFeedTime = 0;
+datetime lastM5BarSyncTime = 0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -26,10 +29,12 @@ int OnInit()
    handle_fastMA = iMA(_Symbol, _Period, FastMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    handle_slowMA = iMA(_Symbol, _Period, SlowMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    
-   EventSetTimer(60); // Check for sync every 60 seconds
+   EventSetTimer(5); // Check candle sync often so the web chart keeps moving
+   lastM5BarSyncTime = iTime(_Symbol, PERIOD_M5, 0);
    
    // ทำการอัปเดตกราฟให้เว็บทันทีที่ลาก EA ลงกราฟ
    SyncCandlesToWeb();
+   lastSyncTime = TimeCurrent();
    
    return(INIT_SUCCEEDED);
 }
@@ -49,8 +54,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-   // อัปเดตกราฟ (แท่งเทียน) ให้ระบบเว็บทราบ ทุกๆ 1 ชั่วโมง
-   if(TimeCurrent() - lastSyncTime >= 3600) {
+   // อัปเดตกราฟ (แท่งเทียน) ให้ระบบเว็บทราบแบบถี่ เพื่อให้กราฟบนเว็บ realtime ใกล้ MT5
+   if(TimeCurrent() - lastSyncTime >= CandleSyncSeconds) {
       SyncCandlesToWeb();
       lastSyncTime = TimeCurrent();
    }
@@ -72,6 +77,13 @@ void OnTick()
    if(TimeCurrent() - lastPriceFeedTime >= 10) {
       SendSignalToDashboard("NONE", currentPrice, "price_feed");
       lastPriceFeedTime = TimeCurrent();
+   }
+
+   datetime latestM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
+   if(latestM5BarTime > 0 && latestM5BarTime != lastM5BarSyncTime) {
+      SyncCandlesToWeb();
+      lastM5BarSyncTime = latestM5BarTime;
+      lastSyncTime = TimeCurrent();
    }
    
    // Cross Up -> ยิงสัญญาณ BUY
@@ -104,8 +116,8 @@ void SendSignalToDashboard(string direction, double price, string strategyType)
    string resultHeaders;
    
    string jsonPayload = StringFormat(
-      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%f,\"strategy\":\"%s\"}",
-      SecretKey, _Symbol, GetTimeframeString(), direction, price, strategyType
+      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%f,\"strategy\":\"%s\",\"timestamp\":\"%s\"}",
+      SecretKey, _Symbol, GetTimeframeString(), direction, price, strategyType, ToIsoUtc(TimeCurrent())
    );
    
    StringToCharArray(jsonPayload, postData, 0, WHOLE_ARRAY, CP_UTF8);
@@ -123,21 +135,25 @@ void SendSignalToDashboard(string direction, double price, string strategyType)
 //+------------------------------------------------------------------+
 void SyncCandlesToWeb()
 {
-   char postData[], resultData[];
-   string resultHeaders;
-   
-   MqlRates rates[];
-   ArraySetAsSeries(rates, true);
-   int copied = CopyRates(_Symbol, PERIOD_H1, 0, 150, rates); // ดึง 150 แท่ง ของ H1 เพื่อใช้วิเคราะห์แนวรับต้าน
-   
-   if(copied > 0) {
-      string json = "{\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"H1\",\"candles\":[";
-      
+   ENUM_TIMEFRAMES periods[3] = {PERIOD_M5, PERIOD_M15, PERIOD_H1};
+   string labels[3] = {"M5", "M15", "H1"};
+
+   for(int tfIndex = 0; tfIndex < 3; tfIndex++)
+   {
+      char postData[], resultData[];
+      string resultHeaders;
+
+      MqlRates rates[];
+      ArraySetAsSeries(rates, true);
+      int copied = CopyRates(_Symbol, periods[tfIndex], 0, CandleHistoryBars, rates);
+
+      if(copied <= 0) continue;
+
+      string json = "{\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"" + labels[tfIndex] + "\",\"candles\":[";
+
       for(int i = 0; i < copied; i++) {
-         string timeStr = TimeToString(rates[i].time, TIME_DATE|TIME_MINUTES);
-         StringReplace(timeStr, " ", "T");
-         timeStr += ":00Z";
-         
+         string timeStr = ToIsoUtc(rates[i].time);
+
          json += "{";
          json += "\"time\":\"" + timeStr + "\",";
          json += "\"open\":" + DoubleToString(rates[i].open, _Digits) + ",";
@@ -146,20 +162,35 @@ void SyncCandlesToWeb()
          json += "\"close\":" + DoubleToString(rates[i].close, _Digits) + ",";
          json += "\"volume\":" + IntegerToString(rates[i].tick_volume);
          json += "}";
-         
+
          if(i < copied - 1) json += ",";
       }
       json += "]}";
-      
+
       StringToCharArray(json, postData, 0, WHOLE_ARRAY, CP_UTF8);
       ArrayResize(postData, ArraySize(postData) - 1); // Remove null terminator
-      
+
       string headers = "Content-Type: application/json\r\n";
       int res = WebRequest("POST", SyncURL, headers, 5000, postData, resultData, resultHeaders);
-      
-      if(res == 200) Print(">>> อัปเดตแท่งเทียน 150 แท่ง (H1) เข้าระบบ Zones สำเร็จ!");
-      else Print(">>> อัปเดตแท่งเทียนล้มเหลว Error: ", GetLastError());
+
+      if(res == 200) Print(">>> อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") เข้าระบบ Zones สำเร็จ!");
+      else Print(">>> อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
    }
+}
+
+datetime ToUtc(datetime serverTime)
+{
+   int serverOffset = (int)(TimeTradeServer() - TimeGMT());
+   return serverTime - serverOffset;
+}
+
+string ToIsoUtc(datetime serverTime)
+{
+   string timeStr = TimeToString(ToUtc(serverTime), TIME_DATE|TIME_SECONDS);
+   StringReplace(timeStr, ".", "-");
+   StringReplace(timeStr, " ", "T");
+   timeStr += "Z";
+   return timeStr;
 }
 
 //+------------------------------------------------------------------+
@@ -169,6 +200,7 @@ string GetTimeframeString()
 {
    switch(_Period)
    {
+      case PERIOD_M5:  return "M5";
       case PERIOD_M15: return "M15";
       case PERIOD_H1:  return "H1";
       case PERIOD_H4:  return "H4";

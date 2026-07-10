@@ -34,7 +34,7 @@ export default function UsersPage() {
     subscriptionStatus: '',
     subscriptionEndsAt: '',
     isAffiliate: false,
-    affiliateRate: 0.15
+    affiliateRate: 0.35
   });
 
   const fetchUsers = async () => {
@@ -94,7 +94,7 @@ export default function UsersPage() {
       subscriptionStatus: user.subscriptionStatus || 'inactive',
       subscriptionEndsAt: user.subscriptionEndsAt ? new Date(user.subscriptionEndsAt).toISOString().slice(0, 10) : '',
       isAffiliate: !!user.isAffiliate,
-      affiliateRate: user.affiliateRate !== undefined ? user.affiliateRate : 0.15
+      affiliateRate: user.affiliateRate !== undefined ? user.affiliateRate : 0.35
     });
   };
 
@@ -425,7 +425,7 @@ export default function UsersPage() {
                     onChange={e => setEditForm({...editForm, affiliateRate: parseFloat(e.target.value) || 0})}
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50 font-mono"
                   />
-                  <p className="text-[10px] text-neutral-500 mt-1">กำหนดเป็นทศนิยม เช่น 0.15 = 15%, 0.20 = 20%</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">กำหนดเป็นทศนิยม เช่น 0.35 = 35%, 0.50 = 50%</p>
                 </div>
               )}
 

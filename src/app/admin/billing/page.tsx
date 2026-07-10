@@ -15,6 +15,7 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
+import { PAID_DURATION_DAYS, PROMOTIONAL_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 interface Payment {
   id: string;
@@ -73,7 +74,7 @@ export default function BillingPage() {
 
   const getProgressPercentage = (endsAtStr: string | null, planType: string) => {
     if (!endsAtStr) return 0;
-    const totalDuration = planType === 'trial' ? 30 : 30; // standard durations
+    const totalDuration = planType === 'trial' ? TRIAL_DURATION_DAYS : PAID_DURATION_DAYS;
     const daysLeft = getRemainingDays(endsAtStr);
     const percentage = (daysLeft / totalDuration) * 100;
     return Math.min(100, Math.max(0, percentage));
@@ -200,7 +201,7 @@ export default function BillingPage() {
                   </div>
                   <div className="flex justify-between text-[8px] font-mono text-neutral-500">
                     <span>หมดอายุ</span>
-                    <span>30 วัน</span>
+                    <span>{subscription?.plan === 'trial' ? TRIAL_DURATION_DAYS : PAID_DURATION_DAYS} วัน</span>
                   </div>
                 </div>
               </div>
@@ -252,7 +253,7 @@ export default function BillingPage() {
                   className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-black text-sm rounded-2xl transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 group"
                 >
                   <Sparkles className="h-4 w-4 shrink-0" />
-                  ต่ออายุการใช้งาน PRO (฿99/เดือน)
+                  ต่ออายุการใช้งาน PRO ({formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน)
                   <ArrowRight className="h-4 w-4 shrink-0 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>

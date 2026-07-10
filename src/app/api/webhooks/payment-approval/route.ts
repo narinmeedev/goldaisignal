@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
+import { getPaidDurationDays } from '@/lib/billing';
 
 export async function POST(req: Request) {
   // 1. Authenticate using the Mini SaaS Center API Key
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
       const paidSetting = await prisma.systemSetting.findUnique({
         where: { key: 'PAID_DURATION_DAYS' }
       });
-      const paidDays = paidSetting ? parseInt(paidSetting.value, 10) : 30;
+      const paidDays = getPaidDurationDays(paidSetting?.value);
 
       const now = new Date();
       let newEndDate = new Date(now.getTime() + paidDays * 24 * 60 * 60 * 1000);

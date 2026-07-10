@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Activity, AlertTriangle, Lock, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { fetchDashboardStats } from '@/lib/dashboard-fetch';
+import { TRIAL_DURATION_DAYS } from '@/lib/billing';
 
 interface LiveMarketPreviewProps {
   stats?: any;
@@ -22,8 +24,7 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
 
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/admin/dashboard-stats?symbol=XAUUSD');
-        const data = await res.json();
+        const data = await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 12000, public: true });
         setLocalStats(data);
       } catch (err) {
         console.error(err);
@@ -50,17 +51,25 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
 
   if (!stats || !stats.marketIntelligence || !stats.marketIntelligence.XAUUSD) return null;
 
-  const { currentPrice, bias, trendStrength, volatility, marketSession } = stats.marketIntelligence.XAUUSD;
+  const { currentPrice, bias, trendStrength, volatility, marketSession, fundamentalBias, fundamentalWarning } = stats.marketIntelligence.XAUUSD;
   const isBullish = bias === 'BULLISH';
+  const m5Missing = stats.marketIntelligence.XAUUSD.decisionChart?.freshness?.missingM5Candles;
+  const recommendedPlan = stats.marketIntelligence.XAUUSD.proactivePlans?.find((plan: any) =>
+    plan.type !== 'WAIT' &&
+    typeof plan.confidence === 'number' &&
+    plan.confidence >= 70
+  );
   
-  const freePlan = stats.marketIntelligence.XAUUSD.proactivePlans?.[0] || {
-    title: 'โซนเฝ้าระวังดักซื้อ (Support Zone)',
-    entry: 4452.84,
-    stopLoss: 4440.00,
-    takeProfit: 4475.00,
-    type: 'BUY_ZONE',
-    confidence: 75,
-    reason: 'ราคามีโอกาสย่อตัวลงมาทดสอบแนวรับแข็งแกร่ง แนะนำให้รอสัญญาณกลับตัวคอนเฟิร์มก่อนเข้าออเดอร์',
+  const freePlan = recommendedPlan || {
+    title: m5Missing ? 'รอแท่ง M5 จาก MT5 ก่อนแนะนำจุดเข้า' : 'รอแผนที่ผ่านเกณฑ์ความมั่นใจ 70%',
+    entry: currentPrice,
+    stopLoss: currentPrice,
+    takeProfit: currentPrice,
+    type: 'WAIT',
+    confidence: 0,
+    reason: m5Missing
+      ? 'ระบบยังไม่ได้รับแท่ง M5 ตรงจาก MT5 จึงปิดคำแนะนำจุดเข้า M5 ชั่วคราวเพื่อป้องกันการเข้าออเดอร์ผิดจุด'
+      : 'ยังไม่มีแผนที่ผ่านเกณฑ์ความมั่นใจขั้นต่ำ 70% จึงควรรอสัญญาณใหม่ก่อน',
   };
 
   return (
@@ -80,6 +89,60 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
             <span className="text-xs font-bold text-amber-500">{marketSession || 'Unknown'}</span>
           </div>
         </div>
+
+        {m5Missing && (
+          <div className="mb-6 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 text-amber-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-300" />
+              <div>
+                <div className="text-xs font-bold">M5 จาก MT5 ยังไม่พร้อม</div>
+                <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                  ระบบใช้ราคา tick สดได้ แต่จะไม่แนะนำจุดเข้า M5 จนกว่า VPS จะ sync แท่ง M5 ของ XAUUSD.iux เข้ามาครบ
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Fundamental News Sentiment Override Banner */}
+        {fundamentalBias && fundamentalBias !== 'NEUTRAL' && (
+          <div className={`border rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-lg mb-6 ${
+            fundamentalBias === 'BULLISH'
+              ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
+              : 'bg-rose-950/40 border-rose-500/30 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.15)]'
+          }`}>
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+              fundamentalBias === 'BULLISH' ? 'bg-emerald-500' : 'bg-rose-500'
+            }`} />
+            <div className="flex items-start gap-3">
+              <AlertTriangle className={`h-5 w-5 shrink-0 mt-0.5 animate-pulse ${
+                fundamentalBias === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'
+              }`} />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    fundamentalBias === 'BULLISH'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  }`}>
+                    XAUUSD FUNDAMENTAL SENTIMENT: {fundamentalBias}
+                  </span>
+                  <span className="text-[9px] uppercase font-bold tracking-widest text-neutral-400">
+                    สัญญาณข่าวร้อนแรง
+                  </span>
+                </div>
+                <h4 className={`text-sm font-extrabold tracking-tight ${
+                  fundamentalBias === 'BULLISH' ? 'text-emerald-300' : 'text-rose-300'
+                }`}>
+                  {fundamentalBias === 'BULLISH' ? '⚠️ ตลาดมีข่าวหนุนฝั่งขาขึ้นรุนแรง (BULLISH SENTIMENT)' : '⚠️ ตลาดมีข่าวหนุนฝั่งขาลงรุนแรง (BEARISH SENTIMENT)'}
+                </h4>
+                <p className="text-xs text-neutral-200 leading-relaxed font-medium mt-1">
+                  {fundamentalWarning || 'ระวังความผันผวนสูงจากปัจจัยทางเศรษฐกิจและสงคราม'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
@@ -141,6 +204,50 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
             </div>
           </div>
         </div>
+
+        {/* Timeframe Trends Sub-Biases Display */}
+        {stats.marketIntelligence.XAUUSD.timeframeBiases && (
+          <div className="mt-6 mx-6 sm:mx-8 pt-5 border-t border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <span className="text-xs text-neutral-400 font-bold uppercase tracking-wider font-mono">
+              กรอบเวลาแต่ละเทรนด์ (Timeframe Trends):
+            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Day (D1) */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono">
+                <span className="text-neutral-500 font-bold">D1 (เทรนด์หลัก):</span>
+                <span className={`font-black ${
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.D1 === 'BULLISH' ? 'text-emerald-400' :
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.D1 === 'BEARISH' ? 'text-rose-400' : 'text-neutral-500'
+                }`}>
+                  {stats.marketIntelligence.XAUUSD.timeframeBiases.D1 === 'BULLISH' ? 'BULLISH 📈' :
+                   stats.marketIntelligence.XAUUSD.timeframeBiases.D1 === 'BEARISH' ? 'BEARISH 📉' : 'NEUTRAL ➡️'}
+                </span>
+              </div>
+              {/* H1 */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono">
+                <span className="text-neutral-500 font-bold">H1 (เทรนด์กลาง):</span>
+                <span className={`font-black ${
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.H1 === 'BULLISH' ? 'text-emerald-400' :
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.H1 === 'BEARISH' ? 'text-rose-400' : 'text-neutral-500'
+                }`}>
+                  {stats.marketIntelligence.XAUUSD.timeframeBiases.H1 === 'BULLISH' ? 'BULLISH 📈' :
+                   stats.marketIntelligence.XAUUSD.timeframeBiases.H1 === 'BEARISH' ? 'BEARISH 📉' : 'NEUTRAL ➡️'}
+                </span>
+              </div>
+              {/* M15 */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono">
+                <span className="text-neutral-500 font-bold">M15 (เทรนด์ย่อย):</span>
+                <span className={`font-black ${
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.M15 === 'BULLISH' ? 'text-emerald-400' :
+                  stats.marketIntelligence.XAUUSD.timeframeBiases.M15 === 'BEARISH' ? 'text-rose-400' : 'text-neutral-500'
+                }`}>
+                  {stats.marketIntelligence.XAUUSD.timeframeBiases.M15 === 'BULLISH' ? 'BULLISH 📈' :
+                   stats.marketIntelligence.XAUUSD.timeframeBiases.M15 === 'BEARISH' ? 'BEARISH 📉' : 'NEUTRAL ➡️'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* AI Plans Grid: Free Plan + Locked VIP Plans */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -215,7 +322,7 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
                 href="/pricing"
                 className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-bold text-xs rounded-xl transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)] flex items-center gap-1.5"
               >
-                ทดลองใช้งาน PRO ฟรี 30 วันแรก <ArrowRight className="h-3 w-3" />
+                ทดลองใช้งาน PRO ฟรี {TRIAL_DURATION_DAYS} วันแรก <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             
@@ -223,13 +330,13 @@ export default function LiveMarketPreview({ stats: propStats, loading: propLoadi
             <div className="opacity-20 blur-[2px] select-none">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-purple-500/10 text-purple-300 border-purple-500/20">
-                  ⚡ SCALPING BUY
+                  PRO STRATEGY
                 </span>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded text-amber-400 bg-amber-500/10">
-                  ความมั่นใจ 85%
+                  รอข้อมูลสด
                 </span>
               </div>
-              <h4 className="text-sm font-bold text-neutral-100 mb-1">Scalping Momentum Surge</h4>
+              <h4 className="text-sm font-bold text-neutral-100 mb-1">รอแผนที่ผ่านเกณฑ์ 70%</h4>
               <div className="grid grid-cols-3 gap-2 font-mono text-xs">
                 <div className="bg-black/40 rounded px-2 py-1 border border-white/5 text-center">ENTRY</div>
                 <div className="bg-rose-950/30 rounded px-2 py-1 border border-rose-500/10 text-center">SL</div>

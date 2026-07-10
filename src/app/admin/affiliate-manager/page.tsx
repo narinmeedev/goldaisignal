@@ -21,7 +21,7 @@ export default function AffiliateManagerPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [newRate, setNewRate] = useState<number>(0.15);
+  const [newRate, setNewRate] = useState<number>(0.35);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchAffiliates = async () => {

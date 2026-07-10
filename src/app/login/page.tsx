@@ -38,6 +38,10 @@ export default function LoginPage() {
 
       if (res.ok && data.success) {
         localStorage.setItem('userRole', data.user.role);
+        
+        // Background prefetch to warm up the in-memory cache for instant dashboard load
+        fetch('/api/admin/dashboard-stats?asset=XAUUSD', { cache: 'no-store' }).catch(() => {});
+
         router.push('/admin');
         router.refresh();
       } else {

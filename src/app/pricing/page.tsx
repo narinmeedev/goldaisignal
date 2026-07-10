@@ -2,6 +2,7 @@
 
 import { Check, Shield, Zap, TrendingUp, Lock, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 export default function PricingPage() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export default function PricingPage() {
         
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center px-4 py-1.5 bg-amber-500/10 rounded-full mb-6 border border-amber-500/20 text-amber-400 font-medium text-sm gap-2">
-            <Zap className="h-4 w-4" /> พิเศษ! สมัครสมาชิกใหม่วันนี้ ทดลองใช้สิทธิ์ PRO ฟรี 30 วันแรก
+            <Zap className="h-4 w-4" /> โปรโมชัน {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน จากราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)} ทดลองฟรี {TRIAL_DURATION_DAYS} วัน
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-neutral-100 tracking-tight mb-4">
             เข้าสู่ระบบสัญญาณเทรด <span className="text-amber-500">Gold AI</span>
@@ -32,7 +33,7 @@ export default function PricingPage() {
                   <p className="text-xs text-neutral-400 mt-1">เริ่มต้นทดลองใช้ระบบและติดตามทิศทางตลาด</p>
                 </div>
                 <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-xs font-mono font-bold">
-                  ฟรี 30 วันแรก
+                  ฟรี {TRIAL_DURATION_DAYS} วันแรก
                 </span>
               </div>
               <ul className="space-y-4 mb-8">
@@ -40,7 +41,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
                     <h3 className="text-xs font-medium text-neutral-200">สัญญาณเทรดจำกัดช่วงเวลา</h3>
-                    <p className="text-[11px] text-neutral-500">เข้าถึงฟีเจอร์การวิเคราะห์แนวโน้มหลักทั้งหมดเป็นเวลา 30 วัน</p>
+                    <p className="text-[11px] text-neutral-500">เข้าถึงฟีเจอร์การวิเคราะห์แนวโน้มหลักทั้งหมดเป็นเวลา {TRIAL_DURATION_DAYS} วัน</p>
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
@@ -54,7 +55,7 @@ export default function PricingPage() {
                   <X className="h-4 w-4 text-neutral-600 shrink-0 mt-0.5" />
                   <div>
                     <h3 className="text-xs font-medium text-neutral-500">ไม่มีการแจ้งเตือนพิเศษเมื่อหมดอายุ</h3>
-                    <p className="text-[11px] text-neutral-600">สิทธิ์การทดลองใช้อายุ 30 วัน เมื่อครบกำหนดต้องต่ออายุเพื่อใช้งานต่อ</p>
+                    <p className="text-[11px] text-neutral-600">สิทธิ์การทดลองใช้อายุ {TRIAL_DURATION_DAYS} วัน เมื่อครบกำหนดต้องต่ออายุเพื่อใช้งานต่อ</p>
                   </div>
                 </li>
               </ul>
@@ -62,7 +63,7 @@ export default function PricingPage() {
             
             <div className="mt-auto pt-6 border-t border-neutral-850">
               <p className="text-xs text-neutral-400 text-center mb-4 leading-relaxed">
-                ลงทะเบียนตอนนี้เพื่อรับสิทธิ์ทดลองใช้งาน PRO ทันที 30 วันแรก
+                ลงทะเบียนตอนนี้เพื่อรับสิทธิ์ทดลองใช้งาน PRO ทันที {TRIAL_DURATION_DAYS} วันแรก
               </p>
               <button 
                 onClick={() => router.push('/checkout')}
@@ -90,8 +91,9 @@ export default function PricingPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-neutral-500 font-mono leading-none">ค่าบริการ</div>
-                  <div className="text-2xl font-black text-amber-500 font-mono leading-none mt-1">฿99</div>
-                  <div className="text-[9px] text-neutral-400 mt-1 font-semibold">ต่อเดือน</div>
+                  <div className="text-[10px] text-neutral-500 font-mono line-through mt-1">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</div>
+                  <div className="text-2xl font-black text-amber-500 font-mono leading-none mt-1">{formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}</div>
+                  <div className="text-[9px] text-neutral-400 mt-1 font-semibold">ต่อเดือน ช่วงโปรโมชัน</div>
                 </div>
               </div>
 

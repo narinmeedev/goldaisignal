@@ -36,7 +36,7 @@ export class ReviewService {
     });
 
     const totalTrades = trades.length;
-    const closedTrades = trades.filter((t) => t.result !== 'OPEN');
+    const closedTrades = trades.filter((t) => ['WIN', 'LOSS', 'BE'].includes(t.result));
     const winCount = closedTrades.filter((t) => t.result === 'WIN').length;
     const lossCount = closedTrades.filter((t) => t.result === 'LOSS').length;
     const netR = closedTrades.reduce((sum, t) => sum + t.rrResult, 0);
@@ -54,7 +54,7 @@ export class ReviewService {
         setupPerformance[setup] = { rSum: 0, count: 0, wins: 0 };
       }
       setupPerformance[setup].count += 1;
-      if (trade.result !== 'OPEN') {
+      if (['WIN', 'LOSS', 'BE'].includes(trade.result)) {
         setupPerformance[setup].rSum += trade.rrResult;
         if (trade.result === 'WIN') setupPerformance[setup].wins += 1;
       }

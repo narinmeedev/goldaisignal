@@ -1,0 +1,328 @@
+diff --git a/src/app/api/admin/dashboard-stats/route.ts b/src/app/api/admin/dashboard-stats/route.ts
+index 5f23e06..0653885 100644
+--- a/src/app/api/admin/dashboard-stats/route.ts
++++ b/src/app/api/admin/dashboard-stats/route.ts
+@@ -114,6 +114,12 @@ export async function GET() {
+         take: 50,
+       });
+ 
++      let d1Candles: any[] = await prisma.candle.findMany({
++        where: { symbol: activeSymbol, timeframe: 'D1' },
++        orderBy: { time: 'desc' },
++        take: 50,
++      });
++
+       // Check if DB is empty or stale (> 45 minutes since last candle close/time)
+       const isDbStale = m15Candles.length === 0 || (Date.now() - m15Candles[0].time.getTime() > 45 * 60 * 1000);
+       
+@@ -121,16 +127,18 @@ export async function GET() {
+       const isRecentFetch = m15Candles.length > 0 && (Date.now() - m15Candles[0].createdAt.getTime() < 3 * 60 * 1000);
+       
+       // If DB does not have enough candles, or they are stale (and we didn't fetch recently), FALLBACK to public APIs
+-      if ((m15Candles.length < 20 || h1Candles.length < 20 || isDbStale) && !isRecentFetch) {
++      if ((m15Candles.length < 20 || h1Candles.length < 20 || d1Candles.length < 20 || isDbStale) && !isRecentFetch) {
+         try {
+           if (symbol === 'BTCUSD') {
+-            const [res15m, res1h] = await Promise.all([
++            const [res15m, res1h, res1d] = await Promise.all([
+               fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=50'),
+-              fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=50')
++              fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=50'),
++              fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=50')
+             ]);
+             
+             const data15m = await res15m.json();
+             const data1h = await res1h.json();
++            const data1d = await res1d.json();
+             
+             m15Candles = data15m.map((d: any) => ({
+               time: new Date(d[0]),
+@@ -150,6 +158,15 @@ export async function GET() {
+               volume: parseFloat(parseFloat(d[5] || 0).toFixed(0)),
+             })).reverse();
+ 
++            d1Candles = data1d.map((d: any) => ({
++              time: new Date(d[0]),
++              open: parseFloat(parseFloat(d[1]).toFixed(2)),
++              high: parseFloat(parseFloat(d[2]).toFixed(2)),
++              low: parseFloat(parseFloat(d[3]).toFixed(2)),
++              close: parseFloat(parseFloat(d[4]).toFixed(2)),
++              volume: parseFloat(parseFloat(d[5] || 0).toFixed(0)),
++            })).reverse();
++
+             // Cache fallback candles in database
+             try {
+               if (m15Candles.length > 0) {
+@@ -182,18 +199,34 @@ export async function GET() {
+                 await prisma.candle.createMany({ data: dbCandles, skipDuplicates: true });
+                 await ZoneService.updateZones(activeSymbol, 'H1');
+               }
++              if (d1Candles.length > 0) {
++                const dbCandles = d1Candles.map((c: any) => ({
++                  symbol: activeSymbol,
++                  timeframe: 'D1',
++                  time: c.time,
++                  open: c.open,
++                  high: c.high,
++                  low: c.low,
++                  close: c.close,
++                  volume: c.volume,
++                }));
++                await prisma.candle.deleteMany({ where: { symbol: activeSymbol, timeframe: 'D1' } });
++                await prisma.candle.createMany({ data: dbCandles, skipDuplicates: true });
++              }
+             } catch (errDb) {
+               console.error('Failed to cache BTC fallback candles in DB:', errDb);
+             }
+             
+           } else if (symbol === 'XAUUSD') {
+-            const [res15m, res1h] = await Promise.all([
++            const [res15m, res1h, res1d] = await Promise.all([
+               fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=15m&range=5d'),
+-              fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=14d')
++              fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=14d'),
++              fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=3mo')
+             ]);
+             
+             const data15m = await res15m.json();
+             const data1h = await res1h.json();
++            const data1d = await res1d.json();
+             
+             const parseYahoo = (data: any) => {
+               if (!data.chart || !data.chart.result || !data.chart.result[0].indicators.quote[0]) return [];
+@@ -201,9 +234,8 @@ export async function GET() {
+               const timestamps = result.timestamp || [];
+               const quotes = result.indicators.quote[0];
+               const candles = [];
+-              for (let i = 1; i <= Math.min(50, quotes.close.length); i++) {
+-                const idx = quotes.close.length - i;
+-                if (idx >= 0 && quotes.close[idx] !== null && quotes.open[idx] !== null && quotes.high[idx] !== null && quotes.low[idx] !== null) {
++              for (let idx = quotes.close.length - 1; idx >= 0; idx--) {
++                if (quotes.close[idx] !== null && quotes.open[idx] !== null && quotes.high[idx] !== null && quotes.low[idx] !== null) {
+                   candles.push({
+                     time: new Date(timestamps[idx] * 1000),
+                     open: parseFloat(quotes.open[idx].toFixed(2)),
+@@ -212,6 +244,7 @@ export async function GET() {
+                     close: parseFloat(quotes.close[idx].toFixed(2)),
+                     volume: parseFloat((quotes.volume ? quotes.volume[idx] || 0 : 0).toFixed(0)),
+                   });
++                  if (candles.length >= 50) break;
+                 }
+               }
+               return candles;
+@@ -219,7 +252,8 @@ export async function GET() {
+             
+             m15Candles = parseYahoo(data15m);
+             h1Candles = parseYahoo(data1h);
+-
++            d1Candles = parseYahoo(data1d);
++ 
+             // Cache fallback candles in database
+             try {
+               if (m15Candles.length > 0) {
+@@ -252,6 +286,20 @@ export async function GET() {
+                 await prisma.candle.createMany({ data: dbCandles, skipDuplicates: true });
+                 await ZoneService.updateZones(activeSymbol, 'H1');
+               }
++              if (d1Candles.length > 0) {
++                const dbCandles = d1Candles.map((c: any) => ({
++                  symbol: activeSymbol,
++                  timeframe: 'D1',
++                  time: c.time,
++                  open: c.open,
++                  high: c.high,
++                  low: c.low,
++                  close: c.close,
++                  volume: c.volume,
++                }));
++                await prisma.candle.deleteMany({ where: { symbol: activeSymbol, timeframe: 'D1' } });
++                await prisma.candle.createMany({ data: dbCandles, skipDuplicates: true });
++              }
+             } catch (errDb) {
+               console.error('Failed to cache XAU fallback candles in DB:', errDb);
+             }
+@@ -351,14 +399,21 @@ export async function GET() {
+       let rsi14 = 50;
+       let isOverbought = false;
+       let isOversold = false;
++      let ema20_m15 = currentPrice;
++      let ema20_h1 = currentPrice;
++      let d1Bias = 'NEUTRAL';
++      let h1Bias = 'NEUTRAL';
++      let m15Bias = 'NEUTRAL';
+       
+       let isSurgingGlobal = false;
+       let isCrashingGlobal = false;
+ 
+       if (recentCandles.length >= 20) {
+         // --- Calculate MTF Trends ---
+-        const ema20_m15 = calcEMA(m15Candles, 20);
+-        const ema20_h1 = calcEMA(h1Candles, 20);
++        ema20_m15 = calcEMA(m15Candles, 20);
++        ema20_h1 = calcEMA(h1Candles, 20);
++        const ema20_d1 = d1Candles.length >= 20 ? calcEMA(d1Candles, 20) : (d1Candles.length > 0 ? d1Candles[0].close : currentPrice);
++        
+         atr14 = calcATR(m15Candles, 14);
+         rsi14 = calcRSI(m15Candles, 14);
+         
+@@ -367,6 +422,11 @@ export async function GET() {
+ 
+         const m15Trend = currentPrice > ema20_m15 ? 'BULLISH' : 'BEARISH';
+         const h1Trend = currentPrice > ema20_h1 ? 'BULLISH' : 'BEARISH';
++        const d1Trend = d1Candles.length > 0 ? (currentPrice > ema20_d1 ? 'BULLISH' : 'BEARISH') : 'NEUTRAL';
++        
++        d1Bias = d1Trend;
++        h1Bias = h1Trend;
++        m15Bias = m15Trend;
+         
+         // Multi-candle analysis (last 5 candles on M15) for immediate momentum
+         let consecutiveDrops = 0;
+@@ -548,19 +608,45 @@ export async function GET() {
+           let buyConfidence = Math.round(trendStrength);
+           if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') buyConfidence -= 15;
+           
+-          proactivePlans.push({
+-            id: `ai-plan-follow-buy-${symbol}`,
+-            type: 'BUY_MARKET',
+-            title: 'ซื้อตามน้ำ (Follow Trend)',
+-            entry: currentPrice,
+-            entry1: currentPrice,
+-            entry2: currentPrice - diff,
+-            entry3: currentPrice - diff * 2,
+-            stopLoss: currentPrice - atrSL,
+-            takeProfit: currentPrice + atrTP,
+-            reason: `ทิศทางกราฟ 1H และ 15M สอดคล้องกันเป็นขาขึ้น (Strength: ${trendStrength.toFixed(0)}%)`,
+-            confidence: Math.max(10, buyConfidence),
+-          });
++          const isExtended = currentPrice > ema20_m15 + (atr14 * 0.5);
++          
++          if (isExtended) {
++            // Extended from EMA: Recommend waiting for pullback (Higher Low / ยกโลว์)
++            const entry1 = ema20_m15 + (atr14 * 0.2);
++            const entry2 = ema20_m15;
++            const entry3 = ema20_m15 - (atr14 * 0.5);
++            const stopLoss = ema20_m15 - (atr14 * 1.5);
++            const takeProfit = entry1 + (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
++            
++            proactivePlans.push({
++              id: `ai-plan-follow-buy-${symbol}`,
++              type: 'BUY_LIMIT',
++              title: 'ดักซื้อตอนย่อตัว (Buy Pullback / ยกโลว์)',
++              entry: entry1,
++              entry1,
++              entry2,
++              entry3,
++              stopLoss,
++              takeProfit,
++              reason: `ทิศทางหลักเป็นขาขึ้น แต่ราคาปัจจุบันสูงเกินไป ควรรอราคาย่อตัวลงมาสร้างฐานแนวรับยกโลว์ (Higher Low Pullback) ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`,
++              confidence: Math.min(95, Math.max(10, buyConfidence + 5)),
++            });
++          } else {
++            // Not extended: Recommending BUY at current support base
++            proactivePlans.push({
++              id: `ai-plan-follow-buy-${symbol}`,
++              type: 'BUY_MARKET',
++              title: 'ซื้อสะสมที่แนวรับ (Buy at Support / ยกโลว์)',
++              entry: currentPrice,
++              entry1: currentPrice,
++              entry2: currentPrice - diff,
++              entry3: currentPrice - diff * 2,
++              stopLoss: currentPrice - atrSL,
++              takeProfit: currentPrice + atrTP,
++              reason: `กราฟเป็นแนวโน้มขาขึ้น และราคาปัจจุบันอยู่ในโซนแนวรับพักฐาน/ยกโลว์ (Higher Low) ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าซื้อที่ปลอดภัยและน่าสนใจ`,
++              confidence: Math.max(10, buyConfidence),
++            });
++          }
+         }
+       } else if (bias === 'BEARISH') {
+         if (isOversold) {
+@@ -577,20 +663,46 @@ export async function GET() {
+         } else {
+           let sellConfidence = Math.round(trendStrength);
+           if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') sellConfidence -= 15;
+- 
+-          proactivePlans.push({
+-            id: `ai-plan-follow-sell-${symbol}`,
+-            type: 'SELL_MARKET',
+-            title: 'ขายตามน้ำ (Follow Trend)',
+-            entry: currentPrice,
+-            entry1: currentPrice,
+-            entry2: currentPrice + diff,
+-            entry3: currentPrice + diff * 2,
+-            stopLoss: currentPrice + atrSL,
+-            takeProfit: currentPrice - atrTP,
+-            reason: `ทิศทางกราฟ 1H และ 15M สอดคล้องกันเป็นขาลง (Strength: ${trendStrength.toFixed(0)}%)`,
+-            confidence: Math.max(10, sellConfidence),
+-          });
++          
++          const isExtended = currentPrice < ema20_m15 - (atr14 * 0.5);
++          
++          if (isExtended) {
++            // Extended to the downside: Recommend waiting for pullback to the upside (Lower High / ย่อไฮ)
++            const entry1 = ema20_m15 - (atr14 * 0.2);
++            const entry2 = ema20_m15;
++            const entry3 = ema20_m15 + (atr14 * 0.5);
++            const stopLoss = ema20_m15 + (atr14 * 1.5);
++            const takeProfit = entry1 - (Math.abs(stopLoss - entry1) * 2.5);
++            
++            proactivePlans.push({
++              id: `ai-plan-follow-sell-${symbol}`,
++              type: 'SELL_LIMIT',
++              title: 'ดักขายตอนเด้งตัว (Sell Pullback / ย่อไฮ)',
++              entry: entry1,
++              entry1,
++              entry2,
++              entry3,
++              stopLoss,
++              takeProfit,
++              reason: `ทิศทางหลักเป็นขาลง แต่ราคาถูกเทขายลงไปต่ำเกินไป ควรรอราคาเด้งตัวกลับขึ้นมาสร้างยอดไฮที่ต่ำลง (Lower High Pullback) ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อความปลอดภัย`,
++              confidence: Math.min(95, Math.max(10, sellConfidence + 5)),
++            });
++          } else {
++            // Not extended: Recommend selling at current resistance base
++            proactivePlans.push({
++              id: `ai-plan-follow-sell-${symbol}`,
++              type: 'SELL_MARKET',
++              title: 'ขายสะสมที่แนวต้าน (Sell at Resistance / ย่อไฮ)',
++              entry: currentPrice,
++              entry1: currentPrice,
++              entry2: currentPrice + diff,
++              entry3: currentPrice + diff * 2,
++              stopLoss: currentPrice + atrSL,
++              takeProfit: currentPrice - atrTP,
++              reason: `กราฟเป็นแนวโน้มขาลง และราคาปัจจุบันมีการฟื้นตัวขึ้นมาในโซนแนวต้าน/ย่อไฮ (Lower High) ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าขายที่ได้เปรียบ`,
++              confidence: Math.max(10, sellConfidence),
++            });
++          }
+         }
+       }
+ 
+@@ -629,6 +741,14 @@ export async function GET() {
+          });
+       }
+ 
++      const biasSettingKey = symbol === 'BTCUSD' ? 'FUNDAMENTAL_BIAS_BTCUSD' : 'FUNDAMENTAL_BIAS_XAUUSD';
++      const warningSettingKey = symbol === 'BTCUSD' ? 'FUNDAMENTAL_NEWS_WARNING_BTCUSD' : 'FUNDAMENTAL_NEWS_WARNING_XAUUSD';
++      const fundamentalBiasSetting = await prisma.systemSetting.findUnique({ where: { key: biasSettingKey } });
++      const fundamentalWarningSetting = await prisma.systemSetting.findUnique({ where: { key: warningSettingKey } });
++      
++      const fundamentalBias = fundamentalBiasSetting?.value || 'NEUTRAL';
++      const fundamentalWarning = fundamentalWarningSetting?.value || '';
++
+       marketIntelligence[symbol] = {
+         currentPrice,
+         bias,
+@@ -639,6 +759,13 @@ export async function GET() {
+         dangerZones,
+         proactivePlans,
+         marketSession,
++        fundamentalBias,
++        fundamentalWarning,
++        timeframeBiases: {
++          D1: d1Bias,
++          H1: h1Bias,
++          M15: m15Bias
++        }
+       };
+ 
+     }

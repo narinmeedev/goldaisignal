@@ -30,7 +30,7 @@ export default function TradesPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Live Price Simulator State
-  const [testSymbol, setTestSymbol] = useState<'XAUUSD' | 'BTCUSD'>('XAUUSD');
+  const [testSymbol] = useState<'XAUUSD'>('XAUUSD');
   const [testPrice, setTestPrice] = useState(4450.0);
   const [isTesting, setIsTesting] = useState(false);
   const [testLogs, setTestLogs] = useState<string[]>([]);
@@ -54,15 +54,6 @@ export default function TradesPage() {
   useEffect(() => {
     fetchTrades();
   }, []);
-
-  const handleSymbolChange = (symbol: 'XAUUSD' | 'BTCUSD') => {
-    setTestSymbol(symbol);
-    if (symbol === 'XAUUSD') {
-      setTestPrice(4450.0);
-    } else {
-      setTestPrice(68450.0);
-    }
-  };
 
   const handleEvaluatePrice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,16 +169,8 @@ export default function TradesPage() {
         </div>
 
         <form onSubmit={handleEvaluatePrice} className="flex flex-col md:flex-row items-stretch gap-4 max-w-3xl text-xs">
-          {/* Symbol Select */}
-          <div className="md:w-60">
-            <select
-              value={testSymbol}
-              onChange={(e) => handleSymbolChange(e.target.value as 'XAUUSD' | 'BTCUSD')}
-              className="w-full px-4 py-3.5 bg-neutral-950 border border-neutral-850 rounded-xl text-neutral-200 font-mono focus:outline-none focus:border-amber-500/30 cursor-pointer"
-            >
-              <option value="XAUUSD">ทองคำ XAUUSD (Gold)</option>
-              <option value="BTCUSD">บิตคอยน์ BTCUSD (Bitcoin)</option>
-            </select>
+          <div className="md:w-60 px-4 py-3.5 bg-neutral-950 border border-neutral-850 rounded-xl text-amber-300 font-mono font-bold">
+            ทองคำ XAUUSD เท่านั้น
           </div>
 
           <div className="flex-1">
@@ -199,7 +182,7 @@ export default function TradesPage() {
                 value={testPrice}
                 onChange={(e) => setTestPrice(parseFloat(e.target.value))}
                 className="w-full pl-8 pr-4 py-3 bg-neutral-950/80 border border-neutral-850 rounded-xl text-neutral-200 font-mono focus:outline-none focus:border-amber-500/30"
-                placeholder={testSymbol === 'XAUUSD' ? '4450.00' : '68450.00'}
+                placeholder="4450.00"
                 required
               />
             </div>

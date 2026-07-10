@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { signToken, verifyVerificationToken } from '@/lib/auth';
 import { minisaas } from '@/lib/minisaas';
+import { getTrialDurationDays } from '@/lib/billing';
 
 export async function POST(req: Request) {
   try {
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
     const trialSetting = await prisma.systemSetting.findUnique({
       where: { key: 'TRIAL_DURATION_DAYS' }
     });
-    const trialDays = trialSetting ? parseInt(trialSetting.value, 10) : 30;
+    const trialDays = getTrialDurationDays(trialSetting?.value);
 
     let subscriptionPlan = 'trial';
     let subscriptionStatus = 'active';
