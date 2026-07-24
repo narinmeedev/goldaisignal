@@ -1,12 +1,8 @@
 import { prisma } from '../prisma';
-import { SignalService, SignalEvaluationResult } from './signal.service';
 import { PaperTradeService } from './paper-trade.service';
+import { triggerDashboardCacheRefresh } from '../dashboard-cache-refresh';
 
 export class WebhookService {
-  /**
-   * Processes a TradingView alert webhook payload.
-   * Validates the secret, logs raw payload, and kicks off signal evaluation.
-   */
   static async processWebhook(payload: {
     secret?: string;
     symbol: string;
@@ -18,107 +14,84 @@ export class WebhookService {
   }): Promise<{
     status: 'accepted' | 'rejected' | 'error';
     decision: string;
-    signalId?: string;
-    confidence?: number;
     error_message?: string;
   }> {
-    const { secret, symbol, timeframe, direction, price, strategy, timestamp } = payload;
-
-    // 1. Create a pending webhook event log
-    const eventLog = await prisma.webhookEvent.create({
-      data: {
-        symbol: symbol || 'XAUUSD',
-        timeframe: timeframe || 'M15',
-        rawPayload: JSON.stringify(payload),
-        status: 'pending',
-      },
-    });
-
-    // 2. Validate secret
+    const { secret, symbol, timeframe, price, strategy } = payload;
     const systemSecret = process.env.TRADINGVIEW_WEBHOOK_SECRET || 'GOLD_AI_SECRET';
     if (!secret || secret !== systemSecret) {
-      const errorMsg = 'Invalid webhook secret key provided.';
-      await prisma.webhookEvent.update({
-        where: { id: eventLog.id },
-        data: {
-          status: 'rejected',
-          errorMessage: errorMsg,
-        },
-      });
       return {
         status: 'rejected',
         decision: 'SECRET_VALIDATION_FAILED',
-        error_message: errorMsg,
+        error_message: 'Invalid webhook secret key provided.',
       };
     }
 
+    const safePayload = JSON.stringify({ ...payload, secret: undefined });
+
     try {
-      // 3. Update active trades with the incoming price first (auto close hit SL/TP)
-      // This turns any new signal price tick into a live evaluation for all active trades!
-      const closedTradeSummaries = await PaperTradeService.evaluateOpenTradesWithPrice(
-        symbol,
-        price,
-        price, // mock tick has high = low = close = price
-        price
-      );
+      // Existing open plans are evaluated before a waiting plan can enter on this tick.
+      const closedLogs = await PaperTradeService.evaluateOpenTradesWithPrice(symbol, price, price, price);
+      const triggeredLogs = await PaperTradeService.evaluatePendingPlansWithPrice(symbol, price);
 
-      // 3.2 Update pending plans with the incoming price to check if entry has been reached
-      const triggeredPlanSummaries = await PaperTradeService.evaluatePendingPlansWithPrice(
-        symbol,
-        price
-      );
-
-      // 3.5 If it's a raw live price feed tick, bypass signal generation and return immediately
-      if (strategy === 'price_feed' || strategy === 'tick') {
-        await prisma.webhookEvent.update({
-          where: { id: eventLog.id },
-          data: {
-            status: 'processed',
-          },
-        });
-        return {
-          status: 'accepted',
-          decision: 'PRICE_FEED_UPDATED',
-        };
+      if (closedLogs.length > 0 || triggeredLogs.length > 0) {
+        triggerDashboardCacheRefresh();
       }
 
-      // 4. Run Technical & Risk Signal Evaluation
-      const evaluation: SignalEvaluationResult = await SignalService.evaluateSignal({
-        symbol,
-        timeframe,
-        direction,
-        price,
-        strategy,
-        timestamp,
-      });
+      if (strategy === 'price_feed' || strategy === 'tick') {
+        const latestPriceEvent = await prisma.webhookEvent.findFirst({
+          where: {
+            symbol: { contains: 'XAU' },
+            source: 'tradingview',
+            rawPayload: { contains: '"strategy":"price_feed"' },
+          },
+          orderBy: { receivedAt: 'desc' },
+          select: { id: true },
+        });
 
-      // 5. Update WebhookEvent to processed
-      await prisma.webhookEvent.update({
-        where: { id: eventLog.id },
+        const data = {
+          symbol,
+          timeframe,
+          source: 'tradingview',
+          rawPayload: safePayload,
+          status: 'processed',
+          errorMessage: null,
+          receivedAt: new Date(),
+        };
+        if (latestPriceEvent) {
+          await prisma.webhookEvent.update({ where: { id: latestPriceEvent.id }, data });
+        } else {
+          await prisma.webhookEvent.create({ data });
+        }
+
+        return { status: 'accepted', decision: 'PRICE_FEED_UPDATED' };
+      }
+
+      await prisma.webhookEvent.create({
         data: {
+          symbol,
+          timeframe,
+          source: 'tradingview',
+          rawPayload: safePayload,
           status: 'processed',
         },
       });
-
-      return {
-        status: 'accepted',
-        decision: evaluation.decision,
-        signalId: evaluation.signalId,
-        confidence: evaluation.confidence,
-      };
-    } catch (err: any) {
-      const errorMsg = err.message || 'System failed to evaluate signal.';
-      await prisma.webhookEvent.update({
-        where: { id: eventLog.id },
+      return { status: 'accepted', decision: 'TECHNICAL_EVENT_RECORDED' };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'System failed to process market event.';
+      await prisma.webhookEvent.create({
         data: {
+          symbol,
+          timeframe,
+          source: 'tradingview',
+          rawPayload: safePayload,
           status: 'error',
-          errorMessage: errorMsg,
+          errorMessage,
         },
-      });
+      }).catch(() => undefined);
       return {
         status: 'error',
         decision: 'INTERNAL_EVALUATION_ERROR',
-        error_message: errorMsg,
+        error_message: errorMessage,
       };
     }
   }

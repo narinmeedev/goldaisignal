@@ -2,11 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
-
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
+import { getJwtSecretKey } from '@/lib/auth';
 
 async function getUserFromCookie() {
   const cookieStore = await cookies();

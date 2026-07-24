@@ -1,16 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { supabase } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, getPaidDurationDays } from '@/lib/billing';
-
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
+import { getJwtSecretKey } from '@/lib/auth';
+import fs from 'fs/promises';
+import path from 'path';
 
 async function getUserFromCookie() {
   const cookieStore = await cookies();
@@ -39,6 +36,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing file or amount' }, { status: 400 });
     }
 
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedTypes.has(file.type)) {
+      return NextResponse.json({ error: 'รองรับสลิปไฟล์ JPG, PNG หรือ WEBP เท่านั้น' }, { status: 400 });
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'ไฟล์สลิปต้องมีขนาดไม่เกิน 10 MB' }, { status: 400 });
+    }
+
     const submittedAmount = parseFloat(amountStr);
     const amount = PROMOTIONAL_MONTHLY_PRICE_THB;
     if (!Number.isFinite(submittedAmount) || submittedAmount < amount) {
@@ -55,65 +60,21 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    let slipUrl = '';
-
-    // Check if Supabase keys are placeholders or missing
-    const isSupabasePlaceholder = 
-      !process.env.SUPABASE_URL || 
-      process.env.SUPABASE_URL.includes('placeholder') || 
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('placeholder-anon-key');
-
-    if (isSupabasePlaceholder) {
-      console.log('Supabase storage is placeholder. Saving slip as Base64 Data URI...');
-      const base64Data = buffer.toString('base64');
-      const mimeType = file.type || 'image/png';
-      slipUrl = `data:${mimeType};base64,${base64Data}`;
-      console.log('Generated Base64 Data URI (length:', slipUrl.length, ')');
-    } else {
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('slips')
-        .upload(filePath, buffer, {
-          contentType: file.type || 'image/png',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Supabase upload error:', uploadError);
-        
-        // Fallback: If bucket doesn't exist, we will try to create it or do Base64 fallback.
-        if (uploadError.message.includes('Bucket not found') || uploadError.message.includes('Invalid API key') || uploadError.message.includes('Invalid token')) {
-          try {
-            await supabase.storage.createBucket('slips', { public: true });
-            // Retry
-            const retry = await supabase.storage.from('slips').upload(filePath, buffer, { contentType: file.type });
-            if (retry.error) {
-              console.log('Failed retry. Saving as Base64 fallback...');
-              const base64Data = buffer.toString('base64');
-              const mimeType = file.type || 'image/png';
-              slipUrl = `data:${mimeType};base64,${base64Data}`;
-            } else {
-              const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
-              slipUrl = publicUrlData.publicUrl;
-            }
-          } catch (bucketErr) {
-            console.error('Error creating bucket, fallback to Base64:', bucketErr);
-            const base64Data = buffer.toString('base64');
-            const mimeType = file.type || 'image/png';
-            slipUrl = `data:${mimeType};base64,${base64Data}`;
-          }
-        } else {
-          // Fallback to Base64 on any other error
-          console.log('Upload failed. Saving as Base64 fallback...');
-          const base64Data = buffer.toString('base64');
-          const mimeType = file.type || 'image/png';
-          slipUrl = `data:${mimeType};base64,${base64Data}`;
-        }
-      } else {
-        const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(filePath);
-        slipUrl = publicUrlData.publicUrl;
-      }
+    // Save file locally to public/uploads
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+      const fullPath = path.join(uploadDir, fileName);
+      await fs.writeFile(fullPath, buffer);
+    } catch (err: any) {
+      console.error('Local slip upload failed:', err);
+      return NextResponse.json(
+        { error: 'อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่หรือติดต่อผู้ดูแลระบบ' },
+        { status: 502 },
+      );
     }
+
+    const slipUrl = `/uploads/${fileName}`;
 
     // --- AUTOMATED PROMPTPAY SLIP VERIFICATION ENGINE ---
     let isAutoApproved = false;
@@ -129,7 +90,6 @@ export async function POST(req: Request) {
           ? `https://api.slipok.com/api/line/apikey/${slipokBranchId}` 
           : 'https://api.slipok.com/api/line/apikey';
         
-        console.log(`Verifying slip via SlipOK API URL: ${verifyUrl}`);
         const slipokFormData = new FormData();
         const blob = new Blob([buffer], { type: file.type || 'image/png' });
         slipokFormData.append('files', blob, file.name || 'slip.png');
@@ -144,7 +104,6 @@ export async function POST(req: Request) {
 
         if (slipokRes.ok) {
           const slipokData = await slipokRes.json();
-          console.log('SlipOK response:', slipokData);
           if (slipokData.success && slipokData.data) {
             const transAmount = slipokData.data.amount;
             if (transAmount >= amount) {
@@ -166,7 +125,6 @@ export async function POST(req: Request) {
       }
     } else if (easyslipKey) {
       try {
-        console.log('Verifying slip via EasySlip API (URL)...', slipUrl);
         const easyslipRes = await fetch('https://developer.easyslip.com/api/v1/verify/url', {
           method: 'POST',
           headers: {
@@ -178,7 +136,6 @@ export async function POST(req: Request) {
 
         if (easyslipRes.ok) {
           const easyslipData = await easyslipRes.json();
-          console.log('EasySlip response:', easyslipData);
           if (easyslipData.status === 200 && easyslipData.data) {
             const transAmount = easyslipData.data.amount?.amount || easyslipData.data.amount;
             if (transAmount >= amount) {
@@ -199,11 +156,7 @@ export async function POST(req: Request) {
         autoApproveNote = `ระบบเชื่อมต่อตรวจสอบผิดพลาด (EasySlip): ${err.message}`;
       }
     } else {
-      // --- SMART SIMULATOR MODE FALLBACK ---
-      console.log('No Slip verification API keys found. Running in Smart Simulator Mode...');
-      await new Promise((resolve) => setTimeout(resolve, 3500)); // Simulate bank api delay
-      isAutoApproved = true;
-      autoApproveNote = `อนุมัติอัตโนมัติ (โหมดทดสอบระบบ - ไม่พบ API Key ยืนยันสลิป)`;
+      autoApproveNote = 'รอตรวจสอบสลิปโดยผู้ดูแลระบบ';
     }
 
     // If SlipOK verified it, we auto-approve locally and centrally.

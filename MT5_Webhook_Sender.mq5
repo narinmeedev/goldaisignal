@@ -3,7 +3,7 @@
 //|                        Gold AI Signal Lab - Webhook & Sync       |
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
-#property version   "1.03"
+#property version   "2.10"
 
 //--- Inputs
 input string   ServerURL      = "https://goldaisig.com/api/webhooks/tradingview";
@@ -12,7 +12,7 @@ input string   SecretKey      = "GOLD_AI_SECRET";
 input string   StrategyName   = "support_bounce";
 input int      FastMA_Period  = 9;
 input int      SlowMA_Period  = 21;
-input int      CandleSyncSeconds = 15;
+input int      CandleSyncSeconds = 60;
 input int      CandleHistoryBars = 500;
 
 int handle_fastMA, handle_slowMA;
@@ -21,11 +21,25 @@ datetime lastSyncTime = 0;
 datetime lastPriceFeedTime = 0;
 datetime lastM5BarSyncTime = 0;
 
+bool IsGoldSymbol()
+{
+   string symbol = _Symbol;
+   StringToUpper(symbol);
+   return StringFind(symbol, "XAU") >= 0;
+}
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   if(!IsGoldSymbol())
+   {
+      Print(">>> Gold AI Signal รองรับเฉพาะกราฟทองคำ XAU เท่านั้น: ", _Symbol);
+      Alert("Gold AI Signal: กรุณาติดตั้ง EA บนกราฟ XAUUSD เท่านั้น");
+      return(INIT_FAILED);
+   }
+
    handle_fastMA = iMA(_Symbol, _Period, FastMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    handle_slowMA = iMA(_Symbol, _Period, SlowMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    
@@ -33,7 +47,7 @@ int OnInit()
    lastM5BarSyncTime = iTime(_Symbol, PERIOD_M5, 0);
    
    // ทำการอัปเดตกราฟให้เว็บทันทีที่ลาก EA ลงกราฟ
-   SyncCandlesToWeb();
+   SyncCandlesToWeb(true);
    lastSyncTime = TimeCurrent();
    
    return(INIT_SUCCEEDED);
@@ -54,9 +68,10 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   if(!IsGoldSymbol()) return;
    // อัปเดตกราฟ (แท่งเทียน) ให้ระบบเว็บทราบแบบถี่ เพื่อให้กราฟบนเว็บ realtime ใกล้ MT5
    if(TimeCurrent() - lastSyncTime >= CandleSyncSeconds) {
-      SyncCandlesToWeb();
+      SyncCandlesToWeb(false);
       lastSyncTime = TimeCurrent();
    }
 }
@@ -66,6 +81,7 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   if(!IsGoldSymbol()) return;
    double fastMA[2], slowMA[2];
    if(CopyBuffer(handle_fastMA, 0, 0, 2, fastMA) < 2) return;
    if(CopyBuffer(handle_slowMA, 0, 0, 2, slowMA) < 2) return;
@@ -81,7 +97,7 @@ void OnTick()
 
    datetime latestM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
    if(latestM5BarTime > 0 && latestM5BarTime != lastM5BarSyncTime) {
-      SyncCandlesToWeb();
+      SyncCandlesToWeb(false);
       lastM5BarSyncTime = latestM5BarTime;
       lastSyncTime = TimeCurrent();
    }
@@ -133,7 +149,7 @@ void SendSignalToDashboard(string direction, double price, string strategyType)
 //+------------------------------------------------------------------+
 //| WebRequest: ส่งประวัติแท่งเทียน (Historical Candles)              |
 //+------------------------------------------------------------------+
-void SyncCandlesToWeb()
+void SyncCandlesToWeb(bool fullHistory)
 {
    ENUM_TIMEFRAMES periods[3] = {PERIOD_M5, PERIOD_M15, PERIOD_H1};
    string labels[3] = {"M5", "M15", "H1"};
@@ -145,11 +161,12 @@ void SyncCandlesToWeb()
 
       MqlRates rates[];
       ArraySetAsSeries(rates, true);
-      int copied = CopyRates(_Symbol, periods[tfIndex], 0, CandleHistoryBars, rates);
+      int barsToCopy = fullHistory ? CandleHistoryBars : 10;
+      int copied = CopyRates(_Symbol, periods[tfIndex], 0, barsToCopy, rates);
 
       if(copied <= 0) continue;
 
-      string json = "{\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"" + labels[tfIndex] + "\",\"candles\":[";
+      string json = "{\"secret\":\"" + SecretKey + "\",\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"" + labels[tfIndex] + "\",\"candles\":[";
 
       for(int i = 0; i < copied; i++) {
          string timeStr = ToIsoUtc(rates[i].time);
@@ -173,7 +190,15 @@ void SyncCandlesToWeb()
       string headers = "Content-Type: application/json\r\n";
       int res = WebRequest("POST", SyncURL, headers, 5000, postData, resultData, resultHeaders);
 
-      if(res == 200) Print(">>> อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") เข้าระบบ Zones สำเร็จ!");
+      if(res == 200) {
+         Print(">>> อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") เข้าระบบ Zones สำเร็จ!");
+         string responseText = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
+         if(StringFind(responseText, "\"command\":\"RECONNECT\"") >= 0 || StringFind(responseText, "\"command\":\"RESYNC\"") >= 0) {
+            Print(">>> [SERVER COMMAND] ได้รับคำสั่งสั่ง RECONNECT / RESYNC จากเว็บหลังบ้าน! กำลังเริ่มโหลดรีเซ็ตบอทใหม่...");
+            Alert("ได้รับคำสั่งให้เชื่อมต่อใหม่จากเซิร์ฟเวอร์เว็บ!");
+            ChartSetSymbolPeriod(0, _Symbol, _Period); // โหลดบอทใหม่เพื่อเชื่อมต่อและดึงข้อมูลใหม่ทั้งหมด
+         }
+      }
       else Print(">>> อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
    }
 }

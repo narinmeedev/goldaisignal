@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { 
-  TrendingUp, 
-  RefreshCw, 
-  DollarSign, 
-  Play
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle2,
+  Clock3,
+  History,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  Target,
+  XCircle,
 } from 'lucide-react';
 
 interface Trade {
@@ -15,277 +19,157 @@ interface Trade {
   entry: number;
   stopLoss: number;
   takeProfit1: number;
-  takeProfit2: number;
-  exitPrice: number | null;
+  takeProfit2?: number | null;
+  exitPrice?: number | null;
   result: string;
   rrResult: number;
-  openedAt: string;
-  closedAt: string | null;
-  notes: string | null;
+  openedAt?: string | null;
+  closedAt?: string | null;
+  notes?: string | null;
+  signal?: { confidence?: number | null } | null;
+}
+
+type Filter = 'ALL' | 'WAITING' | 'OPEN' | 'CLOSED';
+
+const formatPrice = (value?: number | null) => typeof value === 'number'
+  ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  : '-';
+
+const formatDate = (value?: string | null) => value
+  ? new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Bangkok',
+    }).format(new Date(value))
+  : '-';
+
+const statusLabel: Record<string, string> = {
+  PLAN: 'รอราคาเข้า',
+  TESTING: 'รอราคาเข้า',
+  OPEN: 'กำลังวัดผล',
+  WIN: 'ชนะ · TP',
+  LOSS: 'แพ้ · SL',
+  BE: 'เสมอ',
+  CANCELLED: 'ยกเลิก',
+};
+
+function StatusIcon({ result }: { result: string }) {
+  if (result === 'WIN') return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
+  if (result === 'LOSS') return <XCircle className="h-4 w-4 text-rose-400" />;
+  if (result === 'OPEN') return <Target className="h-4 w-4 text-sky-400" />;
+  if (result === 'CANCELLED') return <ShieldAlert className="h-4 w-4 text-neutral-500" />;
+  return <Clock3 className="h-4 w-4 text-amber-400" />;
 }
 
 export default function TradesPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Live Price Simulator State
-  const [testSymbol] = useState<'XAUUSD'>('XAUUSD');
-  const [testPrice, setTestPrice] = useState(4450.0);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testLogs, setTestLogs] = useState<string[]>([]);
-
-  const fetchTrades = async () => {
+  const load = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
     try {
-      const res = await fetch('/api/admin/trades');
-      const data = await res.json();
-      if (res.ok) {
-        setTrades(data);
-      } else {
-        setError(data.error || 'ไม่สามารถโหลดประวัติการติดตามแผนได้');
-      }
-    } catch {
-      setError('เกิดข้อผิดพลาดเครือข่ายในการดึงข้อมูลแผนการเทรด');
+      const response = await fetch('/api/admin/trades', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'โหลดประวัติแผนไม่สำเร็จ');
+      setTrades(data);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'โหลดประวัติแผนไม่สำเร็จ');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+      setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchTrades();
   }, []);
 
-  const handleEvaluatePrice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsTesting(true);
-    setTestLogs([]);
-    try {
-      const res = await fetch('/api/admin/simulate-market', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'evaluate_price',
-          price: testPrice,
-          symbol: testSymbol,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (data.closedTrades && data.closedTrades.length > 0) {
-          setTestLogs(data.closedTrades);
-        } else {
-          setTestLogs([`ประมวลผลราคาสำหรับ ${testSymbol} สำเร็จ: ไม่มีออเดอร์ใดชนหน้าทุน SL หรือเป้ากำไร TP (ออเดอร์ยังรันอยู่)`]);
-        }
-        fetchTrades(); // reload
-      } else {
-        setTestLogs([`เกิดข้อผิดพลาด: ${data.error}`]);
-      }
-    } catch {
-      setTestLogs(['ข้อผิดพลาดเน็ตเวิร์กในการประมวลผลราคาจำลอง']);
-    } finally {
-      setIsTesting(false);
-    }
-  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
-  // Compute trade stats
-  const closed = trades.filter((t) => t.result !== 'OPEN' && t.result !== 'PLAN');
-  const wins = closed.filter((t) => t.result === 'WIN').length;
-  const losses = closed.filter((t) => t.result === 'LOSS').length;
-  const winRate = closed.length > 0 ? Math.round((wins / closed.length) * 100) : 0;
-  const totalR = parseFloat(closed.reduce((sum, t) => sum + t.rrResult, 0).toFixed(2));
-  const activeCount = trades.filter((t) => t.result === 'OPEN').length;
+  const metrics = useMemo(() => {
+    const decided = trades.filter((trade) => ['WIN', 'LOSS'].includes(trade.result));
+    const wins = decided.filter((trade) => trade.result === 'WIN').length;
+    const losses = decided.length - wins;
+    const totalR = trades.filter((trade) => ['WIN', 'LOSS', 'BE'].includes(trade.result)).reduce((sum, trade) => sum + Number(trade.rrResult || 0), 0);
+    return { decided: decided.length, wins, losses, winRate: decided.length ? Math.round((wins / decided.length) * 100) : null, totalR };
+  }, [trades]);
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 font-mono text-sm text-amber-500 animate-pulse">
-        <RefreshCw className="h-6 w-6 animate-spin" />
-        กำลังดึงข้อมูลและเชื่อมโยงผลจำลองพอร์ต...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 font-mono text-sm">
-        {error}
-      </div>
-    );
-  }
+  const visibleTrades = useMemo(() => trades.filter((trade) => {
+    if (filter === 'WAITING') return ['PLAN', 'TESTING'].includes(trade.result);
+    if (filter === 'OPEN') return trade.result === 'OPEN';
+    if (filter === 'CLOSED') return ['WIN', 'LOSS', 'BE', 'CANCELLED'].includes(trade.result);
+    return true;
+  }), [filter, trades]);
 
   return (
-    <div className="space-y-8 animate-fade-in font-sans">
-      {/* Title */}
-      <div className="flex items-center justify-between">
+    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-4 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-100 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-amber-500" />
-            สมุดบันทึกผลสถิติและติดตามแผนการเทรด (Trading Plans Journal)
-          </h1>
-          <p className="text-neutral-400 text-xs mt-1">
-            วิเคราะห์ผลความแม่นยำของแผนจำลองย้อนหลัง อัตราชนะของกลยุทธ์ และสถิติกำไรสะสมเพื่อทดสอบประสิทธิภาพสมองกล
-          </p>
+          <div className="flex items-center gap-2 text-amber-400"><History className="h-5 w-5" /><span className="text-xs font-semibold uppercase">Plan Journal</span></div>
+          <h1 className="mt-2 text-2xl font-bold text-neutral-50">ประวัติและผลวัดแผนทองคำ</h1>
+          <p className="mt-1 text-sm text-neutral-400">ทุกแผนมีสถานะตั้งแต่รอเข้า จนถึงปิดผลหรือยกเลิก เพื่อวัดคุณภาพระบบจากข้อมูลจริง</p>
         </div>
-        <button 
-          onClick={fetchTrades}
-          className="p-2 border border-neutral-850 rounded-xl bg-neutral-900/40 text-neutral-400 hover:text-neutral-100 hover:border-neutral-700 transition-all cursor-pointer"
-          title="รีเฟรชข้อมูล"
-        >
-          <RefreshCw className="h-4 w-4" />
+        <button type="button" onClick={() => load(true)} disabled={refreshing} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 text-sm text-neutral-200 disabled:opacity-50">
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> อัปเดต
         </button>
+      </header>
+
+      {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
+
+      <section className="grid overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ['ผลตัดสิน', `${metrics.decided} แผน`],
+          ['ชนะ / แพ้', `${metrics.wins} / ${metrics.losses}`],
+          ['Win rate', metrics.winRate === null ? '-' : `${metrics.winRate}%`],
+          ['ผลรวม', `${metrics.totalR >= 0 ? '+' : ''}${metrics.totalR.toFixed(2)}R`],
+        ].map(([label, value]) => <div key={label} className="border-r border-neutral-800 p-4 last:border-r-0"><p className="text-xs text-neutral-500">{label}</p><p className="mt-1 text-xl font-bold text-neutral-100">{value}</p></div>)}
+      </section>
+
+      <div className="flex gap-1 overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900 p-1">
+        {([
+          ['ALL', 'ทั้งหมด'],
+          ['WAITING', 'รอเข้า'],
+          ['OPEN', 'กำลังวัดผล'],
+          ['CLOSED', 'ปิดแล้ว'],
+        ] as [Filter, string][]).map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setFilter(value)} className={`h-9 shrink-0 rounded-lg px-4 text-sm font-medium ${filter === value ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}>{label}</button>
+        ))}
       </div>
 
-      {/* Grid of stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-neutral-900/40 border border-neutral-800 rounded-2xl p-5 backdrop-blur-sm">
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block">แผนที่ปิดติดตามเสร็จสิ้น</span>
-          <span className="text-2xl font-extrabold font-mono text-neutral-200 block mt-2">{closed.length} แผน</span>
-        </div>
-        <div className="bg-neutral-900/40 border border-neutral-800 rounded-2xl p-5 backdrop-blur-sm">
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block">ชนะ / แพ้</span>
-          <span className="text-2xl font-extrabold font-mono text-emerald-400 block mt-2">
-            ชนะ {wins} แผน <span className="text-neutral-600">/</span> <span className="text-rose-500">แพ้ {losses} แผน</span>
-          </span>
-        </div>
-        <div className="bg-neutral-900/40 border border-neutral-800 rounded-2xl p-5 backdrop-blur-sm">
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block">อัตราชนะแผนแนะนำ (Win Rate)</span>
-          <span className="text-2xl font-extrabold font-mono text-emerald-400 block mt-2">{winRate}%</span>
-        </div>
-        <div className="bg-neutral-900/40 border border-neutral-800 rounded-2xl p-5 backdrop-blur-sm">
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block">กำไรรวมสะสมพอร์ตจำลอง</span>
-          <span className="text-2xl font-extrabold font-mono text-amber-400 block mt-2">{totalR >= 0 ? `+${totalR}` : totalR}R</span>
-        </div>
-      </div>
-
-      {/* Interactive price tester */}
-      <div className="bg-neutral-900/20 border border-neutral-900 rounded-2xl p-6 space-y-4">
-        <div>
-          <h2 className="text-sm font-bold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-amber-500" />
-            เครื่องมือจำลองระดับราคาเพื่อตรวจเช็กเป้าหมายแผนเทรด
-          </h2>
-          <p className="text-[10px] text-neutral-500 mt-1 font-mono">
-            ป้อนราคาจำลองเพื่อตรวจสอบว่าแผนงานที่เปิดติดตามอยู่ บรรลุระดับราคาเป้าหมายทำกำไร (TP) หรือชนระดับราคาป้องกันความเสี่ยง (SL)
-          </p>
-        </div>
-
-        <form onSubmit={handleEvaluatePrice} className="flex flex-col md:flex-row items-stretch gap-4 max-w-3xl text-xs">
-          <div className="md:w-60 px-4 py-3.5 bg-neutral-950 border border-neutral-850 rounded-xl text-amber-300 font-mono font-bold">
-            ทองคำ XAUUSD เท่านั้น
-          </div>
-
-          <div className="flex-1">
-            <div className="relative">
-              <span className="absolute left-4 top-3.5 text-neutral-500 font-mono font-bold">$</span>
-              <input
-                type="number"
-                step="0.1"
-                value={testPrice}
-                onChange={(e) => setTestPrice(parseFloat(e.target.value))}
-                className="w-full pl-8 pr-4 py-3 bg-neutral-950/80 border border-neutral-850 rounded-xl text-neutral-200 font-mono focus:outline-none focus:border-amber-500/30"
-                placeholder="4450.00"
-                required
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={isTesting}
-            className="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-xs font-bold text-neutral-950 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isTesting ? 'กำลังคำนวณ...' : 'ตรวจสอบระดับราคา'}
-            {!isTesting && <Play className="h-3.5 w-3.5 fill-neutral-950 text-neutral-950" />}
-          </button>
-        </form>
-
-        {testLogs.length > 0 && (
-          <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-850 font-mono text-[10px] text-amber-400 space-y-1 animate-fade-in">
-            <div className="font-bold text-neutral-500 border-b border-neutral-900 pb-1 mb-1">ผลประเมินเป้าหมายจำลองโดยสมองกล:</div>
-            {testLogs.map((log, idx) => (
-              <div key={idx}>{log}</div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Trades Table */}
-      <div className="bg-neutral-900/20 border border-neutral-900 rounded-2xl p-6">
-        {trades.length > 0 ? (
-          <div className="overflow-x-auto hide-scrollbar">
-            <table className="w-full text-xs font-mono text-left">
-              <thead>
-                <tr className="border-b border-neutral-900 text-neutral-500">
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">ไอดีแผน</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">สินทรัพย์</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">ฝั่งซื้อขาย</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">ราคา เข้า / ออก</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">เป้าหมาย (SL / TP)</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">ผลลัพธ์จำลอง</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">สัดส่วน R-Profit</th>
-                  <th className="py-3 px-4 uppercase tracking-wider text-[10px]">บันทึกของระบบ</th>
-                </tr>
+      <section className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+        {loading ? (
+          <div className="flex min-h-60 items-center justify-center text-sm text-neutral-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />กำลังโหลดผลแผน</div>
+        ) : visibleTrades.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="border-b border-neutral-800 bg-neutral-950/60 text-xs text-neutral-500">
+                <tr><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">แผน</th><th className="px-4 py-3">Entry</th><th className="px-4 py-3">SL / TP</th><th className="px-4 py-3">ผลออก</th><th className="px-4 py-3">R</th><th className="px-4 py-3">เวลา</th></tr>
               </thead>
-              <tbody className="divide-y divide-neutral-900">
-                {trades.map((trade) => (
-                  <tr key={trade.id} className="hover:bg-neutral-900/10 transition-colors">
-                    <td className="py-4 px-4 text-neutral-400" title={trade.id}>
-                      {trade.id.slice(0, 8)}...
-                    </td>
-                    <td className="py-4 px-4 font-bold text-neutral-200">{trade.symbol}</td>
-                    <td className="py-4 px-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        trade.direction === 'BUY' 
-                          ? 'bg-emerald-500/10 text-emerald-400' 
-                          : 'bg-rose-500/10 text-rose-400'
-                      }`}>
-                        {trade.direction}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 space-y-1">
-                      <div>เข้า: <span className="text-neutral-350">${trade.entry.toFixed(2)}</span></div>
-                      {trade.exitPrice && (
-                        <div className="text-[10px] text-neutral-500">
-                          ออก: <span className="text-neutral-350">${trade.exitPrice.toFixed(2)}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 space-y-1">
-                      <div>SL: <span className="text-rose-500">${trade.stopLoss.toFixed(2)}</span></div>
-                      <div className="text-[10px] text-neutral-500">
-                        TP1: <span className="text-emerald-500">${trade.takeProfit1.toFixed(2)}</span> | 
-                        TP2: <span className="text-emerald-400">${trade.takeProfit2.toFixed(2)}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${
-                        trade.result === 'OPEN' 
-                          ? 'bg-blue-500/5 text-blue-400 border-blue-500/10' 
-                          : trade.result === 'WIN' 
-                          ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10' 
-                          : trade.result === 'LOSS' 
-                          ? 'bg-rose-500/5 text-rose-500 border-rose-500/10' 
-                          : 'bg-neutral-900 text-neutral-400 border-neutral-850'
-                      }`}>
-                        {trade.result === 'OPEN' && <span className="h-1 w-1 rounded-full bg-blue-400 animate-ping" />}
-                        {trade.result === 'OPEN' ? 'กำลังติดตาม' : trade.result === 'WIN' ? 'ชนะ (ชน TP)' : trade.result === 'LOSS' ? 'แพ้ (ชน SL)' : 'เสร็จสิ้น'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 font-bold text-neutral-300">
-                      {trade.result === 'OPEN' ? '-' : `${trade.rrResult >= 0 ? `+${trade.rrResult}` : trade.rrResult}R`}
-                    </td>
-                    <td className="py-4 px-4 text-[10px] text-neutral-450 max-w-[240px] truncate" title={trade.notes || ''}>
-                      {trade.notes || 'กำลังติดตามระดับราคาเป้าหมายความคุ้มค่า'}
-                    </td>
+              <tbody className="divide-y divide-neutral-800">
+                {visibleTrades.map((trade) => (
+                  <tr key={trade.id} className="text-neutral-300 hover:bg-neutral-800/30">
+                    <td className="px-4 py-4"><span className="inline-flex items-center gap-2 font-medium"><StatusIcon result={trade.result} />{statusLabel[trade.result] ?? trade.result}</span></td>
+                    <td className="px-4 py-4"><p className={`font-bold ${trade.direction === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{trade.direction} XAUUSD</p><p className="mt-1 text-xs text-neutral-600">#{trade.id.slice(0, 8)}</p></td>
+                    <td className="px-4 py-4 tabular-nums">{formatPrice(trade.entry)}{typeof trade.signal?.confidence === 'number' && <p className="mt-1 text-xs text-neutral-500">เงื่อนไข {trade.signal.confidence}/100</p>}</td>
+                    <td className="px-4 py-4"><p className="tabular-nums text-rose-300">SL {formatPrice(trade.stopLoss)}</p><p className="mt-1 tabular-nums text-emerald-300">TP {formatPrice(trade.takeProfit1)}</p></td>
+                    <td className="px-4 py-4 tabular-nums">{formatPrice(trade.exitPrice)}</td>
+                    <td className={`px-4 py-4 font-bold ${trade.rrResult >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{['PLAN', 'TESTING', 'OPEN', 'CANCELLED'].includes(trade.result) ? '-' : `${trade.rrResult >= 0 ? '+' : ''}${Number(trade.rrResult).toFixed(2)}R`}</td>
+                    <td className="px-4 py-4 text-xs text-neutral-500">{formatDate(trade.closedAt ?? trade.openedAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="text-center py-12 text-neutral-650 font-mono text-xs">
-            ไม่พบประวัติแผนการเทรดในระบบ สามารถส่งสัญญาณทดสอบเข้ามาผ่านหน้าแผงควบคุมหลัก
-          </div>
-        )}
-      </div>
-    </div>
+        ) : <div className="py-16 text-center text-sm text-neutral-500">ยังไม่มีแผนในสถานะนี้</div>}
+      </section>
+
+      <p className="text-xs leading-5 text-neutral-500">สถิติใช้เฉพาะแผน XAU ที่ระบบบันทึกและปิดผลแล้ว แผนที่ยกเลิกหรือยังรอเข้าไม่นับใน Win rate</p>
+    </main>
   );
 }

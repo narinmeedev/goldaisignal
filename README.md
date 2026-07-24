@@ -1,106 +1,72 @@
-# Gold AI Signal Lab — MVP Console
+# Gold AI Signal
 
-A SaaS-ready, institutional-grade gold trading signal lab and risk engine for XAUUSD. Built with Next.js, Tailwind CSS, Prisma 7, and SQLite.
+Production service for XAUUSD trading plans. The system receives live gold ticks and M5/M15/H1 candles from MT5, evaluates one stable plan at a time, tracks each plan through entry and TP/SL, and sends eligible plan updates through LINE Messaging API.
 
-## Features
+## Service Rules
 
-1. **Console Authentication:** Secure administrative login with glassmorphism styling and auto-redirects.
-2. **Decision Engine Logs:** Full history of all TradingView alert webhooks, anti-fakeout scores, and risk checks.
-3. **Paper Trading Journal:** Complete trade log showing entry price, exit price, R-profit/loss multiples, and system closing logs.
-4. **S/R Zones Scanner:** Dynamic scanning of multi-timeframe swing extremes (Highs/Lows) from historical data to map Support, Resistance, and Liquidity pools.
-5. **Interactive Webhook Simulator:** Directly test BUY/SELL alerts, fakeout filters, and trade evaluations directly from the overview dashboard.
-6. **Dynamic Price Ticker & Tick Tester:** Update active trades' TP/SL targets in real-time based on simulated price walks or manual inputs.
-7. **AI Review Tool & Export:** Pre-formatted daily JSON logs of all trade activities, with automated institutional recommendations for OpenAI model ingestion.
+- XAU symbols only. Non-gold webhook and candle-sync requests are acknowledged and ignored without database logging.
+- No synthetic market candles, manual price simulation, or demo trading plans.
+- A customer plan requires fresh MT5 structure, technical score at least 70/100, risk score at most 55/100, and Risk/Reward of at least 1:2.
+- A plan remains waiting until price reaches Entry. It becomes measurable after entry and closes when TP, SL, break-even, cancellation, or invalidation is recorded.
+- Win rate uses only decided XAU plan results. Waiting, open, cancelled, and break-even plans are excluded from the win-rate denominator.
+- LINE pushes go only to active members with a linked LINE account. Test messages go only to the authenticated admin's linked LINE account.
 
----
+## Runtime
 
-## Technical Specifications
+- Next.js 16 App Router
+- React 19 and Tailwind CSS 4
+- Prisma 7 with PostgreSQL
+- Supabase Storage for payment slips
+- MT5 Expert Advisor: `MT5_Webhook_Sender.mq5`
 
-- **Frontend/Backend:** Next.js (App Router, Route Handlers, Tailwind CSS)
-- **Database:** SQLite (local `dev.db` database for zero-dependency local testing)
-- **ORM:** Prisma v7.8.0 (configured with the `better-sqlite3` driver adapter for premium native performance)
-- **Engine Rules:**
-  - Risk Reward Ratio minimum 1:2
-  - Max risk per trade: 1% of virtual balance
-  - Max trades per day: 5
-  - Consecutive losses cooldown: 3 losses pauses trading
-  - Fakeout score triggers: closes back inside zone (+40), volatility range > 2x average (+25), sideways chop (+20). Rejects if score > 60.
+## Local Development
 
----
-
-## Quick Start Guide
-
-### 1. Run Development Server
-
-Instantly run the application locally (no external database server required):
+Configure the required environment variables in `.env`, then run:
 
 ```bash
+npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3050) (or the port specified in terminal) in your browser.
+Open the URL printed by Next.js. Authentication and market data require the configured PostgreSQL database.
 
-### 2. Login Credentials
+## Required Configuration
 
-- **Master Email:** `admin@goldsignal.ai`
-- **Security Key:** `goldadmin123`
-
-### 3. Initialize & Seed Sample Market Data
-
-To test the support/resistance scanner and alert calculations:
-1. Log in and go to the Admin Dashboard.
-2. Click the glowing **"Reset & Seed Candles"** button in the header.
-3. This seeds 150 historical candles for M15, H1, and H4 charts and calculates active zones instantly!
-
----
-
-## TradingView Webhook Integration
-
-### Endpoint URL
-
-```txt
-POST http://localhost:3000/api/webhooks/tradingview
+```text
+DATABASE_URL
+POSTGRES_PRISMA_URL
+JWT_SECRET
+TRADINGVIEW_WEBHOOK_SECRET
+SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+LINE_CHANNEL_ID
+LINE_CHANNEL_SECRET
+CRON_SECRET
 ```
 
-### JSON Payload Schema
+Payment auto-verification also requires either the SlipOK or EasySlip credentials. Without a verification provider, uploaded slips remain pending for manual admin review.
 
-Ensure the TradingView Alert Message looks exactly like this:
+## Data Retention
 
-```json
-{
-  "secret": "GOLD_AI_SECRET",
-  "symbol": "XAUUSD",
-  "timeframe": "M15",
-  "direction": "BUY",
-  "price": 3336.5,
-  "strategy": "support_bounce",
-  "timestamp": "2026-05-31T10:00:00+07:00"
-}
-```
+- Raw webhook events are retained for 3 days.
+- Login and activity logs are retained for 90 days.
+- Completed or cancelled trade plans are retained for 180 days so 7/30/90-day performance remains measurable.
+- Customer accounts, payments, affiliate commissions, and system settings are not removed by automated cleanup.
+- Vercel calls `/api/cron/retention` once per day and authenticates with `CRON_SECRET`.
 
-### Test Webhook manually via Curl
+## MT5 Setup
 
-Ensure the development server is running and run this terminal command to simulate a TradingView alert:
+1. Attach `MT5_Webhook_Sender.mq5` to an XAU chart only. The EA refuses to initialize on non-gold symbols.
+2. Allow WebRequest access to the production domain in MT5.
+3. Configure the webhook secret to match `TRADINGVIEW_WEBHOOK_SECRET`.
+4. Confirm that price-feed events and M5/M15/H1 candle syncs appear in production before allowing customers to use plans.
+
+## Verification
 
 ```bash
-curl -X POST http://localhost:3000/api/webhooks/tradingview \
-  -H "Content-Type: application/json" \
-  -d '{
-    "secret": "GOLD_AI_SECRET",
-    "symbol": "XAUUSD",
-    "timeframe": "M15",
-    "direction": "BUY",
-    "price": 3336.5,
-    "strategy": "support_bounce"
-  }'
+npx tsc --noEmit
+npm run lint
+npm run build
 ```
 
----
-
-## Production / SaaS Scaling (PostgreSQL)
-
-To switch the local database from SQLite to PostgreSQL:
-1. Change the provider in `prisma/schema.prisma` from `sqlite` to `postgresql`.
-2. Configure the `DATABASE_URL` environment variable inside your production `.env`.
-3. In `src/lib/prisma.ts`, initialize `new PrismaClient()` without the `better-sqlite3` adapter as PostgreSQL handles direct pool connections natively.
-# goldaisignal
+After deployment, verify the public market status, authenticated customer dashboard, MT5 freshness, plan lifecycle records, LINE delivery, payment-slip behavior, and the absence of non-XAU data.

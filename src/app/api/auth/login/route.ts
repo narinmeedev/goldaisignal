@@ -1,7 +1,43 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyPassword, signToken, hashPassword } from '@/lib/auth';
+import { verifyPassword, signToken } from '@/lib/auth';
 import { minisaas } from '@/lib/minisaas';
+
+const DATABASE_UNAVAILABLE_CODES = new Set([
+  '57P01',
+  '57P03',
+  '08006',
+  'XX000',
+  'ECIRCUITBREAKER',
+]);
+
+function isDatabaseUnavailable(error: unknown) {
+  const topLevel = error as {
+    code?: unknown;
+    message?: unknown;
+    cause?: {
+      code?: unknown;
+      message?: unknown;
+      originalCode?: unknown;
+      originalMessage?: unknown;
+    };
+  };
+  const details = [
+    String(error),
+    topLevel.code,
+    topLevel.message,
+    topLevel.cause?.code,
+    topLevel.cause?.message,
+    topLevel.cause?.originalCode,
+    topLevel.cause?.originalMessage,
+  ].join(' ');
+
+  return (
+    details.includes('Connection terminated') ||
+    details.includes('connection timeout') ||
+    [...DATABASE_UNAVAILABLE_CODES].some((code) => details.includes(code))
+  );
+}
 
 export async function POST(req: Request) {
   try {
@@ -14,22 +50,9 @@ export async function POST(req: Request) {
       );
     }
 
-    let user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
     });
-
-    // --- First-time Setup ---
-    if (!user && email === 'admin@goldsignal.ai') {
-      const passwordHash = await hashPassword('goldadmin123');
-      user = await prisma.user.create({
-        data: {
-          email: 'admin@goldsignal.ai',
-          passwordHash,
-          role: 'admin',
-        },
-      });
-    }
-    // ------------------------
 
     if (!user) {
       return NextResponse.json(
@@ -98,9 +121,20 @@ export async function POST(req: Request) {
     return response;
   } catch (error) {
     console.error('Login error:', error);
+
+    if (isDatabaseUnavailable(error)) {
+      return NextResponse.json(
+        {
+          error: 'ระบบฐานข้อมูลกำลังปรับปรุงชั่วคราว กรุณาลองเข้าสู่ระบบอีกครั้งภายหลัง',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองใหม่อีกครั้ง' },
+      { status: 500 },
     );
   }
 }

@@ -5,11 +5,8 @@ import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
 import { getPaidDurationDays } from '@/lib/billing';
-
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
+import { getJwtSecretKey } from '@/lib/auth';
+import { triggerDashboardCacheRefresh } from '@/lib/dashboard-cache-refresh';
 
 async function isAdmin() {
   const cookieStore = await cookies();
@@ -119,6 +116,9 @@ export async function POST(req: Request) {
 
       // Generate affiliate commission if applicable
       await createCommissionFromPayment(paymentId);
+
+      // Refresh dashboard cache to update revenue and member counts
+      triggerDashboardCacheRefresh();
     } else if (action === 'reject') {
        await prisma.payment.update({
         where: { id: paymentId },
@@ -274,6 +274,9 @@ export async function POST(req: Request) {
 
         // Generate affiliate commission if applicable
         await createCommissionFromPayment(paymentId);
+
+        // Refresh dashboard cache to update revenue and member counts
+        triggerDashboardCacheRefresh();
 
         return NextResponse.json({ success: true, verified: true, message: autoApproveNote });
       } else {

@@ -35,7 +35,19 @@ export default function CheckoutPage() {
   const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
-    // Check if already logged in
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setStep(2);
+          if (data.user?.subscriptionStatus === 'active') setCanSkip(true);
+          if (data.user?.subscriptionPlan) setUserPlan(data.user.subscriptionPlan);
+        }
+      } catch {
+        // Unauthenticated visitors stay on the account step.
+      }
+    };
     checkAuth();
   }, []);
 
@@ -46,24 +58,6 @@ export default function CheckoutPage() {
     }
     return () => clearTimeout(timer);
   }, [resendCooldown]);
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      if (res.ok) {
-        const data = await res.json();
-        setStep(2); // Skip to payment if logged in
-        if (data.user?.subscriptionStatus === 'active') {
-          setCanSkip(true);
-        }
-        if (data.user?.subscriptionPlan) {
-          setUserPlan(data.user.subscriptionPlan);
-        }
-      }
-    } catch (e) {
-      // Not logged in
-    }
-  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +85,6 @@ export default function CheckoutPage() {
           setErrorMsg(data.error || 'Authentication failed');
         }
       } else {
-        // Register Mode: Request OTP
         const res = await fetch('/api/auth/register-otp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -102,9 +95,9 @@ export default function CheckoutPage() {
         if (res.ok) {
           setVerificationToken(data.verificationToken);
           setIsOtpStep(true);
-          setResendCooldown(60); // 60 seconds cooldown
+          setResendCooldown(60);
         } else {
-          setErrorMsg(data.error || 'Failed to request OTP');
+          setErrorMsg(data.error || 'ส่งรหัส OTP ไม่สำเร็จ');
         }
       }
     } catch (err) {
@@ -379,7 +372,7 @@ export default function CheckoutPage() {
                   disabled={isLoading}
                   className="w-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
                 >
-                  {isLoading ? 'กำลังดำเนินการ...' : (isLoginMode ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก (รับ OTP)')}
+                  {isLoading ? 'กำลังดำเนินการ...' : (isLoginMode ? 'เข้าสู่ระบบ' : 'สมัครสมาชิกและรับ OTP')}
                 </button>
               </form>
             )}

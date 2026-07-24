@@ -15,10 +15,23 @@ export interface OpenTradeParams {
 }
 
 export class PaperTradeService {
+  private static getSymbolFilter(symbol: string) {
+    const normalizedSymbol = symbol.toUpperCase();
+    if (normalizedSymbol.includes('XAU')) return { contains: 'XAU' };
+    return symbol;
+  }
+
+  private static async clearActivePlanSetting(symbol: string) {
+    const normalizedSymbol = symbol.toUpperCase().includes('XAU') ? 'XAUUSD' : symbol.toUpperCase();
+    await prisma.systemSetting.deleteMany({
+      where: { key: `ACTIVE_ORDER_PLAN_${normalizedSymbol}` },
+    });
+  }
+
   /**
-   * Opens a new simulated paper trade (initially logged as a proposed plan).
+   * Creates a measurable plan lifecycle record before or after entry is reached.
    */
-  static async openTrade(params: OpenTradeParams): Promise<any> {
+  static async openTrade(params: OpenTradeParams) {
     const { signalId, symbol, direction, entry, stopLoss, takeProfit1, takeProfit2, initialResult = 'PLAN', notes } = params;
 
     return prisma.paperTrade.create({
@@ -43,7 +56,7 @@ export class PaperTradeService {
   /**
    * Starts forward-testing a saved plan without marking it as a real active trade.
    */
-  static async startPlanTest(id: string): Promise<any> {
+  static async startPlanTest(id: string) {
     const plan = await prisma.paperTrade.findUnique({
       where: { id },
     });
@@ -70,9 +83,9 @@ export class PaperTradeService {
   }
 
   /**
-   * Approves a suggested trading plan, starting the active paper trade simulation.
+   * Moves a waiting plan into active result tracking.
    */
-  static async approvePlan(id: string): Promise<any> {
+  static async approvePlan(id: string) {
     const plan = await prisma.paperTrade.findUnique({
       where: { id },
     });
@@ -94,7 +107,7 @@ export class PaperTradeService {
   /**
    * Manually closes an open paper trade from the dashboard.
    */
-  static async closeTrade(id: string, exitPrice: number, notes?: string): Promise<any> {
+  static async closeTrade(id: string, exitPrice: number, notes?: string) {
     const trade = await prisma.paperTrade.findUnique({
       where: { id },
     });
@@ -147,6 +160,7 @@ export class PaperTradeService {
     }
 
     await StrategyResearchService.refreshStoredReportFromPaperTrades(trade.symbol);
+    await this.clearActivePlanSetting(trade.symbol);
 
     return updatedTrade;
   }
@@ -162,7 +176,11 @@ export class PaperTradeService {
     lowPrice: number
   ): Promise<string[]> {
     const openTrades = await prisma.paperTrade.findMany({
-      where: { symbol, result: { in: ['OPEN', 'TESTING'] } },
+      where: {
+        symbol: this.getSymbolFilter(symbol),
+        result: { in: ['OPEN', 'TESTING'] },
+      },
+      include: { signal: true },
     });
 
     const closedTradeLogs: string[] = [];
@@ -191,7 +209,7 @@ export class PaperTradeService {
           shouldClose = true;
           exitPrice = takeProfit2;
           result = 'WIN';
-          rrResult = 4.0; // 4R reward
+          rrResult = riskDistance > 0 ? (takeProfit2 - entry) / riskDistance : 0;
           reason = `Take Profit 2 triggered at $${takeProfit2.toFixed(2)}`;
         }
         // 3. Check Take Profit 1 (First Target)
@@ -199,7 +217,7 @@ export class PaperTradeService {
           shouldClose = true;
           exitPrice = takeProfit1;
           result = 'WIN';
-          rrResult = 2.0; // 2R reward
+          rrResult = riskDistance > 0 ? (takeProfit1 - entry) / riskDistance : 0;
           reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)}`;
         }
       } else {
@@ -217,7 +235,7 @@ export class PaperTradeService {
           shouldClose = true;
           exitPrice = takeProfit2;
           result = 'WIN';
-          rrResult = 4.0;
+          rrResult = riskDistance > 0 ? (entry - takeProfit2) / riskDistance : 0;
           reason = `Take Profit 2 triggered at $${takeProfit2.toFixed(2)}`;
         }
         // 3. Check Take Profit 1 (First Target)
@@ -225,22 +243,26 @@ export class PaperTradeService {
           shouldClose = true;
           exitPrice = takeProfit1;
           result = 'WIN';
-          rrResult = 2.0;
+          rrResult = riskDistance > 0 ? (entry - takeProfit1) / riskDistance : 0;
           reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)}`;
         }
       }
 
       if (shouldClose) {
-        await prisma.paperTrade.update({
-          where: { id: trade.id },
+        const closedTrade = await prisma.paperTrade.updateMany({
+          where: {
+            id: trade.id,
+            result: { in: ['OPEN', 'TESTING'] },
+          },
           data: {
             exitPrice,
             result,
-            rrResult,
+            rrResult: Number(rrResult.toFixed(2)),
             closedAt: new Date(),
             notes: `Auto-executed: ${reason}`,
           },
         });
+        if (closedTrade.count === 0) continue;
 
         if (trade.signalId) {
           await prisma.signal.update({
@@ -255,8 +277,10 @@ export class PaperTradeService {
         // Send mobile notification on closing (TP or SL)
         const targetIcon = result === 'WIN' ? '✅ TP Hit' : '❌ SL Hit';
         const positionIcon = direction === 'BUY' ? '🟢 BUY' : '🔴 SELL';
-        const closeMsg = `🏁 *ออเดอร์ชนเป้าหมาย (Trade Executed!)*\n\n*Symbol*: ${trade.symbol}\n*Position*: ${positionIcon}\n*Status*: ${targetIcon}\n*Outcome*: ${result} (${rrResult > 0 ? '+' : ''}${rrResult}R)\n*Exit Price*: $${exitPrice.toFixed(2)}\n*Detail*: ${reason}`;
-        NotificationService.sendNotification(closeMsg).catch(() => {});
+        const roundedR = Number(rrResult.toFixed(2));
+        const closeMsg = `🏁 *แผนทองคำปิดผลแล้ว*\n\n*Symbol*: ${trade.symbol}\n*Position*: ${positionIcon}\n*Status*: ${targetIcon}\n*Outcome*: ${result} (${roundedR > 0 ? '+' : ''}${roundedR}R)\n*Exit Price*: $${exitPrice.toFixed(2)}\n*Detail*: ${reason}`;
+        await NotificationService.sendNotification(closeMsg);
+        await this.clearActivePlanSetting(trade.symbol);
 
         closedTradeLogs.push(`Trade ${trade.id.slice(0, 8)} (${direction}) closed as ${result} at $${exitPrice.toFixed(2)} (${rrResult}R)`);
       }
@@ -278,7 +302,11 @@ export class PaperTradeService {
     currentPrice: number
   ): Promise<string[]> {
     const pendingPlans = await prisma.paperTrade.findMany({
-      where: { symbol, result: 'PLAN' },
+      where: {
+        symbol: this.getSymbolFilter(symbol),
+        result: 'PLAN',
+      },
+      include: { signal: true },
     });
 
     const triggeredPlanLogs: string[] = [];
@@ -286,28 +314,29 @@ export class PaperTradeService {
     for (const plan of pendingPlans) {
       let isTriggered = false;
       const { direction, entry } = plan;
-
-      if (direction === 'BUY') {
-        if (currentPrice <= entry) {
-          isTriggered = true;
-        }
-      } else {
-        // SELL
-        if (currentPrice >= entry) {
-          isTriggered = true;
-        }
+      let planType = '';
+      try {
+        planType = JSON.parse(plan.signal?.reason || '{}').planType || '';
+      } catch {
+        planType = '';
       }
+      const isStopOrder = planType.includes('STOP');
+
+      isTriggered = isStopOrder
+        ? direction === 'BUY' ? currentPrice >= entry : currentPrice <= entry
+        : direction === 'BUY' ? currentPrice <= entry : currentPrice >= entry;
 
       if (isTriggered) {
         // Update plan status to OPEN
-        await prisma.paperTrade.update({
-          where: { id: plan.id },
+        const triggeredPlan = await prisma.paperTrade.updateMany({
+          where: { id: plan.id, result: 'PLAN' },
           data: {
             result: 'OPEN',
             openedAt: new Date(),
             notes: `Auto-triggered: Price reached entry level at $${currentPrice.toFixed(2)}`,
           },
         });
+        if (triggeredPlan.count === 0) continue;
 
         // Also update parent signal to active
         if (plan.signalId) {
@@ -321,7 +350,7 @@ export class PaperTradeService {
         const sideIcon = direction === 'BUY' ? '🟢 BUY' : '🔴 SELL';
         const msg = `🔔 *ราคาถึงแนวเข้าออเดอร์ (Entry Target Hit!)*\n\n*Symbol*: ${symbol}\n*Position*: ${sideIcon}\n*Entry Target*: $${entry.toFixed(2)}\n*Triggered Price*: $${currentPrice.toFixed(2)}\n*Time*: ${new Date().toLocaleTimeString('th-TH')}`;
         
-        NotificationService.sendNotification(msg).catch(() => {});
+        await NotificationService.sendNotification(msg);
 
         triggeredPlanLogs.push(`Plan ${plan.id.slice(0, 8)} (${direction}) triggered at $${currentPrice.toFixed(2)}`);
       }

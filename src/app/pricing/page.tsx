@@ -116,7 +116,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                   <div>
                     <h3 className="text-xs font-medium text-neutral-200">ระบบแจ้งเตือนจุดเข้า-ออกสำคัญ</h3>
-                    <p className="text-[11px] text-neutral-500">แจ้งเตือนเรียลไทม์ราคาทะลุโซนและสัญญาณกลับตัวผ่าน Line/Telegram</p>
+                    <p className="text-[11px] text-neutral-500">แจ้งแผนใหม่และผล TP/SL ผ่าน LINE Messaging API</p>
                   </div>
                 </li>
               </ul>

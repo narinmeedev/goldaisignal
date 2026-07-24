@@ -3,6 +3,20 @@ import { WebhookService } from '@/lib/services/webhook.service';
 import { minisaas } from '@/lib/minisaas';
 
 export async function POST(request: Request) {
+  if (process.env.MT5_WEBHOOK_PAUSED === 'true') {
+    return NextResponse.json(
+      {
+        status: 'accepted',
+        decision: 'SYSTEM_MAINTENANCE',
+        message: 'Gold AI Signal is temporarily pausing market ingestion.',
+      },
+      {
+        status: 202,
+        headers: { 'Retry-After': '300' },
+      },
+    );
+  }
+
   try {
     const rawText = await request.text();
     // Strip trailing null characters (\u0000) sent by MT5 string serialization
@@ -16,10 +30,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (String(payload.symbol).toUpperCase().includes('BTC')) {
+    if (!String(payload.symbol).toUpperCase().includes('XAU')) {
       return NextResponse.json(
-        { status: 'rejected', decision: 'BTC_DISABLED', error: 'BTCUSD signals are disabled. Gold AI Signal now supports XAUUSD only.' },
-        { status: 400 }
+        {
+          status: 'accepted',
+          decision: 'IGNORED_NON_GOLD',
+          message: 'Gold AI Signal processes XAU symbols only.',
+        },
+        { status: 200 },
       );
     }
 
@@ -55,7 +73,11 @@ export async function POST(request: Request) {
     }).catch(() => {});
 
     return NextResponse.json(result);
-  } catch (err: any) {
+  } catch (error: unknown) {
+    const err = error instanceof Error
+      ? error
+      : new Error('System failed to parse webhook request.');
+
     // Report unhandled system error to Mini SaaS Center
     minisaas.trackError("CRITICAL", err.message || "System failed to parse webhook request.", err.stack).catch(() => {});
 

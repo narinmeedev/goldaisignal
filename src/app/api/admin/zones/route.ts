@@ -1,65 +1,99 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { verifyToken } from '@/lib/auth';
 import { ZoneService } from '@/lib/services/zone.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const noStoreHeaders = {
+  'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
+  Pragma: 'no-cache',
+};
+
+async function getAuthorizedUser() {
+  const token = (await cookies()).get('auth_token')?.value;
+  const payload = token ? await verifyToken(token) : null;
+  if (!payload?.userId) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: String(payload.userId) },
+    select: { role: true, subscriptionStatus: true, subscriptionEndsAt: true },
+  });
+  if (!user) return null;
+  const expired = user.subscriptionEndsAt && user.subscriptionEndsAt < new Date();
+  if (user.role !== 'admin' && (user.subscriptionStatus !== 'active' || expired)) return null;
+  return user;
+}
+
+async function getActiveGoldSymbol() {
+  const latestSync = await prisma.webhookEvent.findFirst({
+    where: {
+      symbol: { contains: 'XAU' },
+      source: 'mt5_sync',
+      status: 'processed',
+    },
+    orderBy: { receivedAt: 'desc' },
+    select: { symbol: true },
+  });
+  return latestSync?.symbol || 'XAUUSD';
+}
 
 export async function GET() {
+  const user = await getAuthorizedUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
+
   try {
+    const symbol = await getActiveGoldSymbol();
     const zones = await prisma.zone.findMany({
-      where: { symbol: { contains: 'XAU' } },
+      where: {
+        symbol,
+        type: { in: ['SUPPORT', 'RESISTANCE'] },
+      },
       orderBy: [
-        { type: 'asc' },
+        { timeframe: 'asc' },
         { priceMin: 'desc' },
       ],
     });
 
-    return NextResponse.json(zones);
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Failed to retrieve support/resistance zones.', details: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      symbol,
+      zones,
+      updatedAt: zones.reduce<Date | null>(
+        (latest, zone) => !latest || zone.updatedAt > latest ? zone.updatedAt : latest,
+        null,
+      ),
+    }, { headers: noStoreHeaders });
+  } catch (error) {
+    console.error('[Zones] Failed to load zones:', error);
+    return NextResponse.json({ error: 'ไม่สามารถโหลดแนวรับและแนวต้านได้' }, { status: 500, headers: noStoreHeaders });
   }
 }
 
 export async function POST() {
-  try {
-    // 1. Get unique symbol/timeframe combinations from existing candles
-    const distinctCandles = await prisma.candle.findMany({
-      where: { symbol: { contains: 'XAU' } },
-      select: { symbol: true, timeframe: true },
-      distinct: ['symbol', 'timeframe'],
-    });
+  const user = await getAuthorizedUser();
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json({ error: 'Admin required' }, { status: 403, headers: noStoreHeaders });
+  }
 
-    if (distinctCandles.length === 0) {
-      return NextResponse.json(
-        { error: 'ไม่พบข้อมูลแท่งเทียนในระบบ โปรดส่งข้อมูลจาก MT5 (Sync Candles) ก่อนสแกนโซน' },
-        { status: 400 }
-      );
+  try {
+    const symbol = await getActiveGoldSymbol();
+    const timeframes = await prisma.candle.findMany({
+      where: { symbol },
+      select: { timeframe: true },
+      distinct: ['timeframe'],
+    });
+    if (timeframes.length === 0) {
+      return NextResponse.json({ error: 'ยังไม่มีแท่งเทียน MT5 สำหรับคำนวณแนวรับและแนวต้าน' }, { status: 400, headers: noStoreHeaders });
     }
 
-    // 2. Recalculate zones for all available combinations
-    for (const { symbol, timeframe } of distinctCandles) {
+    for (const { timeframe } of timeframes) {
       await ZoneService.updateZones(symbol, timeframe);
     }
-
-    // 3. Return the fresh zones
-    const zones = await prisma.zone.findMany({
-      where: { symbol: { contains: 'XAU' } },
-      orderBy: [
-        { type: 'asc' },
-        { priceMin: 'desc' },
-      ],
-    });
-
-    return NextResponse.json({ success: true, data: zones });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Failed to scan and update zones.', details: err.message },
-      { status: 500 }
-    );
+    return GET();
+  } catch (error) {
+    console.error('[Zones] Failed to refresh zones:', error);
+    return NextResponse.json({ error: 'คำนวณแนวรับและแนวต้านไม่สำเร็จ' }, { status: 500, headers: noStoreHeaders });
   }
 }

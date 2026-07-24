@@ -4,6 +4,8 @@ import { ZoneService } from '@/lib/services/zone.service';
 import { StrategyResearchService, type StrategyResearchReport } from '@/lib/services/strategy-research.service';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
+import { PaperTradeService } from '@/lib/services/paper-trade.service';
+import { NotificationService } from '@/lib/services/notification.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,7 +17,22 @@ const globalFetchCache = global as unknown as {
   cachedPublicTime: Record<string, number>;
   cachedAdminStats: Record<string, any>;
   cachedAdminTime: Record<string, number>;
+  lastResearchUpkeepMap: Record<string, number>;
 };
+
+const isMarketOpen = () => {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const hour = now.getUTCHours();
+
+  // Market closes on Friday at 22:00 UTC and opens on Sunday at 22:00 UTC
+  if (day === 5 && hour >= 22) return false; // Friday after 22:00 UTC
+  if (day === 6) return false; // Saturday
+  if (day === 0 && hour < 22) return false; // Sunday before 22:00 UTC
+
+  return true;
+};
+
 if (!globalFetchCache.lastFetchMap) {
   globalFetchCache.lastFetchMap = {};
 }
@@ -30,6 +47,9 @@ if (!globalFetchCache.cachedAdminStats) {
 }
 if (!globalFetchCache.cachedAdminTime) {
   globalFetchCache.cachedAdminTime = {};
+}
+if (!globalFetchCache.lastResearchUpkeepMap) {
+  globalFetchCache.lastResearchUpkeepMap = {};
 }
 const lastFetchMap = globalFetchCache.lastFetchMap;
 
@@ -79,6 +99,10 @@ type RecommendationPlan = {
   researchWinRate?: number | null;
   researchSampleSize?: number;
   researchApproved?: boolean;
+  riskScore?: number;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  riskReasons?: string[];
+  riskReward?: number;
   direction?: 'BUY' | 'SELL';
   locked?: boolean;
   lockedAt?: string;
@@ -128,8 +152,10 @@ const serializeOwnerTrade = (trade: any) => ({
   exitPrice: typeof trade.exitPrice === 'number' ? roundPrice(trade.exitPrice) : null,
   stopLoss: roundPrice(trade.stopLoss),
   takeProfit1: roundPrice(trade.takeProfit1),
+  takeProfit2: typeof trade.takeProfit2 === 'number' ? roundPrice(trade.takeProfit2) : null,
   rrResult: roundNumber(trade.rrResult),
   confidence: trade.signal?.confidence ?? null,
+  notes: trade.notes || null,
   openedAt: trade.openedAt?.toISOString?.() || null,
   closedAt: trade.closedAt?.toISOString?.() || null,
 });
@@ -283,77 +309,6 @@ const mergeLiveTicksIntoCandles = (
   candles,
 );
 
-const shouldUpdateZonesForTimeframe = (timeframe: string) => ['M5', 'M15', 'H1'].includes(timeframe);
-
-const upsertFallbackCandles = async (
-  symbol: string,
-  timeframe: string,
-  candles: CandlePoint[],
-  maxCandles: number,
-) => {
-  if (candles.length === 0) return;
-
-  const latestIncoming = candles[0];
-  const latestExisting = await prisma.candle.findFirst({
-    where: { symbol, timeframe },
-    orderBy: { time: 'desc' },
-  });
-
-  const latestChanged = !latestExisting ||
-    latestExisting.time.getTime() !== latestIncoming.time.getTime() ||
-    latestExisting.close !== latestIncoming.close ||
-    latestExisting.high !== latestIncoming.high ||
-    latestExisting.low !== latestIncoming.low;
-
-  await prisma.$transaction(
-    candles.map((candle) =>
-      prisma.candle.upsert({
-        where: {
-          symbol_timeframe_time: {
-            symbol,
-            timeframe,
-            time: candle.time,
-          },
-        },
-        update: {
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-        },
-        create: {
-          symbol,
-          timeframe,
-          time: candle.time,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-        },
-      }),
-    ),
-  );
-
-  const excessCandles = await prisma.candle.findMany({
-    where: { symbol, timeframe },
-    orderBy: { time: 'desc' },
-    skip: maxCandles,
-    select: { id: true },
-  });
-
-  if (excessCandles.length > 0) {
-    await prisma.candle.deleteMany({
-      where: { id: { in: excessCandles.map((candle) => candle.id) } },
-    });
-  }
-
-  if (latestChanged && shouldUpdateZonesForTimeframe(timeframe)) {
-    await ZoneService.updateZones(symbol, timeframe);
-  }
-};
-
 const getResearchCandidate = (report: StrategyResearchReport | null, strategyId?: string) => {
   if (!report || !strategyId) return null;
   return report.candidates.find((candidate) => candidate.id === strategyId) || null;
@@ -361,7 +316,8 @@ const getResearchCandidate = (report: StrategyResearchReport | null, strategyId?
 
 const normalizePlanConfidence = (confidence: number) => Math.min(95, Math.max(0, Math.round(confidence)));
 
-const MIN_RECOMMENDATION_CONFIDENCE = 65;
+const MIN_RECOMMENDATION_CONFIDENCE = 70;
+const MAX_RECOMMENDATION_RISK_SCORE = 55;
 const STALE_MT5_CANDLE_BASE_MS = 60 * 60 * 1000;
 const STALE_M5_CANDLE_SYNC_MS = 10 * 60 * 1000;
 const CHART_CANDLE_LIMIT = 360;
@@ -371,6 +327,7 @@ const H1_CANDLE_FETCH_LIMIT = 180;
 const D1_CANDLE_FETCH_LIMIT = 120;
 
 const stablePlanSettingKey = (symbol: string) => `ACTIVE_ORDER_PLAN_${symbol.toUpperCase()}`;
+const researchUpkeepKey = (symbol: string) => `RESEARCH_UPKEEP_${symbol.toUpperCase()}`;
 
 const getPlanDirection = (plan?: { type?: string; direction?: string } | null): 'BUY' | 'SELL' | null => {
   if (!plan) return null;
@@ -378,6 +335,25 @@ const getPlanDirection = (plan?: { type?: string; direction?: string } | null): 
   if (plan.type?.includes('BUY')) return 'BUY';
   if (plan.type?.includes('SELL')) return 'SELL';
   return null;
+};
+
+const getPlanEntryGuide = (plan: RecommendationPlan) => {
+  const direction = getPlanDirection(plan);
+  const entry = roundPrice(plan.entry);
+  const stopLoss = roundPrice(plan.stopLoss);
+  const action = plan.type.includes('LIMIT')
+    ? direction === 'BUY'
+      ? `รอราคาย่อลงแตะ Entry $${entry.toFixed(2)} ก่อน ห้ามไล่ซื้อเหนือจุดเข้า`
+      : `รอราคาดีดขึ้นแตะ Entry $${entry.toFixed(2)} ก่อน ห้ามไล่ขายต่ำกว่าจุดเข้า`
+    : plan.type.includes('STOP')
+      ? direction === 'BUY'
+        ? `รอราคาเบรกขึ้นถึง Entry $${entry.toFixed(2)} และยืนเหนือระดับนี้ก่อนเข้า`
+        : `รอราคาเบรกลงถึง Entry $${entry.toFixed(2)} และยืนใต้ระดับนี้ก่อนเข้า`
+      : `รอราคาแตะ Entry $${entry.toFixed(2)} และยืนยันเงื่อนไขก่อนเข้า`;
+  const confirmation = plan.confirmation?.trim()
+    ? `\nเงื่อนไขยืนยัน: ${plan.confirmation.trim()}`
+    : '';
+  return `${action}${confirmation}\nยกเลิกแผนทันทีเมื่อราคาชน Stop Loss $${stopLoss.toFixed(2)} และห้ามเปิดซ้ำจากแผนเดิม`;
 };
 
 const isM5DependentPlan = (plan: RecommendationPlan) =>
@@ -428,6 +404,93 @@ const normalizeOrderPlan = (
   };
 };
 
+const buildPlanRiskProfile = (
+  plan: RecommendationPlan,
+  context: {
+    currentPrice: number;
+    volatility: string;
+    h1Bias: string;
+    m15Bias: string;
+    researchSampleSize: number;
+    fundamentalBias?: string;
+    fundamentalWarning?: string;
+  },
+): Required<Pick<RecommendationPlan, 'riskScore' | 'riskLevel' | 'riskReasons' | 'riskReward'>> => {
+  const direction = getPlanDirection(plan);
+  const riskDistance = Math.abs(plan.entry - plan.stopLoss);
+  const rewardDistance = Math.abs(plan.takeProfit - plan.entry);
+  const riskReward = riskDistance > 0 ? rewardDistance / riskDistance : 0;
+  let riskScore = Math.max(5, 100 - normalizePlanConfidence(plan.confidence));
+  const riskReasons: string[] = [];
+
+  if (context.volatility === 'EXTREME') {
+    riskScore += 25;
+    riskReasons.push('ความผันผวนอยู่ระดับรุนแรงมาก ราคาอาจแกว่งชน SL ก่อนเลือกทิศทาง');
+  } else if (context.volatility === 'HIGH') {
+    riskScore += 15;
+    riskReasons.push('ความผันผวนสูงกว่าปกติ มีความเสี่ยงจากไส้เทียนและ slippage');
+  }
+
+  if (direction && context.h1Bias !== 'NEUTRAL' && context.h1Bias !== direction) {
+    riskScore += 20;
+    riskReasons.push(`ทิศทางแผน ${direction} สวนโครงสร้าง H1`);
+  }
+  if (direction && context.m15Bias !== 'NEUTRAL' && context.m15Bias !== direction) {
+    riskScore += 15;
+    riskReasons.push(`ทิศทางแผน ${direction} สวนโมเมนตัม M15`);
+  }
+
+  const fundamentalDirection = context.fundamentalBias === 'BULLISH'
+    ? 'BUY'
+    : context.fundamentalBias === 'BEARISH'
+      ? 'SELL'
+      : null;
+  if (direction && fundamentalDirection && fundamentalDirection !== direction) {
+    riskScore += 25;
+    riskReasons.push(`แผน ${direction} สวนปัจจัยข่าวที่ผู้ดูแลประเมินไว้`);
+  }
+  if (context.fundamentalWarning?.trim()) {
+    riskScore += 15;
+    riskReasons.push(`มีความเสี่ยงข่าว: ${context.fundamentalWarning.trim()}`);
+  }
+
+  if (riskReward < 2) {
+    riskScore += 25;
+    riskReasons.push(`ผลตอบแทนต่อความเสี่ยงเพียง 1:${riskReward.toFixed(1)} ต่ำกว่าเกณฑ์ 1:2`);
+  }
+
+  const distanceToEntry = Math.abs(context.currentPrice - plan.entry);
+  if (riskDistance > 0 && distanceToEntry > riskDistance) {
+    riskScore += 8;
+    riskReasons.push(`ราคายังห่างจุดเข้า $${distanceToEntry.toFixed(2)} ต้องรอแตะ Entry ก่อนเท่านั้น`);
+  }
+
+  if (plan.confirmation?.toLowerCase().includes('wait')) {
+    riskScore += 8;
+    riskReasons.push('แผนยังต้องรอแท่งเทียนยืนยัน ห้ามเข้าเพียงเพราะราคาแตะโซน');
+  }
+
+  if (context.researchSampleSize < 10) {
+    riskScore += 10;
+    riskReasons.push(`ผลวัดกลยุทธ์ยังมีเพียง ${context.researchSampleSize} ตัวอย่าง ความน่าเชื่อถือทางสถิติยังจำกัด`);
+  }
+
+  riskScore = Math.min(95, Math.max(5, Math.round(riskScore)));
+  const riskLevel: NonNullable<RecommendationPlan['riskLevel']> =
+    riskScore <= 30 ? 'LOW' : riskScore <= 50 ? 'MEDIUM' : 'HIGH';
+
+  if (riskReasons.length === 0) {
+    riskReasons.push('โครงสร้าง M15 และ H1 ไปในทิศทางเดียวกัน แต่ยังมีความเสี่ยงที่ราคาจะชน SL');
+  }
+
+  return {
+    riskScore,
+    riskLevel,
+    riskReasons: riskReasons.slice(0, 4),
+    riskReward: roundNumber(riskReward),
+  };
+};
+
 const parseStoredOrderPlan = (value?: string | null): RecommendationPlan | null => {
   if (!value) return null;
   try {
@@ -441,11 +504,102 @@ const parseStoredOrderPlan = (value?: string | null): RecommendationPlan | null 
   }
 };
 
+const getOpenTrackingPlan = async (
+  symbol: string,
+  currentPrice: number,
+): Promise<RecommendationPlan | null> => {
+  const openTrade = await prisma.paperTrade.findFirst({
+    where: {
+      symbol: { contains: symbol.toUpperCase().includes('XAU') ? 'XAU' : symbol },
+      result: 'OPEN',
+    },
+    orderBy: { openedAt: 'desc' },
+    include: { signal: true },
+  });
+  if (!openTrade) return null;
+
+  let tracking: Record<string, unknown> = {};
+  try {
+    tracking = JSON.parse(openTrade.signal?.reason || '{}') as Record<string, unknown>;
+  } catch {
+    tracking = {};
+  }
+
+  const direction = openTrade.direction === 'SELL' ? 'SELL' : 'BUY';
+  const riskDistance = Math.abs(openTrade.entry - openTrade.stopLoss);
+  const takeProfit = openTrade.takeProfit2 || openTrade.takeProfit1;
+  const riskReward = riskDistance > 0
+    ? Math.abs(takeProfit - openTrade.entry) / riskDistance
+    : 0;
+  const trackedRisks = Array.isArray(tracking.riskReasons)
+    ? tracking.riskReasons.filter((reason): reason is string => typeof reason === 'string')
+    : [];
+  const trackedRiskLevel = tracking.riskLevel;
+
+  return {
+    id: typeof tracking.stablePlanLockId === 'string'
+      ? tracking.stablePlanLockId
+      : `open-trade-${openTrade.id}`,
+    sourcePlanId: typeof tracking.sourcePlanId === 'string'
+      ? tracking.sourcePlanId
+      : undefined,
+    type: typeof tracking.planType === 'string'
+      ? tracking.planType
+      : `${direction}_MARKET`,
+    title: typeof tracking.title === 'string'
+      ? tracking.title
+      : `แผน ${direction} ทองคำที่เข้าแล้ว`,
+    reason: typeof tracking.reason === 'string'
+      ? tracking.reason
+      : 'ราคาถึงจุดเข้าแล้ว ระบบกำลังติดตามผลจนกว่า TP หรือ SL',
+    entry: roundPrice(openTrade.entry),
+    stopLoss: roundPrice(openTrade.stopLoss),
+    takeProfit: roundPrice(takeProfit),
+    confidence: normalizePlanConfidence(openTrade.signal?.confidence ?? 70),
+    strategyId: typeof tracking.strategyId === 'string' ? tracking.strategyId : undefined,
+    strategyMode: tracking.strategyMode === 'SCALP' || tracking.strategyMode === 'SWING' || tracking.strategyMode === 'FOLLOW_TREND'
+      ? tracking.strategyMode
+      : undefined,
+    timeframe: openTrade.signal?.timeframe || 'M15',
+    direction,
+    riskScore: typeof tracking.riskScore === 'number' ? tracking.riskScore : 55,
+    riskLevel: trackedRiskLevel === 'LOW' || trackedRiskLevel === 'MEDIUM' || trackedRiskLevel === 'HIGH'
+      ? trackedRiskLevel
+      : 'HIGH',
+    riskReasons: trackedRisks.length > 0
+      ? trackedRisks.slice(0, 4)
+      : ['แผนเข้าแล้วและยังมีโอกาสชน Stop Loss ตามโครงสร้างตลาด'],
+    riskReward: typeof tracking.riskReward === 'number'
+      ? roundNumber(tracking.riskReward)
+      : roundNumber(riskReward),
+    locked: true,
+    lockedAt: typeof tracking.lockedAt === 'string'
+      ? tracking.lockedAt
+      : openTrade.openedAt.toISOString(),
+    currentPriceAtLock: roundPrice(openTrade.entry),
+    distanceToEntry: roundPrice(Math.abs(currentPrice - openTrade.entry)),
+    updateReason: 'active_trade',
+  };
+};
+
 const hasPlanFinishedOrFailed = (plan: RecommendationPlan, currentPrice: number) => {
   const direction = getPlanDirection(plan);
   if (direction === 'BUY') return currentPrice <= plan.stopLoss || currentPrice >= plan.takeProfit;
   if (direction === 'SELL') return currentPrice >= plan.stopLoss || currentPrice <= plan.takeProfit;
   return true;
+};
+
+const getPlanFinishReason = (plan: RecommendationPlan, currentPrice: number) => {
+  const direction = getPlanDirection(plan);
+  if (direction === 'BUY') {
+    if (currentPrice >= plan.takeProfit) return 'TP_HIT';
+    if (currentPrice <= plan.stopLoss) return 'SL_HIT';
+  }
+  if (direction === 'SELL') {
+    if (currentPrice <= plan.takeProfit) return 'TP_HIT';
+    if (currentPrice >= plan.stopLoss) return 'SL_HIT';
+  }
+  return null;
 };
 
 const getPlanMaxDistance = (plan: RecommendationPlan) => {
@@ -456,11 +610,11 @@ const getPlanMaxDistance = (plan: RecommendationPlan) => {
 
 const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) => {
   if (hasPlanFinishedOrFailed(plan, currentPrice)) return true;
-  
+
   // Price deviation stale check: if current price is too far away from entry zone, cancel/expire the recommendation
   const maxDist = getPlanMaxDistance(plan);
   if (Math.abs(currentPrice - plan.entry) > maxDist) return true;
-  
+
   // Lifetime safety stale check (max 3x lock duration, i.e., 45 minutes for M5, 2.25 hours for Swing)
   const lockedAt = plan.lockedAt ? new Date(plan.lockedAt) : null;
   if (lockedAt && Number.isFinite(lockedAt.getTime())) {
@@ -468,7 +622,7 @@ const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) 
     const maxLifetimeMs = lockMinutes * 3 * 60 * 1000;
     if (now.getTime() - lockedAt.getTime() > maxLifetimeMs) return true;
   }
-  
+
   return false;
 };
 
@@ -482,16 +636,203 @@ const shouldReplaceStablePlan = (
   const candidateDirection = getPlanDirection(candidate);
 
   if (isPlanStale(storedPlan, currentPrice, now)) return true;
-  
+
   // Rule: Only replace direction if the new candidate has HIGHER confidence than the stored plan!
   if (storedDirection !== candidateDirection) {
     return candidate.confidence > storedPlan.confidence;
   }
-  
+
   // Anti-Flicker Rule 2: If direction is same, only replace levels if candidate has significantly higher confidence (+20 points)
   if (candidate.confidence >= storedPlan.confidence + 20) return true;
-  
+
   return false;
+};
+
+const getPlanTrackingReason = (plan: RecommendationPlan) => ({
+  stablePlanLockId: plan.id,
+  sourcePlanId: plan.sourcePlanId || plan.id,
+  lockedAt: plan.lockedAt,
+  strategyId: plan.strategyId,
+  strategyMode: plan.strategyMode,
+  planType: plan.type,
+  title: plan.title,
+  reason: plan.reason,
+  riskScore: plan.riskScore,
+  riskLevel: plan.riskLevel,
+  riskReasons: plan.riskReasons,
+  riskReward: plan.riskReward,
+});
+
+const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string) => {
+  const trackingSignals = await prisma.signal.findMany({
+    where: { reason: { contains: `"stablePlanLockId":"${plan.id}"` } },
+    select: { id: true },
+  });
+  const signalIds = trackingSignals.map((signal) => signal.id);
+  if (signalIds.length === 0) return;
+  const openTrades = await prisma.paperTrade.findMany({
+    where: {
+      signalId: { in: signalIds },
+      result: 'OPEN',
+    },
+    select: { signalId: true },
+  });
+  const openSignalIds = new Set(openTrades.map((trade) => trade.signalId).filter(Boolean));
+  const pendingSignalIds = signalIds.filter((signalId) => !openSignalIds.has(signalId));
+
+  const operations = [
+    prisma.paperTrade.updateMany({
+      where: {
+        signalId: { in: signalIds },
+        result: { in: ['PLAN', 'TESTING'] },
+      },
+      data: {
+        result: 'CANCELLED',
+        closedAt: new Date(),
+        notes: `Plan retired: ${reason}`,
+      },
+    }),
+  ];
+  if (pendingSignalIds.length > 0) {
+    operations.push(prisma.signal.updateMany({
+      where: {
+        id: { in: pendingSignalIds },
+        status: { in: ['pending', 'active'] },
+      },
+      data: { status: 'cancelled' },
+    }));
+  }
+  await prisma.$transaction(operations);
+};
+
+const reconcileOpenPlanLifecycle = async (symbol: string) => {
+  const symbolFilter = { contains: symbol.toUpperCase().includes('XAU') ? 'XAU' : symbol };
+  const [openTrades, pendingTrades] = await Promise.all([
+    prisma.paperTrade.findMany({
+      where: { symbol: symbolFilter, result: 'OPEN' },
+      select: { signalId: true },
+    }),
+    prisma.paperTrade.findMany({
+      where: { symbol: symbolFilter, result: { in: ['PLAN', 'TESTING'] } },
+      select: { id: true, signalId: true },
+    }),
+  ]);
+  const openSignalIds = openTrades.map((trade) => trade.signalId).filter((id): id is string => Boolean(id));
+  const pendingSignalIds = pendingTrades.map((trade) => trade.signalId).filter((id): id is string => Boolean(id));
+  const operations = [];
+
+  if (openSignalIds.length > 0) {
+    operations.push(prisma.signal.updateMany({
+      where: { id: { in: openSignalIds } },
+      data: { status: 'active', result: 'Pending' },
+    }));
+  }
+  if (pendingTrades.length > 0) {
+    operations.push(prisma.paperTrade.updateMany({
+      where: { id: { in: pendingTrades.map((trade) => trade.id) } },
+      data: {
+        result: 'CANCELLED',
+        closedAt: new Date(),
+        notes: 'Plan retired: another gold plan already reached Entry',
+      },
+    }));
+  }
+  if (pendingSignalIds.length > 0) {
+    operations.push(prisma.signal.updateMany({
+      where: { id: { in: pendingSignalIds } },
+      data: { status: 'cancelled' },
+    }));
+  }
+  if (operations.length > 0) await prisma.$transaction(operations);
+};
+
+const ensureResearchUpkeep = async (symbol: string, existingReport: StrategyResearchReport | null) => {
+  const key = researchUpkeepKey(symbol);
+  const now = Date.now();
+  const lastRun = globalFetchCache.lastResearchUpkeepMap[key] || 0;
+  if (now - lastRun < 15 * 60 * 1000) return existingReport;
+
+  const reportAgeMs = existingReport?.generatedAt
+    ? now - new Date(existingReport.generatedAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  const shouldRunFullResearch = !existingReport || reportAgeMs > 6 * 60 * 60 * 1000;
+
+  globalFetchCache.lastResearchUpkeepMap[key] = now;
+
+  try {
+    if (shouldRunFullResearch) {
+      return await StrategyResearchService.runFromDatabase(symbol);
+    }
+    return await StrategyResearchService.refreshStoredReportFromPaperTrades(symbol);
+  } catch (err) {
+    console.error('[Research Bot] Upkeep failed:', err);
+    return existingReport;
+  }
+};
+
+const buildLabHealth = ({
+  report,
+  openTrades,
+  suggestedPlans,
+  recentPlanResults,
+  latestClosedTrades,
+  mt5RealtimeState,
+  latestResearchAt,
+}: {
+  report: StrategyResearchReport | null;
+  openTrades: any[];
+  suggestedPlans: any[];
+  recentPlanResults: any[];
+  latestClosedTrades: any[];
+  mt5RealtimeState: string;
+  latestResearchAt?: string | null;
+}) => {
+  const now = Date.now();
+  const researchAgeMs = latestResearchAt ? now - new Date(latestResearchAt).getTime() : null;
+  const closedCount = latestClosedTrades.length;
+  const decidedCount = latestClosedTrades.filter((trade) => ['WIN', 'LOSS'].includes(trade.result)).length;
+  const wins = latestClosedTrades.filter((trade) => trade.result === 'WIN').length;
+  const liveForwardSamples = report?.candidates.reduce((sum, candidate) => sum + (candidate.liveForwardTest?.sampleSize || 0), 0) || 0;
+  const issues: string[] = [];
+
+  if (!report) issues.push('ยังไม่มีรายงานวิจัยกลยุทธ์');
+  if (researchAgeMs === null || researchAgeMs > 6 * 60 * 60 * 1000) issues.push('รายงานวิจัยเก่าเกิน 6 ชั่วโมง');
+  if (openTrades.length === 0 && suggestedPlans.length === 0) issues.push('ไม่มีแผนที่ระบบกำลังวัดผล');
+  if (closedCount < 5) issues.push('sample สำหรับวัด win rate ยังน้อย');
+  if (mt5RealtimeState === 'OFFLINE') issues.push('MT5 ไม่ส่งข้อมูลสด');
+
+  const status = issues.length === 0
+    ? 'HEALTHY'
+    : issues.some((issue) => issue.includes('MT5') || issue.includes('รายงานวิจัย'))
+      ? 'NEEDS_ADMIN'
+      : 'WATCHING';
+
+  return {
+    status,
+    label: status === 'HEALTHY'
+      ? 'Lab เดินต่อเนื่อง'
+      : status === 'NEEDS_ADMIN'
+        ? 'ควรให้ admin ตรวจ/รัน AI'
+        : 'Lab กำลังสะสมผล',
+    message: status === 'HEALTHY'
+      ? 'ระบบมีแผนที่กำลังวัดผลและอัปเดต research จากผล TP/SL ล่าสุด'
+      : issues[0] || 'ระบบยังต้องสะสมผลเพิ่มก่อนสรุปความแม่นยำ',
+    issues,
+    action: status === 'NEEDS_ADMIN'
+      ? 'ให้ admin ตรวจ MT5/EA และรัน AI research ใหม่'
+      : status === 'WATCHING'
+        ? 'ปล่อยให้ระบบเก็บผลจากแผนที่เปิดและแผนรอเข้าเพิ่ม'
+        : 'ติดตามแผนและปล่อยให้ระบบปรับคะแนนต่อ',
+    sampleSize: closedCount,
+    decidedSampleSize: decidedCount,
+    liveForwardSamples,
+    winRate: decidedCount > 0 ? Math.round((wins / decidedCount) * 100) : 0,
+    lastResearchAt: latestResearchAt || null,
+    researchAgeMs,
+    openTradesCount: openTrades.length,
+    suggestedPlansCount: suggestedPlans.length,
+    recentResults: recentPlanResults.slice(0, 5).map(serializeOwnerTrade),
+  };
 };
 
 const getStableOrderPlan = async (
@@ -501,7 +842,20 @@ const getStableOrderPlan = async (
   allowM5DependentPlans = true,
   allowStoredPlans = true,
 ) => {
-  // Check for competing BUY and SELL candidates with confidence >= MIN_RECOMMENDATION_CONFIDENCE (65)
+  // Once Entry is reached, that plan remains authoritative until TP/SL closes it.
+  // Research may pause the strategy for future plans, but must not hide an open plan from customers.
+  const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
+  if (openTrackingPlan) {
+    await reconcileOpenPlanLifecycle(symbol);
+    await prisma.systemSetting.upsert({
+      where: { key: stablePlanSettingKey(symbol) },
+      update: { value: JSON.stringify(openTrackingPlan) },
+      create: { key: stablePlanSettingKey(symbol), value: JSON.stringify(openTrackingPlan) },
+    });
+    return openTrackingPlan;
+  }
+
+  // Competing directions must separate clearly before a new plan is allowed.
   const buyCandidates = candidates.filter(
     (p) =>
       p.type !== 'WAIT' &&
@@ -509,7 +863,7 @@ const getStableOrderPlan = async (
       (p.direction === 'BUY' || p.type?.includes('BUY')) &&
       (allowM5DependentPlans || !isM5DependentPlan(p)),
   );
-  
+
   const sellCandidates = candidates.filter(
     (p) =>
       p.type !== 'WAIT' &&
@@ -518,26 +872,15 @@ const getStableOrderPlan = async (
       (allowM5DependentPlans || !isM5DependentPlan(p)),
   );
 
-  if (buyCandidates.length > 0 && sellCandidates.length > 0) {
-    const safetyWaitPlan: RecommendationPlan = {
-      id: 'safety-wait-plan',
-      type: 'WAIT',
-      title: 'ตลาดเลือกทิศทาง / ระวังความเสี่ยง ⚠️',
-      confidence: 80,
-      timeframe: 'M15',
-      entry: currentPrice,
-      stopLoss: 0,
-      takeProfit: 0,
-      reason: 'AI ค้นพบสัญญาณฝั่งซื้อ (BUY) และขาย (SELL) ก้ำกึ่งเกิดขึ้นพร้อมกัน บ่งชี้ว่าตลาดกำลังเลือกทิศทาง แนะนำหลีกเลี่ยงการเข้าออเดอร์เพื่อลดความเสี่ยง',
-      strategyId: 'safety_wait',
-      strategyMode: 'SCALP',
-    };
-    return safetyWaitPlan;
-  }
+  const strongestBuy = buyCandidates.sort((a, b) => b.confidence - a.confidence)[0];
+  const strongestSell = sellCandidates.sort((a, b) => b.confidence - a.confidence)[0];
+  const hasUnresolvedConflict = !!strongestBuy && !!strongestSell &&
+    Math.abs(strongestBuy.confidence - strongestSell.confidence) < 10;
 
-  const candidate = candidates.find((plan) =>
+  const candidate = hasUnresolvedConflict ? undefined : candidates.find((plan) =>
     plan.type !== 'WAIT' &&
     plan.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
+    (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
     !!getPlanDirection(plan) &&
     (allowM5DependentPlans || !isM5DependentPlan(plan)),
   );
@@ -547,11 +890,22 @@ const getStableOrderPlan = async (
   const storedSetting = await prisma.systemSetting.findUnique({ where: { key } });
   const storedPlan = parseStoredOrderPlan(storedSetting?.value);
   const storedPlanAllowed = allowStoredPlans && (!storedPlan || allowM5DependentPlans || !isM5DependentPlan(storedPlan));
+  const storedPlanResearchRejected = !!storedPlan &&
+    (storedPlan.researchSampleSize || 0) >= 5 &&
+    typeof storedPlan.researchWinRate === 'number' &&
+    storedPlan.researchWinRate < 45;
 
   if (!candidate) {
-    // Persistence Rule: Keep showing the storedPlan until it is stale (SL/TP hit, price too far, or timed out)
-    if (storedPlan && storedPlanAllowed && !isPlanStale(storedPlan, currentPrice, now)) {
+    // Keep a valid locked plan, but retire stale plans and strategies with poor measured results.
+    if (storedPlan && storedPlanAllowed && !storedPlanResearchRejected && !isPlanStale(storedPlan, currentPrice, now)) {
       return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
+    }
+    if (storedPlan) {
+      await retirePendingStoredPlan(
+        storedPlan,
+        storedPlanResearchRejected ? 'strategy performance fell below service threshold' : 'plan expired or price invalidated the setup',
+      );
+      await prisma.systemSetting.deleteMany({ where: { key } });
     }
     return null;
   }
@@ -564,6 +918,10 @@ const getStableOrderPlan = async (
     return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
   }
 
+  if (storedPlan && storedPlan.id !== candidate.id) {
+    await retirePendingStoredPlan(storedPlan, 'replaced by a stronger validated setup');
+  }
+
   const nextPlan = normalizeOrderPlan(candidate, currentPrice, now, storedPlan ? 'replaced' : 'locked_new');
   if (!nextPlan) return null;
 
@@ -572,6 +930,97 @@ const getStableOrderPlan = async (
     update: { value: JSON.stringify(nextPlan) },
     create: { key, value: JSON.stringify(nextPlan) },
   });
+
+  // Auto-insert locked plans as Signals and PaperTrades for automated research tracking
+  // ONLY if the market is open
+  if (isMarketOpen()) {
+    try {
+      const activeTrackingTrade = await prisma.paperTrade.findFirst({
+        where: {
+          symbol: { contains: 'XAU' },
+          direction: nextPlan.direction,
+          result: { in: ['OPEN', 'PLAN', 'TESTING'] },
+          signal: {
+            is: {
+              reason: { contains: `"stablePlanLockId":"${nextPlan.id}"` },
+            },
+          },
+        },
+      });
+
+      if (!activeTrackingTrade) {
+        const rr = Math.abs(nextPlan.takeProfit - nextPlan.entry) / Math.max(0.1, Math.abs(nextPlan.entry - nextPlan.stopLoss));
+        const timeframeVal = nextPlan.timeframe || 'M15';
+        const directionVal = nextPlan.direction || 'BUY';
+        const entryVal = nextPlan.entry || currentPrice;
+        const slVal = nextPlan.stopLoss || (directionVal === 'BUY' ? entryVal - 3.5 : entryVal + 3.5);
+        const tpVal = nextPlan.takeProfit || (directionVal === 'BUY' ? entryVal + 8.5 : entryVal - 8.5);
+        const confVal = typeof nextPlan.confidence === 'number' ? nextPlan.confidence : 70;
+        const entryReached = nextPlan.type.includes('STOP')
+          ? directionVal === 'BUY' ? currentPrice >= entryVal : currentPrice <= entryVal
+          : directionVal === 'BUY' ? currentPrice <= entryVal : currentPrice >= entryVal;
+        const initialTradeResult = nextPlan.type.includes('MARKET') || entryReached ? 'OPEN' : 'PLAN';
+
+        const newSignal = await prisma.signal.create({
+          data: {
+            symbol,
+            timeframe: timeframeVal,
+            direction: directionVal,
+            entry: entryVal,
+            stopLoss: slVal,
+            takeProfit1: tpVal,
+            takeProfit2: tpVal,
+            riskReward: parseFloat(rr.toFixed(2)) || 2.0,
+            confidence: confVal,
+            status: initialTradeResult === 'OPEN' ? 'active' : 'pending',
+            bias: directionVal === 'BUY' ? 'Buy' : 'Sell',
+            entryZone: `$${(entryVal - 1.0).toFixed(2)} - $${(entryVal + 1.0).toFixed(2)}`,
+            riskLevel: nextPlan.riskLevel === 'LOW' ? 'Low' : nextPlan.riskLevel === 'HIGH' ? 'High' : 'Medium',
+            marketCondition: 'Stable Scanner Run',
+            result: 'Pending',
+            reason: JSON.stringify(getPlanTrackingReason(nextPlan)),
+          }
+        });
+
+        await prisma.paperTrade.create({
+          data: {
+            signalId: newSignal.id,
+            symbol,
+            direction: directionVal,
+            entry: entryVal,
+            stopLoss: slVal,
+            takeProfit1: tpVal,
+            takeProfit2: tpVal,
+            result: initialTradeResult,
+            rrResult: 0.0,
+            notes: initialTradeResult === 'OPEN'
+              ? `Auto-executed from active recommendation plan: ${nextPlan.title}`
+              : `Waiting for entry from active recommendation plan: ${nextPlan.title}`,
+          }
+        });
+        console.log(
+          initialTradeResult === 'OPEN'
+            ? `[Research Bot] Auto-entered position for ${nextPlan.title} at $${nextPlan.entry}`
+            : `[Research Bot] Saved pending plan for ${nextPlan.title} at $${nextPlan.entry}`,
+        );
+
+        // Notify mobile of new auto-scanner plan with rich plan details
+        const planTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+        const sideIcon = directionVal === 'BUY' ? '🟢 ซื้อ (BUY)' : '🔴 ขาย (SELL)';
+        const entryGuide = getPlanEntryGuide(nextPlan);
+        const entryStatus = initialTradeResult === 'OPEN' ? 'เข้าแผนแล้ว / กำลังติดตาม' : 'รอราคาแตะ Entry ก่อน ห้ามไล่ราคา';
+        const riskReasons = nextPlan.riskReasons?.length
+          ? nextPlan.riskReasons.map((risk, index) => `${index + 1}. ${risk}`).join('\n')
+          : 'มีความเสี่ยงที่ราคาจะชน Stop Loss ตามโครงสร้างตลาด';
+
+        const msg = `📢 *แผนการเทรดทองคำใหม่*\n\n📅 *เวลาออกแผน*: ${planTime}\n📌 *สินทรัพย์*: XAUUSD (${timeframeVal})\n🎯 *ฝั่ง*: ${sideIcon}\n⏳ *สถานะแผน*: ${entryStatus}\n--------------------------------\n🚪 *Entry*: $${entryVal.toFixed(2)}\n🛑 *Stop Loss*: $${slVal.toFixed(2)}\n💰 *Take Profit*: $${tpVal.toFixed(2)}\n⚖️ *Risk/Reward*: 1:${(nextPlan.riskReward || rr).toFixed(2)}\n📊 *คะแนนเงื่อนไข*: ${confVal}/100 (ไม่ใช่โอกาสชนะ)\n⚠️ *ความเสี่ยงประเมิน*: ${nextPlan.riskScore ?? '-'} / 100\n--------------------------------\n*ความเสี่ยงมาจาก*\n${riskReasons}\n--------------------------------\n*เงื่อนไขเข้าและยกเลิกแผน*\n${entryGuide}`;
+
+        await NotificationService.sendNotification(msg);
+      }
+    } catch (dbErr) {
+      console.error('Failed to auto-save locked plan to DB:', dbErr);
+    }
+  }
 
   return nextPlan;
 };
@@ -582,35 +1031,64 @@ export async function GET(request?: Request) {
     const assetParam = url ? url.searchParams.get('asset') : null;
     if (assetParam && assetParam !== 'XAUUSD') {
       return NextResponse.json(
-        { error: 'BTCUSD signals are disabled. Gold AI Signal now supports XAUUSD only.' },
+        { error: 'ระบบให้บริการเฉพาะแผนทองคำ XAUUSD' },
         { status: 400, headers: noStoreHeaders },
       );
     }
 
-    const isPublic = url ? url.searchParams.get('public') === 'true' : false;
+    const isPlanAutomation = Boolean(
+      url?.searchParams.get('automation') === 'mt5-m15-sync' &&
+      request?.headers.get('x-plan-automation') === 'mt5-m15-sync' &&
+      request?.headers.get('x-plan-automation-secret') === (process.env.TRADINGVIEW_WEBHOOK_SECRET || 'GOLD_AI_SECRET')
+    );
+    const isPublic = Boolean(url?.searchParams.get('public') === 'true' && !isPlanAutomation);
     const baseKey = assetParam || 'XAUUSD';
 
-    // Detect user role to separate cache keys and bypass queries
-    let userRole = 'public';
-    if (!isPublic) {
+    // Private metrics require an authenticated account with service access.
+    let userRole = isPlanAutomation ? 'automation' : 'public';
+    if (!isPublic && !isPlanAutomation) {
       try {
         const cookieStore = await cookies();
         const token = cookieStore.get('auth_token')?.value;
-        if (token) {
-          const payload = await verifyToken(token);
-          if (payload?.userId) {
-            const dbUser = await prisma.user.findUnique({
-              where: { id: payload.userId as string },
-              select: { role: true }
-            });
-            if (dbUser?.role) {
-              userRole = dbUser.role; // 'admin' or 'viewer'
-            }
-          }
+        const payload = token ? await verifyToken(token) : null;
+        if (!payload?.userId) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
         }
+        const dbUser = await prisma.user.findUnique({
+          where: { id: payload.userId as string },
+          select: { role: true, subscriptionStatus: true, subscriptionEndsAt: true },
+        });
+        if (!dbUser) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
+        }
+        const subscriptionExpired = dbUser.subscriptionEndsAt && dbUser.subscriptionEndsAt < new Date();
+        if (dbUser.role !== 'admin' && (dbUser.subscriptionStatus !== 'active' || subscriptionExpired)) {
+          return NextResponse.json({ error: 'Subscription required' }, { status: 403, headers: noStoreHeaders });
+        }
+        userRole = dbUser.role;
       } catch {
-        // Fallback to viewer role on error
-        userRole = 'viewer';
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
+      }
+    }
+
+    const runFullQueries = isPlanAutomation || !isPublic;
+    const runAdminQueries = isPlanAutomation || userRole === 'admin';
+
+    // Database Cache check: Skip queries if pre-calculated cache is available (except for automation runs)
+    if (!isPlanAutomation) {
+      const cacheKey = isPublic 
+        ? 'CACHE_DASHBOARD_STATS_PUBLIC'
+        : userRole === 'admin'
+          ? 'CACHE_DASHBOARD_STATS_ADMIN'
+          : 'CACHE_DASHBOARD_STATS_VIEWER';
+
+      try {
+        const cachedSetting = await prisma.systemSetting.findUnique({ where: { key: cacheKey } });
+        if (cachedSetting?.value) {
+          return NextResponse.json(JSON.parse(cachedSetting.value), { headers: noStoreHeaders });
+        }
+      } catch (cacheErr) {
+        console.error('[Cache Read Error]:', cacheErr);
       }
     }
 
@@ -645,7 +1123,7 @@ export async function GET(request?: Request) {
     let recentPlanResults: any[] = [];
     let zoneCount = 0;
 
-    if (!isPublic) {
+    if (runFullQueries) {
       [
         totalSignals,
         totalTrades,
@@ -661,6 +1139,7 @@ export async function GET(request?: Request) {
         prisma.paperTrade.findMany({
           where: { symbol: { contains: 'XAU' }, result: 'OPEN' },
           orderBy: { openedAt: 'desc' },
+          include: { signal: true },
         }),
         prisma.paperTrade.findMany({
           where: { symbol: { contains: 'XAU' }, result: { in: ['PLAN', 'TESTING'] } },
@@ -696,8 +1175,8 @@ export async function GET(request?: Request) {
     let todayRevenue = { _sum: { amount: null }, _count: { _all: 0 } } as any;
     let cancelledPayments = 0;
 
-    if (!isPublic) {
-      if (userRole === 'admin') {
+    if (runFullQueries) {
+      if (runAdminQueries) {
         [
           todaySignalsRaw,
           latestClosedTrades,
@@ -910,7 +1389,7 @@ export async function GET(request?: Request) {
 
     for (const symbol of assets) {
       const searchSymbol = 'XAU';
-      
+
       // Get latest MT5 tick price and candle-sync symbol separately.
       // Price ticks move the live candle; sync events provide the historical OHLC set.
       const [recentPriceEvents, latestAnySyncEvent] = await Promise.all([
@@ -948,7 +1427,7 @@ export async function GET(request?: Request) {
       ]);
       const latestM5SyncPayload = parseEventPayload(latestM5SyncEvent);
       const latestM15SyncPayload = parseEventPayload(latestM15SyncEvent);
-      
+
       // Cache timeframe-specific sync events for connection status at the end
       mt5M5SyncEvent = latestM5SyncEvent;
       mt5M15SyncEvent = latestM15SyncEvent;
@@ -961,9 +1440,9 @@ export async function GET(request?: Request) {
         .map((event) => eventToLiveTick(event))
         .filter((tick): tick is LiveTick => !!tick)
         .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
-      let currentPrice = symbol === 'XAUUSD' ? 4450.0 : 68000.0;
+      let currentPrice = 0;
       let recentCandles: CandlePoint[] = [];
-      
+
       const latestLiveTick = liveTicks[liveTicks.length - 1] || null;
       const tickAgeMs = latestPriceEvent ? Date.now() - latestPriceEvent.receivedAt.getTime() : null;
       const m5CandleSyncAgeMs = latestM5SyncEvent ? Date.now() - latestM5SyncEvent.receivedAt.getTime() : null;
@@ -1023,7 +1502,30 @@ export async function GET(request?: Request) {
         : [];
 
       recentCandles = m15Candles; // legacy variable compatibility
-      
+
+      if (!isPublic && Number.isFinite(currentPrice) && currentPrice > 0) {
+        try {
+          await PaperTradeService.evaluateOpenTradesWithPrice(symbol, currentPrice, currentPrice, currentPrice);
+          await PaperTradeService.evaluatePendingPlansWithPrice(symbol, currentPrice);
+        } catch (err) {
+          console.error('[Research Bot] Dashboard price evaluation failed:', err);
+        }
+      }
+
+      // Trigger real-time evaluation of paper trades/plans (only when market is open)
+      try {
+        if (isMarketOpen()) {
+          const latestM15 = m15Candles[0];
+          const highPrice = latestM15 ? Math.max(currentPrice, latestM15.high) : currentPrice;
+          const lowPrice = latestM15 ? Math.min(currentPrice, latestM15.low) : currentPrice;
+
+          await PaperTradeService.evaluatePendingPlansWithPrice(symbol, currentPrice);
+          await PaperTradeService.evaluateOpenTradesWithPrice(symbol, currentPrice, highPrice, lowPrice);
+        }
+      } catch (evalErr) {
+        console.error('Error evaluating trades in dashboard-stats:', evalErr);
+      }
+
       // --- Technical Indicators Math ---
       const calcSMA = (data: any[], period: number) => {
         if (data.length < period) return data[0]?.close || 0;
@@ -1035,7 +1537,7 @@ export async function GET(request?: Request) {
       const calcEMA = (data: any[], period: number) => {
         if (data.length < period) return calcSMA(data, data.length);
         const k = 2 / (period + 1);
-        let ema = data[data.length - 1].close; 
+        let ema = data[data.length - 1].close;
         for (let i = data.length - 2; i >= 0; i--) {
           ema = (data[i].close * k) + (ema * (1 - k));
         }
@@ -1043,7 +1545,7 @@ export async function GET(request?: Request) {
       };
 
       const calcATR = (data: any[], period: number) => {
-        if (data.length < period + 1) return 3.0; 
+        if (data.length < period + 1) return 3.0;
         let trSum = 0;
         let validPeriods = 0;
         for (let i = 0; i < period; i++) {
@@ -1065,7 +1567,7 @@ export async function GET(request?: Request) {
         for (let i = 0; i < period; i++) {
           const change = data[i].close - data[i+1].close;
           if (change > 0) gains += change;
-          else losses -= change; 
+          else losses -= change;
         }
         const avgGain = gains / period;
         const avgLoss = losses / period;
@@ -1078,7 +1580,7 @@ export async function GET(request?: Request) {
       let bias = 'NEUTRAL';
       let trendStrength = 50;
       let volatility = 'LOW';
-      
+
       const currentUtcHour = new Date().getUTCHours();
       let marketSession = 'ตลาดเอเชีย';
       let sessionVolatility = 'LOW';
@@ -1114,7 +1616,7 @@ export async function GET(request?: Request) {
       let h1Bias = 'NEUTRAL';
       let m15Bias = 'NEUTRAL';
       let m5Bias = 'NEUTRAL';
-      
+
       let isSurgingGlobal = false;
       let isCrashingGlobal = false;
       let isM5SurgingGlobal = false;
@@ -1126,12 +1628,12 @@ export async function GET(request?: Request) {
         ema20_m15 = calcEMA(m15Candles, 20);
         ema20_h1 = calcEMA(h1Candles, 20);
         const ema20_d1 = d1Candles.length >= 20 ? calcEMA(d1Candles, 20) : (d1Candles.length > 0 ? d1Candles[0].close : currentPrice);
-        
+
         atr14M5 = m5AnalysisCandles.length >= 15 ? calcATR(m5AnalysisCandles, 14) : atr14;
         rsi14M5 = m5AnalysisCandles.length >= 15 ? calcRSI(m5AnalysisCandles, 14) : rsi14;
         atr14 = calcATR(m15Candles, 14);
         rsi14 = calcRSI(m15Candles, 14);
-        
+
         isOverbought = rsi14 > 70;
         isOversold = rsi14 < 30;
 
@@ -1139,12 +1641,12 @@ export async function GET(request?: Request) {
         const m15Trend = currentPrice > ema20_m15 ? 'BULLISH' : 'BEARISH';
         const h1Trend = currentPrice > ema20_h1 ? 'BULLISH' : 'BEARISH';
         const d1Trend = d1Candles.length > 0 ? (currentPrice > ema20_d1 ? 'BULLISH' : 'BEARISH') : 'NEUTRAL';
-        
+
         d1Bias = d1Trend;
         h1Bias = h1Trend;
         m15Bias = m15Trend;
         m5Bias = m5Trend;
-        
+
         // Multi-candle analysis (last 5 candles on M15) for immediate momentum
         let consecutiveDrops = 0;
         let consecutiveSurges = 0;
@@ -1158,11 +1660,11 @@ export async function GET(request?: Request) {
             consecutiveSurges++;
           }
         }
-        
+
         const prevCandle = recentCandles[1];
         const isCrashing = (currentPrice < prevCandle.low) || consecutiveDrops >= 3;
         const isSurging = (currentPrice > prevCandle.high) || consecutiveSurges >= 3;
-        
+
         isSurgingGlobal = isSurging;
         isCrashingGlobal = isCrashing;
 
@@ -1200,13 +1702,13 @@ export async function GET(request?: Request) {
 
         // Momentum overrides (if short term is extremely strong against MTF)
         if (isCrashing && bias !== 'BEARISH') {
-           bias = 'BEARISH'; 
+           bias = 'BEARISH';
            trendStrength = 60 + (consecutiveDrops * 10);
         } else if (isSurging && bias !== 'BULLISH') {
            bias = 'BULLISH';
            trendStrength = 60 + (consecutiveSurges * 10);
         }
-        
+
         // Normalize strength
         trendStrength = Math.min(100, Math.max(10, trendStrength));
 
@@ -1221,40 +1723,18 @@ export async function GET(request?: Request) {
         }
       }
 
-      // Find nearest zones (if any in DB, otherwise generate dynamic temporary zones for demo out-of-the-box)
-      let allZones = await prisma.zone.findMany({
+      // Only use zones calculated from real MT5 candles. Never manufacture levels when data is missing.
+      const allZones = await prisma.zone.findMany({
         where: { symbol: activeSymbol },
         orderBy: { priceMin: 'asc' },
       });
 
       // Filter out zones that are too far from the current price (e.g. old seed data when price was much lower)
       const maxDistance = 150;
-      let zones = allZones.filter((z: any) =>
+      const zones = allZones.filter((z: any) =>
         Math.abs(z.priceMin - currentPrice) <= maxDistance &&
         (hasM5Mt5Base || z.timeframe !== 'M5')
       );
-
-      // If no relevant zones in DB, let's create some realistic dynamic ones based on current price so the UI isn't empty!
-      if (zones.length === 0) {
-        const step = 20;
-        const structuralZones = [
-          { type: 'SUPPORT', timeframe: 'M15', priceMin: currentPrice - step - 5, priceMax: currentPrice - step, strength: 3, symbol: activeSymbol } as any,
-          { type: 'SUPPORT', timeframe: 'M15', priceMin: currentPrice - (step*2) - 5, priceMax: currentPrice - (step*2), strength: 5, symbol: activeSymbol } as any,
-          { type: 'RESISTANCE', timeframe: 'M15', priceMin: currentPrice + step, priceMax: currentPrice + step + 5, strength: 3, symbol: activeSymbol } as any,
-          { type: 'RESISTANCE', timeframe: 'M15', priceMin: currentPrice + (step*2), priceMax: currentPrice + (step*2) + 5, strength: 5, symbol: activeSymbol } as any,
-        ];
-        zones = hasM5Mt5Base
-          ? [
-              structuralZones[0],
-              { type: 'SUPPORT', timeframe: 'M5', priceMin: currentPrice - (step * 0.45) - 2, priceMax: currentPrice - (step * 0.45), strength: 4, symbol: activeSymbol } as any,
-              structuralZones[1],
-              { type: 'RESISTANCE', timeframe: 'M5', priceMin: currentPrice + (step * 0.45), priceMax: currentPrice + (step * 0.45) + 2, strength: 4, symbol: activeSymbol } as any,
-              structuralZones[2],
-              structuralZones[3],
-              { type: 'LIQUIDITY', timeframe: 'M5', priceMin: currentPrice - (step*1.5) - 2, priceMax: currentPrice - (step*1.5) + 2, strength: 1, symbol: activeSymbol } as any,
-            ]
-          : structuralZones;
-      }
 
       const nearestSupport = zones.filter((z: any) => z.type === 'SUPPORT' && z.priceMax < currentPrice).sort((a: any, b: any) => b.priceMax - a.priceMax).slice(0, 3);
       const nearestResistance = zones.filter((z: any) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).sort((a: any, b: any) => a.priceMin - b.priceMin).slice(0, 3);
@@ -1264,35 +1744,20 @@ export async function GET(request?: Request) {
       const proactivePlans: any[] = [];
       const pointValue = 0.01;
       const fixedSupportSl = 500 * pointValue;
-      
+
       // Dynamic Risk via ATR: Tightened to protect high lot sizes
       const atrSL = Math.min(6.5, Math.max(1.8, atr14 * 0.9)); // Cap M15 SL between 180 - 650 points
       const atrTP = atrSL * 2.5; // 1:2.5 RR ratio
-      
+
       // 3 Entry offset based on ATR
       const diff = Math.max(2.0, atr14 * 0.8);
       const scalpSL = Math.min(3.5, Math.max(1.2, atr14M5 * 0.7)); // Cap M5 SL between 120 - 350 points
       const scalpTP = scalpSL * 2.5; // 1:2.5 RR ratio
 
-      let decisionZones = zones.filter((z: any) =>
+      const decisionZones = zones.filter((z: any) =>
         ['M5', 'M15'].includes(z.timeframe) &&
         (hasM5Mt5Base || z.timeframe !== 'M5')
       );
-      if (decisionZones.length === 0) {
-        const microStep = 6;
-        decisionZones = [
-          { type: 'SUPPORT', timeframe: 'M15', priceMin: currentPrice - microStep * 2 - 1.2, priceMax: currentPrice - microStep * 2, strength: 4 } as any,
-          { type: 'RESISTANCE', timeframe: 'M15', priceMin: currentPrice + microStep * 2, priceMax: currentPrice + microStep * 2 + 1.2, strength: 4 } as any,
-        ];
-        if (hasM5Mt5Base) {
-          decisionZones = [
-            { type: 'SUPPORT', timeframe: 'M5', priceMin: currentPrice - microStep - 0.8, priceMax: currentPrice - microStep, strength: 3 } as any,
-            decisionZones[0],
-            { type: 'RESISTANCE', timeframe: 'M5', priceMin: currentPrice + microStep, priceMax: currentPrice + microStep + 0.8, strength: 3 } as any,
-            decisionZones[1],
-          ];
-        }
-      }
 
       const m5Support = decisionZones
         .filter((z: any) => z.type === 'SUPPORT' && z.timeframe === 'M5' && z.priceMax <= currentPrice)
@@ -1319,7 +1784,6 @@ export async function GET(request?: Request) {
       const currentM5Candle = m5AnalysisCandles[0];
       const previousM5Candle = m5AnalysisCandles[1];
       const hasM5BullishEngulfing = !!currentM5Candle && !!previousM5Candle &&
-        previousM5Candle.close < previousM5Candle.close && // wait, previousM5Candle.close < previousM5Candle.open
         previousM5Candle.close < previousM5Candle.open &&
         currentM5Candle.close > currentM5Candle.open &&
         currentM5Candle.open <= previousM5Candle.close &&
@@ -1353,10 +1817,10 @@ export async function GET(request?: Request) {
       } else if (hasM5Mt5Base && m5Bias === 'BULLISH' && rsi14M5 < 70) {
         scalpDirection = 'BUY';
         scalpTitle = 'แผนซื้อย่อตัว (Pullback BUY): เทรนด์ M5 ขาขึ้น';
-        
+
         // Dynamic Distance Guard: If support zone is too far (> 2.2 ATRs), compute relative to currentPrice
         const isSupportTooFar = triggerSupport && (currentPrice - triggerSupport.priceMax > atr14M5 * 2.2);
-        
+
         const pullTarget = (triggerSupport && !isSupportTooFar) ? triggerSupport.priceMax : currentPrice - (atr14M5 * 0.8);
         scalpEntryMin = (triggerSupport && !isSupportTooFar) ? triggerSupport.priceMin : currentPrice - (atr14M5 * 1.5);
         scalpEntryMax = pullTarget;
@@ -1364,7 +1828,7 @@ export async function GET(request?: Request) {
         scalpStopLoss = scalpEntryMin - scalpSL;
         scalpTakeProfit = triggerResistance?.priceMin ?? scalpRecommendedEntry + scalpTP;
         scalpConfidence = Math.min(90, 70 + (m15Bias === 'BULLISH' ? 10 : 0) + (rsi14M5 < 45 ? 8 : 0));
-        scalpReason = isSupportTooFar 
+        scalpReason = isSupportTooFar
           ? `เทรนด์ M5 เป็นขาขึ้นเด่นชัด แต่ฐานแนวรับหลักเดิมอยู่ห่างไกลเกินไป ระบบจึงปรับคำนวณจุดย่อรับซื้อแบบใกล้ราคาปัจจุบันตามระยะ ATR ย่อย (${scalpRecommendedEntry.toFixed(2)}) เพื่อความรวดเร็วและคุ้มค่าความเสี่ยง`
           : `เทรนด์ M5 เป็นขาขึ้นเด่นชัด (BULLISH) ระบบคำนวณราคาเข้าซื้อที่เหมาะสมเมื่อราคาย่อตัวลงมาบริเวณแนวรับเพื่อความได้เปรียบทางราคา (Buy on Pullback Zone)`;
       } else if (hasM5Mt5Base && nearTriggerResistance && m15Bias !== 'BULLISH' && (m5Bias === 'BEARISH' || isM5CrashingGlobal || rsi14M5 > 55)) {
@@ -1380,10 +1844,10 @@ export async function GET(request?: Request) {
       } else if (hasM5Mt5Base && m5Bias === 'BEARISH' && rsi14M5 > 30) {
         scalpDirection = 'SELL';
         scalpTitle = 'แผนขายย่อตัว (Pullback SELL): เทรนด์ M5 ขาลง';
-        
+
         // Dynamic Distance Guard: If resistance zone is too far (> 2.2 ATRs), compute relative to currentPrice
         const isResistanceTooFar = triggerResistance && (triggerResistance.priceMin - currentPrice > atr14M5 * 2.2);
-        
+
         const pullTarget = (triggerResistance && !isResistanceTooFar) ? triggerResistance.priceMin : currentPrice + (atr14M5 * 0.8);
         scalpEntryMin = pullTarget;
         scalpEntryMax = (triggerResistance && !isResistanceTooFar) ? triggerResistance.priceMax : currentPrice + (atr14M5 * 1.5);
@@ -1391,7 +1855,7 @@ export async function GET(request?: Request) {
         scalpStopLoss = scalpEntryMax + scalpSL;
         scalpTakeProfit = triggerSupport?.priceMax ?? scalpRecommendedEntry - scalpTP;
         scalpConfidence = Math.min(90, 70 + (m15Bias === 'BEARISH' ? 10 : 0) + (rsi14M5 > 55 ? 8 : 0));
-        scalpReason = isResistanceTooFar 
+        scalpReason = isResistanceTooFar
           ? `เทรนด์ M5 เป็นขาลงเด่นชัด แต่ฐานแนวต้านหลักเดิมอยู่ห่างไกลเกินไป ระบบจึงปรับคำนวณจุดเด้งขายแบบใกล้ราคาปัจจุบันตามระยะ ATR ย่อย (${scalpRecommendedEntry.toFixed(2)}) เพื่อความรวดเร็วและคุ้มค่าความเสี่ยง`
           : `เทรนด์ M5 เป็นขาลงเด่นชัด (BEARISH) ระบบคำนวณราคาเข้าขายที่เหมาะสมเมื่อราคารีบาวด์ขึ้นไปบริเวณแนวต้านเพื่อความได้เปรียบทางราคา (Sell on Pullback Zone)`;
       }
@@ -1543,11 +2007,11 @@ export async function GET(request?: Request) {
 
       if (hasM5Mt5Base && nearestSupport.length > 0) {
         const support = nearestSupport[0];
-        
+
         let planConfidence = support.strength > 3 ? 85 : 75;
         let planTitle = 'โซนเฝ้าระวังดักซื้อจากแนวรับ';
         let planReason = `ราคามีโอกาสย่อตัวลงมาทดสอบแนวรับที่ ${support.priceMax.toFixed(2)} แนะนำให้รอแท่งเทียนกลับตัว เช่น Pinbar หรือ Engulfing เพื่อยืนยันก่อนเข้าซื้อ`;
-        
+
         // Anti-Falling Knife Logic + Session Volatility Consideration
         const isCounterTrend = bias === 'BEARISH' && trendStrength > 60;
         const isExtremeVol = sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH';
@@ -1555,22 +2019,23 @@ export async function GET(request?: Request) {
         if (isCounterTrend || isExtremeVol) {
           planConfidence = isExtremeVol ? 30 : 40;
           planTitle = '⚠️ ระวังแนวรับเสี่ยงสูง';
-          planReason = isExtremeVol 
+          planReason = isExtremeVol
             ? `ตลาดอเมริกาผันผวนรุนแรง การดักซื้อที่แนวรับมีความเสี่ยงสูงที่จะโดนลากทะลุ แนะนำให้รอพฤเบิกกระบวนราคาและแท่งเทียนกลับตัวก่อนเข้าเสมอ`
             : `ตลาดกำลังดิ่งลงแรง (${Math.round(trendStrength)}%) โซนแนวรับนี้เสี่ยงที่จะรับไม่อยู่ แนะนำให้รอดูการสร้างฐานราคาใหม่`;
         }
 
+        const supportMid = (support.priceMax + support.priceMin) / 2;
         proactivePlans.push({
           id: `ai-plan-buy-${symbol}`,
           type: 'BUY_ZONE',
           title: planTitle,
-          entry: support.priceMax,
-          entry1: support.priceMax,
-          entry2: support.priceMax - diff,
-          entry3: support.priceMax - diff * 2,
+          entry: supportMid,
+          entry1: supportMid,
+          entry2: supportMid - diff * 0.5,
+          entry3: support.priceMin,
           stopLoss: support.priceMin - fixedSupportSl,
-          takeProfit: support.priceMax + Math.max(atrTP, fixedSupportSl * 2),
-          reason: `${planReason} เงื่อนไขยืนยันหลักคือ M5 ต้องปิดเขียวแบบ Bullish Engulfing ก่อนบันทึกเป็นแผนใช้งานจริง`,
+          takeProfit: supportMid + Math.max(atrTP, fixedSupportSl * 2.5),
+          reason: `${planReason} โดยตั้งรอราคาย่อลึกถึงจุดกึ่งกลางแนวรับเพื่อให้จุดตัดขาดทุน (SL) แคบลงและได้เปรียบราคามากขึ้น เงื่อนไขยืนยันคือ M5 ต้องปิดแท่งกลับตัวในโซนนี้`,
           confidence: planConfidence,
           strategyId: 'support_m5_bullish_engulfing',
           strategyMode: 'SWING',
@@ -1583,7 +2048,7 @@ export async function GET(request?: Request) {
 
       if (hasM5Mt5Base && nearestResistance.length > 0) {
         const res = nearestResistance[0];
-        
+
         let planConfidence = res.strength > 3 ? 85 : 75;
         let planTitle = 'โซนเฝ้าระวังดักขายจากแนวต้าน';
         let planReason = `ราคามีโอกาสขึ้นไปทดสอบแนวต้านที่ ${res.priceMin.toFixed(2)} แนะนำให้รอแท่งเทียนกลับตัว เช่น Pinbar หรือ Engulfing เพื่อยืนยันก่อนเข้าขาย`;
@@ -1600,17 +2065,18 @@ export async function GET(request?: Request) {
             : `ตลาดกำลังพุ่งขึ้นแรง (${Math.round(trendStrength)}%) โซนแนวต้านนี้เสี่ยงที่จะต้านไม่อยู่ แนะนำให้รอดูการสร้างฐานราคาใหม่`;
         }
 
+        const resMid = (res.priceMin + res.priceMax) / 2;
         proactivePlans.push({
           id: `ai-plan-sell-${symbol}`,
           type: 'SELL_ZONE',
           title: planTitle,
-          entry: res.priceMin,
-          entry1: res.priceMin,
-          entry2: res.priceMin + diff,
-          entry3: res.priceMin + diff * 2,
-          stopLoss: res.priceMax + atrSL,
-          takeProfit: res.priceMin - atrTP,
-          reason: planReason,
+          entry: resMid,
+          entry1: resMid,
+          entry2: resMid + diff * 0.5,
+          entry3: res.priceMax,
+          stopLoss: res.priceMax + fixedSupportSl,
+          takeProfit: resMid - Math.max(atrTP, fixedSupportSl * 2.5),
+          reason: `${planReason} โดยตั้งเด้งขายลึกขึ้นที่บริเวณกึ่งกลางแนวต้านเพื่อลดขนาดระยะทนลากและจำกัด SL ให้แคบที่สุดเพื่อความได้เปรียบทางเทคนิค`,
           confidence: planConfidence,
           strategyId: 'resistance_m5_bearish_engulfing',
           strategyMode: 'SWING',
@@ -1621,161 +2087,189 @@ export async function GET(request?: Request) {
         });
       }
 
-      if (bias === 'BULLISH') {
-        if (isOverbought) {
-           proactivePlans.push({
-             id: `ai-plan-follow-buy-${symbol}`,
-             type: 'WAIT',
-             title: '🚫 งดซื้อไล่ราคา: ตลาดซื้อมากเกินไป',
-             entry: currentPrice,
-             stopLoss: currentPrice - atrSL,
-             takeProfit: currentPrice + atrTP,
-             reason: `RSI สูงเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะซื้อมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาย่อตัว`,
-             confidence: 10,
-           });
+      // --- BUY Plan (Always generated) ---
+      if (isOverbought) {
+         proactivePlans.push({
+           id: `ai-plan-follow-buy-${symbol}`,
+           type: 'WAIT',
+           title: '🚫 งดซื้อไล่ราคา: ตลาดซื้อมากเกินไป',
+           entry: currentPrice,
+           stopLoss: currentPrice - atrSL,
+           takeProfit: currentPrice + atrTP,
+           reason: `RSI สูงเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะซื้อมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาย่อตัว`,
+           confidence: 10,
+           strategyId: 'follow_trend_ema20_pullback',
+           strategyMode: 'FOLLOW_TREND',
+           strategyLabel: 'Follow trend pullback',
+           confirmation: 'Wait for RSI cooling',
+           timeframe: 'M15',
+         });
+      } else {
+        let buyConfidence = bias === 'BULLISH' ? Math.round(trendStrength) : (bias === 'BEARISH' ? 35 : 50);
+        if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') buyConfidence -= 15;
+
+        const isExtended = currentPrice > ema20_m15 + (atr14 * 0.5);
+        const isTooExtended = currentPrice > ema20_m15 + (atr14 * 2.5);
+
+        if (isTooExtended) {
+          proactivePlans.push({
+            id: `ai-plan-follow-buy-${symbol}`,
+            type: 'WAIT',
+            title: '🚫 งดซื้อไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
+            entry: currentPrice,
+            stopLoss: currentPrice - atrSL,
+            takeProfit: currentPrice + atrTP,
+            reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวขึ้นร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวรับยกโลว์ฐานใหม่เพื่อความปลอดภัย`,
+            confidence: 10,
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: 'Wait for price pullback',
+            timeframe: 'M15',
+          });
+        } else if (isExtended) {
+          // Extended from EMA: Recommend waiting for pullback (Higher Low / ยกโลว์)
+          const entry1 = ema20_m15 + (atr14 * 0.2);
+          const entry2 = ema20_m15;
+          const entry3 = ema20_m15 - (atr14 * 0.5);
+          const stopLoss = ema20_m15 - (atr14 * 1.5);
+          const takeProfit = entry1 + (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
+
+          proactivePlans.push({
+            id: `ai-plan-follow-buy-${symbol}`,
+            type: 'BUY_LIMIT',
+            title: bias === 'BULLISH' ? 'ดักซื้อตอนย่อตัว / ยกโลว์' : 'ดักซื้อสวนเทรนด์เมื่อย่อตัว (Counter-Buy Pullback)',
+            entry: entry1,
+            entry1,
+            entry2,
+            entry3,
+            stopLoss,
+            takeProfit,
+            reason: bias === 'BULLISH'
+              ? `ทิศทางหลักเป็นขาขึ้น แต่ราคาปัจจุบันสูงเกินไป ควรรอราคารย่อตัวลงมาสร้างฐานแนวรับยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`
+              : `เทรนด์หลักเป็นขาลง การดักซื้อมีความเสี่ยงสูง ควรรอราคาลงมาสร้างฐานยกโลว์ลึกใกล้ EMA 20 (${ema20_m15.toFixed(2)}) เพื่อเล่นรอบกลับตัวสั้นๆ เท่านั้น`,
+            confidence: Math.min(95, Math.max(10, buyConfidence + (bias === 'BULLISH' ? 5 : 0))),
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: bias === 'BULLISH' ? 'M15 pullback holds above EMA20' : 'Counter-trend Scalping Setup',
+            timeframe: 'M15',
+          });
         } else {
-          let buyConfidence = Math.round(trendStrength);
-          if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') buyConfidence -= 15;
-          
-          const isExtended = currentPrice > ema20_m15 + (atr14 * 0.5);
-          const isTooExtended = currentPrice > ema20_m15 + (atr14 * 2.5);
-          
-          if (isTooExtended) {
-            proactivePlans.push({
-              id: `ai-plan-follow-buy-${symbol}`,
-              type: 'WAIT',
-              title: '🚫 งดซื้อไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
-              entry: currentPrice,
-              stopLoss: currentPrice - atrSL,
-              takeProfit: currentPrice + atrTP,
-              reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวขึ้นร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวรับยกโลว์ฐานใหม่เพื่อความปลอดภัย`,
-              confidence: 10,
-            });
-          } else if (isExtended) {
-            // Extended from EMA: Recommend waiting for pullback (Higher Low / ยกโลว์)
-            const entry1 = ema20_m15 + (atr14 * 0.2);
-            const entry2 = ema20_m15;
-            const entry3 = ema20_m15 - (atr14 * 0.5);
-            const stopLoss = ema20_m15 - (atr14 * 1.5);
-            const takeProfit = entry1 + (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
-            
-            proactivePlans.push({
-              id: `ai-plan-follow-buy-${symbol}`,
-              type: 'BUY_LIMIT',
-              title: 'ดักซื้อตอนย่อตัว / ยกโลว์',
-              entry: entry1,
-              entry1,
-              entry2,
-              entry3,
-              stopLoss,
-              takeProfit,
-              reason: `ทิศทางหลักเป็นขาขึ้น แต่ราคาปัจจุบันสูงเกินไป ควรรอราคารย่อตัวลงมาสร้างฐานแนวรับยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`,
-              confidence: Math.min(95, Math.max(10, buyConfidence + 5)),
-              strategyId: 'follow_trend_ema20_pullback',
-              strategyMode: 'FOLLOW_TREND',
-              strategyLabel: 'Follow trend pullback',
-              confirmation: 'M15 pullback holds above EMA20',
-              timeframe: 'M15',
-            });
-          } else {
-            // Not extended: Recommending BUY at current support base
-            proactivePlans.push({
-              id: `ai-plan-follow-buy-${symbol}`,
-              type: 'BUY_MARKET',
-              title: 'ซื้อสะสมที่แนวรับ / ยกโลว์',
-              entry: currentPrice,
-              entry1: currentPrice,
-              entry2: currentPrice - diff,
-              entry3: currentPrice - diff * 2,
-              stopLoss: currentPrice - atrSL,
-              takeProfit: currentPrice + atrTP,
-              reason: `กราฟเป็นแนวโน้มขาขึ้น และราคาปัจจุบันอยู่ในโซนแนวรับพักฐาน/ยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าซื้อที่ปลอดภัยและน่าสนใจ`,
-              confidence: Math.max(10, buyConfidence),
-              strategyId: 'follow_trend_ema20_pullback',
-              strategyMode: 'FOLLOW_TREND',
-              strategyLabel: 'Follow trend pullback',
-              confirmation: 'M15 stays above EMA20 with H1 alignment',
-              timeframe: 'M15',
-            });
-          }
+          // Not extended: Recommending BUY at current support base
+          proactivePlans.push({
+            id: `ai-plan-follow-buy-${symbol}`,
+            type: 'BUY_MARKET',
+            title: bias === 'BULLISH' ? 'ซื้อสะสมที่แนวรับ / ยกโลว์' : 'ซื้อสะสมสวนเทรนด์ (Counter-Buy at Support)',
+            entry: currentPrice,
+            entry1: currentPrice,
+            entry2: currentPrice - diff,
+            entry3: currentPrice - diff * 2,
+            stopLoss: currentPrice - atrSL,
+            takeProfit: currentPrice + atrTP,
+            reason: bias === 'BULLISH'
+              ? `กราฟเป็นแนวโน้มขาขึ้น และราคาปัจจุบันอยู่ในโซนแนวรับพักฐาน/ยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าซื้อที่ปลอดภัยและน่าสนใจ`
+              : `กราฟเป็นแนวโน้มขาลง การเข้าซื้อสะสมในโซนนี้เป็นการสวนเทรนด์หลักอย่างชัดเจน ควรแบ่งไม้ควบคุมความเสี่ยงอย่างเข้มงวด`,
+            confidence: Math.max(10, buyConfidence),
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: bias === 'BULLISH' ? 'M15 stays above EMA20 with H1 alignment' : 'Counter-trend Scalping Setup',
+            timeframe: 'M15',
+          });
         }
-      } else if (bias === 'BEARISH') {
-        if (isOversold) {
-           proactivePlans.push({
-             id: `ai-plan-follow-sell-${symbol}`,
-             type: 'WAIT',
-             title: '🚫 งดขายไล่ราคา: ตลาดขายมากเกินไป',
-             entry: currentPrice,
-             stopLoss: currentPrice + atrSL,
-             takeProfit: currentPrice - atrTP,
-             reason: `RSI ต่ำเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะขายมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาเด้งกลับ`,
-             confidence: 10,
-           });
+      }
+
+      // --- SELL Plan (Always generated) ---
+      if (isOversold) {
+         proactivePlans.push({
+           id: `ai-plan-follow-sell-${symbol}`,
+           type: 'WAIT',
+           title: '🚫 งดขายไล่ราคา: ตลาดขายมากเกินไป',
+           entry: currentPrice,
+           stopLoss: currentPrice + atrSL,
+           takeProfit: currentPrice - atrTP,
+           reason: `RSI ต่ำเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะขายมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาเด้งกลับ`,
+           confidence: 10,
+           strategyId: 'follow_trend_ema20_pullback',
+           strategyMode: 'FOLLOW_TREND',
+           strategyLabel: 'Follow trend pullback',
+           confirmation: 'Wait for RSI cooling',
+           timeframe: 'M15',
+         });
+      } else {
+        let sellConfidence = bias === 'BEARISH' ? Math.round(trendStrength) : (bias === 'BULLISH' ? 35 : 50);
+        if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') sellConfidence -= 15;
+
+        const isExtended = currentPrice < ema20_m15 - (atr14 * 0.5);
+        const isTooExtended = currentPrice < ema20_m15 - (atr14 * 2.5);
+
+        if (isTooExtended) {
+          proactivePlans.push({
+            id: `ai-plan-follow-sell-${symbol}`,
+            type: 'WAIT',
+            title: '🚫 งดขายไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
+            entry: currentPrice,
+            stopLoss: currentPrice + atrSL,
+            takeProfit: currentPrice - atrTP,
+            reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวลงร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวต้านลดไฮฐานใหม่เพื่อความปลอดภัย`,
+            confidence: 10,
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: 'Wait for price pullback',
+            timeframe: 'M15',
+          });
+        } else if (isExtended) {
+          // Extended from EMA: Recommend waiting for pullback (Lower High / ย่อไฮ)
+          const entry1 = ema20_m15 - (atr14 * 0.2);
+          const entry2 = ema20_m15;
+          const entry3 = ema20_m15 + (atr14 * 0.5);
+          const stopLoss = ema20_m15 + (atr14 * 1.5);
+          const takeProfit = entry1 - (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
+
+          proactivePlans.push({
+            id: `ai-plan-follow-sell-${symbol}`,
+            type: 'SELL_LIMIT',
+            title: bias === 'BEARISH' ? 'ดักขายตอนเด้งตัว / ย่อไฮ' : 'ดักขายสวนเทรนด์เมื่อเด้งตัว (Counter-Sell Pullback)',
+            entry: entry1,
+            entry1,
+            entry2,
+            entry3,
+            stopLoss,
+            takeProfit,
+            reason: bias === 'BEARISH'
+              ? `ทิศทางหลักเป็นขาลง แต่ราคาปัจจุบันต่ำเกินไป ควรรอราคารีบาวด์ขึ้นมาสร้างฐานแนวต้านย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`
+              : `เทรนด์หลักเป็นขาขึ้น การดักขายมีความเสี่ยงสูง ควรรอราคาฟื้นตัวขึ้นไปสร้างจุดย่อไฮใกล้ EMA 20 (${ema20_m15.toFixed(2)}) ก่อนพิจารณา Sell สั้นๆ`,
+            confidence: Math.min(95, Math.max(10, sellConfidence + (bias === 'BEARISH' ? 5 : 0))),
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: bias === 'BEARISH' ? 'M15 pullback holds below EMA20' : 'Counter-trend Scalping Setup',
+            timeframe: 'M15',
+          });
         } else {
-          let sellConfidence = Math.round(trendStrength);
-          if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') sellConfidence -= 15;
-          
-          const isExtended = currentPrice < ema20_m15 - (atr14 * 0.5);
-          const isTooExtended = currentPrice < ema20_m15 - (atr14 * 2.5);
-          
-          if (isTooExtended) {
-            proactivePlans.push({
-              id: `ai-plan-follow-sell-${symbol}`,
-              type: 'WAIT',
-              title: '🚫 งดขายไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
-              entry: currentPrice,
-              stopLoss: currentPrice + atrSL,
-              takeProfit: currentPrice - atrTP,
-              reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวลงร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวต้านลดไฮฐานใหม่เพื่อความปลอดภัย`,
-              confidence: 10,
-            });
-          } else if (isExtended) {
-            // Extended from EMA: Recommend waiting for pullback (Lower High / ย่อไฮ)
-            const entry1 = ema20_m15 - (atr14 * 0.2);
-            const entry2 = ema20_m15;
-            const entry3 = ema20_m15 + (atr14 * 0.5);
-            const stopLoss = ema20_m15 + (atr14 * 1.5);
-            const takeProfit = entry1 - (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
-            
-            proactivePlans.push({
-              id: `ai-plan-follow-sell-${symbol}`,
-              type: 'SELL_LIMIT',
-              title: 'ดักขายตอนเด้งตัว / ย่อไฮ',
-              entry: entry1,
-              entry1,
-              entry2,
-              entry3,
-              stopLoss,
-              takeProfit,
-              reason: `ทิศทางหลักเป็นขาลง แต่ราคาปัจจุบันต่ำเกินไป ควรรอราคารีบาวด์ขึ้นมาสร้างฐานแนวต้านย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`,
-              confidence: Math.min(95, Math.max(10, sellConfidence + 5)),
-              strategyId: 'follow_trend_ema20_pullback',
-              strategyMode: 'FOLLOW_TREND',
-              strategyLabel: 'Follow trend pullback',
-              confirmation: 'M15 pullback holds below EMA20',
-              timeframe: 'M15',
-            });
-          } else {
-            // Not extended: Recommend selling at current resistance base
-            proactivePlans.push({
-              id: `ai-plan-follow-sell-${symbol}`,
-              type: 'SELL_MARKET',
-              title: 'ขายสะสมที่แนวต้าน / ย่อไฮ',
-              entry: currentPrice,
-              entry1: currentPrice,
-              entry2: currentPrice + diff,
-              entry3: currentPrice + diff * 2,
-              stopLoss: currentPrice + atrSL,
-              takeProfit: currentPrice - atrTP,
-              reason: `กราฟเป็นแนวโน้มขาลง และราคาปัจจุบันมีการฟื้นตัวขึ้นมาในโซนแนวต้าน/ย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าขายที่ได้เปรียบ`,
-              confidence: Math.max(10, sellConfidence),
-              strategyId: 'follow_trend_ema20_pullback',
-              strategyMode: 'FOLLOW_TREND',
-              strategyLabel: 'Follow trend pullback',
-              confirmation: 'M15 stays below EMA20 with H1 alignment',
-              timeframe: 'M15',
-            });
-          }
+          // Not extended: Recommend selling at current resistance base
+          proactivePlans.push({
+            id: `ai-plan-follow-sell-${symbol}`,
+            type: 'SELL_MARKET',
+            title: bias === 'BEARISH' ? 'ขายสะสมที่แนวต้าน / ย่อไฮ' : 'ขายสะสมสวนเทรนด์ (Counter-Sell at Resistance)',
+            entry: currentPrice,
+            entry1: currentPrice,
+            entry2: currentPrice + diff,
+            entry3: currentPrice + diff * 2,
+            stopLoss: currentPrice + atrSL,
+            takeProfit: currentPrice - atrTP,
+            reason: bias === 'BEARISH'
+              ? `กราฟเป็นแนวโน้มขาลง และราคาปัจจุบันมีการฟื้นตัวขึ้นมาในโซนแนวต้าน/ย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าขายที่ได้เปรียบ`
+              : `กราฟเป็นแนวโน้มขาขึ้น การเข้าขายในโซนนี้ถือเป็นจุดสวนเทรนด์ ควรเน้นเล่นรอบสั้นและตั้งจุดตัดขาดทุนอย่างเข้มงวด`,
+            confidence: Math.max(10, sellConfidence),
+            strategyId: 'follow_trend_ema20_pullback',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'Follow trend pullback',
+            confirmation: bias === 'BEARISH' ? 'M15 stays below EMA20 with H1 alignment' : 'Counter-trend Scalping Setup',
+            timeframe: 'M15',
+          });
         }
       }
 
@@ -1828,25 +2322,45 @@ export async function GET(request?: Request) {
         prisma.systemSetting.findUnique({ where: { key: warningSettingKey } }),
         prisma.systemSetting.findUnique({ where: { key: researchSettingKey } }),
       ]);
-      
+
       const fundamentalBias = fundamentalBiasSetting?.value || 'NEUTRAL';
       const fundamentalWarning = fundamentalWarningSetting?.value || '';
-      const strategyResearch = StrategyResearchService.parseReport(strategyResearchSetting?.value);
+      let strategyResearch = StrategyResearchService.parseReport(strategyResearchSetting?.value);
+      if (!isPublic) {
+        strategyResearch = await ensureResearchUpkeep(symbol, strategyResearch);
+      }
       const hasFreshTradeStructure = hasM5Mt5Base || hasM15Mt5Base;
       const eligibleProactivePlans = !hasFreshTradeStructure
         ? []
         : hasM5Mt5Base
           ? proactivePlans
           : proactivePlans.filter((plan) => !isM5DependentPlan(plan));
-      let recommendationPlans = eligibleProactivePlans
+      let recommendationPlans: RecommendationPlan[] = (isPublic ? [] : eligibleProactivePlans)
         .map((plan) => {
           const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
-          const researchIsApproved = true; // Always allow plans that meet confidence criteria to be shown to users
-          const confidence = normalizePlanConfidence(
-            researchCandidate?.status === 'APPROVED'
-              ? Math.max(plan.confidence, researchCandidate.winRate)
-              : plan.confidence,
-          );
+
+          if (researchCandidate && researchCandidate.sampleSize >= 5 && researchCandidate.winRate < 45) {
+            console.log(`[AI TUNING] Pruned low-performing strategy: ${plan.strategyId} (${researchCandidate.winRate}% over ${researchCandidate.sampleSize} samples)`);
+            return null;
+          }
+
+          if (researchCandidate && researchCandidate.liveForwardTest) {
+            const { winRate, sampleSize } = researchCandidate.liveForwardTest;
+            if (sampleSize >= 5 && winRate < 45) {
+              console.log(`[AI TUNING] Pruned low winrate recommendation strategy: ${plan.strategyId} (${winRate}% winrate over ${sampleSize} samples)`);
+              return null;
+            }
+          }
+
+          let confidence = normalizePlanConfidence(plan.confidence);
+
+          // Asian Session Rule: Penalize signals during low volume / high fakeout hours
+          const isAsianSession = currentUtcHour >= 23 || currentUtcHour < 8;
+          let planReason = plan.reason;
+          if (isAsianSession) {
+            confidence = Math.max(10, confidence - 25);
+            planReason = `(ช่วงเอเชียวอลุ่มต่ำ - เพิ่มความระมัดระวัง) ${planReason}`;
+          }
 
           // Dynamic Optimization: Auto-calibrate levels based on optimized research parameters
           let stopLoss = plan.stopLoss;
@@ -1855,36 +2369,63 @@ export async function GET(request?: Request) {
             const optParams = researchCandidate.parameters;
             const entry = plan.entry;
             const isBuy = plan.direction === 'BUY' || plan.type?.includes('BUY');
-            
+
             if (optParams.slPoints) {
               const slDist = optParams.slPoints * 0.01;
               stopLoss = isBuy ? entry - slDist : entry + slDist;
-              
+
               const tpDist = slDist * (optParams.riskReward || 2.0);
               takeProfit = isBuy ? entry + tpDist : entry - tpDist;
             }
           }
 
-          return {
+          const candidatePlan: RecommendationPlan = {
             ...plan,
             stopLoss: roundPrice(stopLoss),
             takeProfit: roundPrice(takeProfit),
             confidence,
+            reason: planReason,
             researchStatus: researchCandidate?.status || (strategyResearch ? 'RESEARCHING' : 'NOT_RUN'),
             researchWinRate: researchCandidate?.winRate ?? null,
             researchSampleSize: researchCandidate?.sampleSize ?? 0,
-            researchApproved: researchIsApproved,
+          };
+
+          return {
+            ...candidatePlan,
+            ...buildPlanRiskProfile(candidatePlan, {
+              currentPrice,
+              volatility,
+              h1Bias,
+              m15Bias,
+              researchSampleSize: candidatePlan.researchSampleSize || 0,
+              fundamentalBias,
+              fundamentalWarning,
+            }),
           };
         })
-        .filter((plan) =>
+        .filter((plan): plan is NonNullable<typeof plan> =>
+          plan !== null &&
           plan.type !== 'WAIT' &&
           plan.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
-          plan.researchApproved,
+          (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
+          (plan.riskReward ?? 0) >= 2
         )
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, 6);
 
-      const activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
+      let activeOrderPlan: RecommendationPlan | null = null;
+      if (isPublic) {
+        const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
+        if (openTrackingPlan) {
+          activeOrderPlan = openTrackingPlan;
+        } else {
+          const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
+          const storedPlan = parseStoredOrderPlan(storedSetting?.value);
+          activeOrderPlan = storedPlan && !isPlanStale(storedPlan, currentPrice, now) ? storedPlan : null;
+        }
+      } else {
+        activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
+      }
       if (activeOrderPlan) {
         recommendationPlans = [
           activeOrderPlan,
@@ -1896,31 +2437,6 @@ export async function GET(request?: Request) {
         decisionChart.orderPlan = activeOrderPlan;
       }
 
-      // Generate Speculative/High-Risk plans (confidence 50-64 OR strategy is researching)
-      const speculativePlans = eligibleProactivePlans
-        .map((plan) => {
-          const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
-          const confidence = normalizePlanConfidence(plan.confidence);
-          return {
-            ...plan,
-            stopLoss: roundPrice(plan.stopLoss),
-            takeProfit: roundPrice(plan.takeProfit),
-            confidence,
-            researchStatus: researchCandidate?.status || (strategyResearch ? 'RESEARCHING' : 'NOT_RUN'),
-            researchWinRate: researchCandidate?.winRate ?? null,
-            researchSampleSize: researchCandidate?.sampleSize ?? 0,
-          };
-        })
-        .filter((plan) =>
-          plan.type !== 'WAIT' &&
-          plan.id !== activeOrderPlan?.id &&
-          plan.id !== activeOrderPlan?.sourcePlanId &&
-          ((plan.confidence >= 50 && plan.confidence < MIN_RECOMMENDATION_CONFIDENCE) || 
-           (plan.researchStatus === 'RESEARCHING' && plan.confidence >= 50))
-        )
-        .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, 3);
-
       marketIntelligence[symbol] = {
         currentPrice,
         bias,
@@ -1929,19 +2445,20 @@ export async function GET(request?: Request) {
         nearestSupport,
         nearestResistance,
         dangerZones,
-        proactivePlans: recommendationPlans,
-        speculativePlans,
-        activeOrderPlan,
+        proactivePlans: isPublic ? [] : recommendationPlans,
+        activeOrderPlan: isPublic ? null : activeOrderPlan,
+        hasActivePlan: Boolean(activeOrderPlan),
         recommendationPolicy: {
           minConfidence: MIN_RECOMMENDATION_CONFIDENCE,
+          maxRiskScore: MAX_RECOMMENDATION_RISK_SCORE,
           researchRequiredAfterRun: true,
           freshMt5CandlesRequired: true,
           freshTradeStructure: hasFreshTradeStructure,
           hiddenCandidates: proactivePlans.length - recommendationPlans.length,
         },
-        strategyResearch,
+        strategyResearch: isPublic ? null : strategyResearch,
         scalpingDecision,
-        decisionChart,
+        decisionChart: isPublic ? undefined : decisionChart,
         marketSession,
         fundamentalBias,
         fundamentalWarning,
@@ -2110,6 +2627,65 @@ export async function GET(request?: Request) {
     const latestSignal = latestSignals[0] || null;
     const xauIntelligence = marketIntelligence.XAUUSD || {};
     const latestSourceDataAt = latestEventOverall?.receivedAt?.toISOString?.() || null;
+    const storedOrderPlan = parseStoredOrderPlan((await prisma.systemSetting.findUnique({
+      where: { key: stablePlanSettingKey('XAUUSD') },
+    }))?.value);
+    const storedPlanFinishReason = storedOrderPlan && typeof xauIntelligence.currentPrice === 'number'
+      ? getPlanFinishReason(storedOrderPlan, xauIntelligence.currentPrice)
+      : null;
+    const planLifecycle = {
+      status: xauIntelligence.activeOrderPlan
+        ? 'ACTIVE_PLAN'
+        : openTrades.length > 0
+          ? 'TRACKING_OPEN_TRADE'
+          : suggestedPlans.length > 0
+            ? 'WAITING_FOR_ENTRY'
+            : recentPlanResults.length > 0
+              ? 'WAITING_FOR_NEW_REACTION'
+              : 'WAITING_FOR_SETUP',
+      label: xauIntelligence.activeOrderPlan
+        ? 'มีแผนหลักที่ล็อกไว้'
+        : openTrades.length > 0
+          ? 'กำลังวัดผลออเดอร์เปิด'
+          : suggestedPlans.length > 0
+            ? 'มีแผนรอราคาเข้า'
+            : storedPlanFinishReason === 'TP_HIT'
+              ? 'แผนก่อนหน้าถึง TP แล้ว'
+              : storedPlanFinishReason === 'SL_HIT'
+                ? 'แผนก่อนหน้าโดน SL แล้ว'
+                : 'รอราคากลับเข้าโซนใหม่',
+      nextAction: xauIntelligence.activeOrderPlan
+        ? 'ตามแผนหลักจนกว่าจะชน TP/SL หรือหมดอายุแผน'
+        : storedPlanFinishReason === 'TP_HIT'
+          ? 'ปิดผลชนะแล้ว รอราคากลับมาแนวรับ/แนวต้านเดิมเพื่อเปิดรอบใหม่'
+          : storedPlanFinishReason === 'SL_HIT'
+            ? 'ปิดผลแพ้แล้ว รอ confirmation รอบใหม่ก่อนเปิดแผนใหม่'
+            : suggestedPlans.length > 0
+              ? 'รอราคาแตะ entry ของแผนที่บันทึกไว้'
+              : 'รอ AI สร้างแผนใหม่จากแนวรับ/แนวต้านล่าสุด',
+      activePlans: openTrades.slice(0, 5).map(serializeOwnerTrade),
+      waitingPlans: suggestedPlans.slice(0, 5).map(serializeOwnerTrade),
+      recentResults: recentPlanResults.slice(0, 6).map(serializeOwnerTrade),
+      lastStoredPlan: storedOrderPlan ? {
+        id: storedOrderPlan.id,
+        title: storedOrderPlan.title,
+        direction: getPlanDirection(storedOrderPlan),
+        entry: roundPrice(storedOrderPlan.entry),
+        stopLoss: roundPrice(storedOrderPlan.stopLoss),
+        takeProfit: roundPrice(storedOrderPlan.takeProfit),
+        lockedAt: storedOrderPlan.lockedAt || null,
+        finishReason: storedPlanFinishReason,
+      } : null,
+    };
+    const labHealth = buildLabHealth({
+      report: xauIntelligence.strategyResearch || null,
+      openTrades,
+      suggestedPlans,
+      recentPlanResults,
+      latestClosedTrades,
+      mt5RealtimeState,
+      latestResearchAt: xauIntelligence.strategyResearch?.generatedAt || null,
+    });
     const ownerMetrics = {
       today: {
         timezone: 'Asia/Bangkok',
@@ -2147,6 +2723,8 @@ export async function GET(request?: Request) {
         latestTargetHits: latestTargetHits.map(serializeOwnerTrade),
         latestStopLosses: latestStopLosses.map(serializeOwnerTrade),
       },
+      labHealth,
+      planLifecycle,
       subscription: {
         activeMembers,
         cancelledMembers,
@@ -2179,6 +2757,8 @@ export async function GET(request?: Request) {
       suggestedPlansCount: suggestedPlans.length,
       suggestedPlans,
       recentPlanResults,
+      planLifecycle,
+      labHealth,
       latestSignals,
       winRate,
       netR,
@@ -2213,7 +2793,7 @@ export async function GET(request?: Request) {
       }
     };
 
-    // Cache the response
+    // Cache the response in memory
     if (isPublic) {
       globalFetchCache.cachedPublicStats[fullCacheKey] = responseData;
       globalFetchCache.cachedPublicTime[fullCacheKey] = Date.now();
@@ -2221,6 +2801,104 @@ export async function GET(request?: Request) {
       globalFetchCache.cachedAdminStats[fullCacheKey] = responseData;
       globalFetchCache.cachedAdminTime[fullCacheKey] = Date.now();
     }
+
+    // Pre-calculate and write to Database Cache
+    if (isPlanAutomation) {
+      const adminResponseData = responseData;
+
+      const viewerResponseData = {
+        ...adminResponseData,
+        mt5Connection: {
+          ...adminResponseData.mt5Connection,
+          recentEvents: [],
+        },
+        ownerMetrics: {
+          ...adminResponseData.ownerMetrics,
+          subscription: {
+            activeMembers: 0,
+            cancelledMembers: 0,
+            cancelledPayments: 0,
+            revenueTotal: 0,
+            revenueThisMonth: 0,
+            revenueToday: 0,
+            approvedPayments: 0,
+            approvedPaymentsThisMonth: 0,
+            approvedPaymentsToday: 0,
+          },
+        },
+      };
+
+      const publicResponseData = {
+        ...adminResponseData,
+        totalSignals: 0,
+        totalTrades: 0,
+        openTradesCount: 0,
+        openTrades: [],
+        suggestedPlansCount: 0,
+        suggestedPlans: [],
+        recentPlanResults: [],
+        latestSignals: [],
+        winRate: 0,
+        netR: 0,
+        bestSetup: 'N/A',
+        worstSetup: 'N/A',
+        zoneCount: 0,
+        winCount: 0,
+        lossCount: 0,
+        mt5Connection: {
+          ...adminResponseData.mt5Connection,
+          recentEvents: [],
+        },
+        marketIntelligence: {
+          XAUUSD: {
+            ...adminResponseData.marketIntelligence.XAUUSD,
+            proactivePlans: [],
+            activeOrderPlan: null,
+            strategyResearch: null,
+            decisionChart: undefined,
+          },
+        },
+        ownerMetrics: undefined,
+      };
+
+      try {
+        await Promise.all([
+          prisma.systemSetting.upsert({
+            where: { key: 'CACHE_DASHBOARD_STATS_PUBLIC' },
+            update: { value: JSON.stringify(publicResponseData) },
+            create: { key: 'CACHE_DASHBOARD_STATS_PUBLIC', value: JSON.stringify(publicResponseData) },
+          }),
+          prisma.systemSetting.upsert({
+            where: { key: 'CACHE_DASHBOARD_STATS_VIEWER' },
+            update: { value: JSON.stringify(viewerResponseData) },
+            create: { key: 'CACHE_DASHBOARD_STATS_VIEWER', value: JSON.stringify(viewerResponseData) },
+          }),
+          prisma.systemSetting.upsert({
+            where: { key: 'CACHE_DASHBOARD_STATS_ADMIN' },
+            update: { value: JSON.stringify(adminResponseData) },
+            create: { key: 'CACHE_DASHBOARD_STATS_ADMIN', value: JSON.stringify(adminResponseData) },
+          }),
+        ]);
+        console.log('[Dashboard Cache] Updated all 3 database caches successfully.');
+      } catch (cacheWriteErr) {
+        console.error('[Dashboard Cache] Failed to write database caches:', cacheWriteErr);
+      }
+
+      // Return the public version for the automation caller
+      return NextResponse.json(publicResponseData, { headers: noStoreHeaders });
+    }
+
+    // Fallback cache write for normal page hits that missed the cache
+    const cacheKey = isPublic 
+      ? 'CACHE_DASHBOARD_STATS_PUBLIC'
+      : userRole === 'admin'
+        ? 'CACHE_DASHBOARD_STATS_ADMIN'
+        : 'CACHE_DASHBOARD_STATS_VIEWER';
+    prisma.systemSetting.upsert({
+      where: { key: cacheKey },
+      update: { value: JSON.stringify(responseData) },
+      create: { key: cacheKey, value: JSON.stringify(responseData) },
+    }).catch((err) => console.error('[Cache Fallback Write Failed]:', err));
 
     return NextResponse.json(responseData, { headers: noStoreHeaders });
   } catch (err: any) {

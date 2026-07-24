@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
 import { getPaidDurationDays } from '@/lib/billing';
+import { triggerDashboardCacheRefresh } from '@/lib/dashboard-cache-refresh';
 
 export async function POST(req: Request) {
   // 1. Authenticate using the Mini SaaS Center API Key
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
 
       // Generate affiliate commission if applicable
       await createCommissionFromPayment(orderId);
+
+      // Refresh dashboard cache to update revenue and member counts
+      triggerDashboardCacheRefresh();
 
       console.log(`Payment order ${orderId} successfully approved and active VIP subscription applied to user ${payment.user.email}`);
 

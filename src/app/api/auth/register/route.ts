@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     if (!verificationToken || !otp) {
       return NextResponse.json(
         { error: 'กรุณากรอกรหัส OTP ยืนยันตัวตน' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -26,22 +26,14 @@ export async function POST(req: Request) {
     if (!payload || payload.email !== email) {
       return NextResponse.json(
         { error: 'โทเค็นสำหรับยืนยันตัวตนไม่ถูกต้องหรือหมดอายุ' },
-        { status: 400 }
+        { status: 400 },
       );
     }
-
     if (payload.otpCode !== otp) {
-      return NextResponse.json(
-        { error: 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง' }, { status: 400 });
     }
-
     if (Date.now() > payload.otpExpiresAt) {
-      return NextResponse.json(
-        { error: 'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสใหม่อีกครั้ง' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสใหม่อีกครั้ง' }, { status: 400 });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -50,7 +42,7 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'Email already exists. Please login instead.' },
+        { error: 'อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบแทน' },
         { status: 400 }
       );
     }

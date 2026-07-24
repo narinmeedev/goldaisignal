@@ -2,11 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
-
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
+import { getJwtSecretKey } from '@/lib/auth';
 
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const pathname = request.nextUrl.pathname;
@@ -31,7 +27,14 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       
       // Role-based protection: block non-admins from certain pages
       const role = payload.role as string;
-      const isAdminRoute = pathname.startsWith('/admin/users') || pathname.startsWith('/admin/review');
+      const adminOnlyPrefixes = [
+        '/admin/users',
+        '/admin/payments',
+        '/admin/settings',
+        '/admin/logs',
+        '/admin/affiliate-manager',
+      ];
+      const isAdminRoute = adminOnlyPrefixes.some((prefix) => pathname.startsWith(prefix));
       
       if (isAdminRoute && role !== 'admin') {
         // Redirect standard users away from admin-only areas

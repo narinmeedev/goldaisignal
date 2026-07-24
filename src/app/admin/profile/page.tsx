@@ -157,7 +157,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-8 pb-12">
+    <div className="mx-auto w-full max-w-4xl space-y-8 px-4 py-5 sm:px-6 lg:px-8 pb-12">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-neutral-100 flex items-center gap-2">

@@ -157,7 +157,7 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="space-y-6 font-sans text-neutral-200 pb-12">
+    <div className="mx-auto w-full max-w-7xl space-y-6 font-sans text-neutral-200 px-4 py-5 sm:px-6 lg:px-8 pb-12">
       {/* Header Panel */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-950/80 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>

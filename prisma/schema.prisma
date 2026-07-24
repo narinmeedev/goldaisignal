@@ -1,5 +1,5 @@
 datasource db {
-  provider  = "postgresql"
+  provider  = "mysql"
 }
 
 generator client {
@@ -43,14 +43,16 @@ model ActivityLog {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   action    String   // REGISTER, LOGIN, SUBMIT_PAYMENT, PAYMENT_APPROVED, PAYMENT_REJECTED
-  details   String?  // JSON string or extra info
+  details   String?  @db.Text // JSON string or extra info
   ipAddress String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model SystemSetting {
   key       String   @id
-  value     String
+  value     String   @db.Text
   updatedAt DateTime @updatedAt
 }
 
@@ -61,7 +63,7 @@ model Payment {
   amount      Float
   slipUrl     String
   status      String   @default("pending") // pending | approved | rejected
-  notes       String?
+  notes       String?  @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -87,10 +89,14 @@ model WebhookEvent {
   source       String   @default("tradingview")
   symbol       String
   timeframe    String
-  rawPayload   String   // Storing JSON string for raw TV payload (SQLite compatible string representation)
+  rawPayload   String   @db.Text // Storing JSON string for raw TV payload (SQLite compatible string representation)
   receivedAt   DateTime @default(now())
   status       String   @default("pending") // pending | processed | rejected | error
-  errorMessage String?
+  errorMessage String?  @db.Text
+
+  @@index([receivedAt])
+  @@index([source, status, symbol])
+  @@index([symbol, source, status, receivedAt])
 }
 
 model Candle {
@@ -140,12 +146,15 @@ model Signal {
   riskLevel       String?      // Low | Medium | High
   marketCondition String?
   result          String       @default("Pending") // Win | Loss | BE | Pending
-  screenshotUrl   String?      @default("/snapshots/gold_chart_snapshot.jpg")
-  reason          String       @default("{}")      // JSON string details of setup filters
+  screenshotUrl   String?
+  reason          String       @db.Text      // JSON string details of setup filters
   fakeoutScore    Int          @default(0)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   paperTrades     PaperTrade[]
+
+  @@index([createdAt])
+  @@index([symbol, status, createdAt])
 }
 
 model PaperTrade {
@@ -159,27 +168,18 @@ model PaperTrade {
   takeProfit1          Float
   takeProfit2          Float
   exitPrice            Float?
-  result               String    @default("OPEN") // WIN | LOSS | BE | OPEN
+  result               String    @default("OPEN") // PLAN | OPEN | WIN | LOSS | BE | CANCELLED
   rrResult             Float     @default(0.0)    // Final R-multiple result
   openedAt             DateTime  @default(now())
   closedAt             DateTime?
-  notes                String?
+  notes                String?   @db.Text
   screenshotBeforeUrl  String?
   screenshotAfterUrl   String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-}
 
-model AiReview {
-  id          String   @id @default(uuid())
-  date        String   @unique // YYYY-MM-DD
-  totalTrades Int
-  winCount    Int
-  lossCount   Int
-  netR        Float
-  bestSetup   String
-  worstSetup  String
-  summary     String
-  ruleChanges String   @default("[]") // JSON string of rule adaptations
-  createdAt   DateTime @default(now())
+  @@index([result])
+  @@index([symbol, result, openedAt])
+  @@index([openedAt])
+  @@index([closedAt])
 }

@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gold AI Signal Lab — MVP Console",
-  description: "High-performance gold trading signal analysis, anti-fakeout scoring, and risk control engine.",
+  title: "Gold AI Signal | แผนเทรดทองคำ XAUUSD",
+  description: "ผู้ช่วยวิเคราะห์และวางแผนเทรดทองคำ XAUUSD พร้อม Entry, Stop Loss, Take Profit และความเสี่ยงที่อธิบายชัดเจน",
 };
 
 export default function RootLayout({
@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="th"
       className={`${kanit.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans overflow-x-hidden w-full">{children}</body>

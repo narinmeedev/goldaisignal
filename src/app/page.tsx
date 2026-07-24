@@ -1,359 +1,293 @@
 'use client';
 
-import React from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  TrendingUp, 
-  Target, 
-  Brain, 
-  Zap, 
-  ShieldCheck, 
-  ChevronRight,
-  Activity,
+import {
+  ArrowRight,
   BarChart3,
-  Crosshair,
-  Lock,
-  UserPlus,
-  LogIn,
+  Bell,
+  CheckCircle2,
+  Clock,
   CreditCard,
-  MessageCircle
+  Crown,
+  Gift,
+  LineChart,
+  LogIn,
+  MessageCircle,
+  Rocket,
+  Shield,
+  ShieldAlert,
+  Sparkles,
+  Star,
+  Target,
+  TrendingUp,
+  UserPlus,
+  Zap,
 } from 'lucide-react';
-import LiveMarketPreview from '@/components/LiveMarketPreview';
+import LiveMarketPreview, { type PublicDashboardStats } from '@/components/LiveMarketPreview';
 import { fetchDashboardStats } from '@/lib/dashboard-fetch';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 export default function LandingPage() {
-  const [stats, setStats] = React.useState<any>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [stats, setStats] = useState<PublicDashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    // Capture referral code from URL query parameters
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const ref = params.get('ref');
-      if (ref) {
-        localStorage.setItem('referred_by', ref.toUpperCase());
-        console.log('Stored referral code:', ref.toUpperCase());
-      }
-    }
+  useEffect(() => {
+    const referralCode = new URLSearchParams(window.location.search).get('ref');
+    if (referralCode) localStorage.setItem('referred_by', referralCode.toUpperCase());
 
-    const fetchStats = async () => {
+    const load = async () => {
       try {
-        const data = await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 12000, public: true });
-        setStats(data);
-      } catch (err) {
-        console.error(err);
+        setStats(await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 12_000, public: true }));
+      } catch {
+        setStats(null);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchStats();
-    const interval = setInterval(fetchStats, 10000);
-    return () => clearInterval(interval);
+    const initialTimer = window.setTimeout(load, 0);
+    const interval = window.setInterval(load, 15_000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(interval);
+    };
   }, []);
 
-  const showcasePlan = stats?.marketIntelligence?.XAUUSD?.proactivePlans?.find((plan: any) =>
-    plan.type !== 'WAIT' &&
-    typeof plan.confidence === 'number' &&
-    plan.confidence >= 70
-  );
-  const showcasePrice = (value?: number) =>
-    typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : 'รอ';
-
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-amber-500/30 selection:text-amber-200 pb-20 md:pb-0 w-full overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] shrink-0">
-              <Zap className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent leading-tight">GOLD AI SIGNAL</span>
-              <span className="text-[8px] sm:text-[10px] tracking-widest text-amber-500/80 uppercase font-mono leading-tight mt-0.5">Intelligence Lab</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-            <Link href="/login" className="text-xs sm:text-sm font-medium text-neutral-400 hover:text-white transition-colors">
-              เข้าสู่ระบบ
-            </Link>
-            <Link 
-              href="/pricing" 
-              className="px-3 py-2 sm:px-5 sm:py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_25px_rgba(245,158,11,0.5)] hover:-translate-y-0.5"
-            >
-              ทดลองฟรี
+    <div className="min-h-screen bg-neutral-950 pb-24 text-neutral-100 md:pb-0">
+      {/* Top Navbar */}
+      <nav className="sticky top-0 z-40 border-b border-neutral-900 bg-neutral-950/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+              <Zap className="h-5 w-5 text-amber-400" />
+            </span>
+            <span>
+              <strong className="block text-sm font-black tracking-tight text-neutral-100">GOLD AI SIGNAL</strong>
+              <span className="block text-[10px] font-bold text-neutral-500 uppercase tracking-wider">XAUUSD Trading Assistant</span>
+            </span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm font-semibold text-neutral-400 hover:text-white transition-colors">เข้าสู่ระบบ</Link>
+            <Link href="/pricing" className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2 text-sm font-bold text-neutral-950 hover:from-amber-300 hover:to-amber-400 transition-all shadow-[0_4px_12px_rgba(245,158,11,0.2)]">
+              <span className="flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" />ทดลองฟรี</span>
             </Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 sm:pt-40 pb-16 sm:pb-20 overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] sm:w-[800px] h-[600px] sm:h-[800px] bg-amber-500/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none" />
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-neutral-900/80 border border-neutral-800 mb-6 sm:mb-8 backdrop-blur-sm mx-auto">
-            <span className="flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span className="text-[10px] sm:text-xs font-mono text-neutral-300">ระบบ AI วิเคราะห์ตลาดทำงานแบบ Real-time 24/7</span>
+      <main>
+        {/* ═══════════ HERO ═══════════ */}
+        <section className="border-b border-neutral-900 relative overflow-hidden">
+          <div className="absolute inset-0 z-0">
+            <img src="/hero-bg.jpg" alt="" className="h-full w-full object-cover object-center" />
+            <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/80 via-neutral-950/90 to-neutral-950" />
           </div>
-          
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-6 sm:mb-8 leading-tight">
-            เทรดทองคำอย่างมั่นใจ <br className="hidden sm:block" />
-            ด้วย <span className="bg-gradient-to-r from-amber-300 via-amber-500 to-orange-500 bg-clip-text text-transparent">สมองกลอัจฉริยะ</span>
-          </h1>
-          
-          <p className="text-base sm:text-lg md:text-xl text-neutral-400 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed px-2">
-            เลิกเดาทางตลาด! ให้ AI ช่วยวิเคราะห์แนวโน้ม สแกนโซนรับต้าน และวางแผนการเทรด (Entry, SL, TP) ให้คุณแบบอัตโนมัติ แม่นยำ และรู้ทันทุกความผันผวน
-          </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4 sm:px-0">
-            <Link 
-              href="/pricing" 
-              className="w-full sm:w-auto px-6 py-3.5 sm:px-8 sm:py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-bold rounded-2xl transition-all shadow-[0_0_30px_rgba(245,158,11,0.4)] hover:shadow-[0_0_40px_rgba(245,158,11,0.6)] hover:-translate-y-1 flex items-center justify-center gap-2 text-base sm:text-lg"
-            >
-              เริ่มต้นทดลองใช้งานฟรี <ChevronRight className="h-5 w-5" />
-            </Link>
-            <Link 
-              href="#features" 
-              className="w-full sm:w-auto px-6 py-3.5 sm:px-8 sm:py-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-medium rounded-2xl transition-all flex items-center justify-center text-base sm:text-lg"
-            >
-              ดูฟีเจอร์ทั้งหมด
-            </Link>
+          <div className="relative z-10 mx-auto max-w-5xl px-4 pb-10 pt-16 text-center sm:px-6 sm:pb-14 sm:pt-20">
+            <div className="mx-auto mb-6 flex w-fit items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3.5 py-1 text-[10px] font-black text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] uppercase tracking-wider">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+              </span>
+              Gold AI Trade Assistant Active
+            </div>
+            <h1 className="mx-auto mt-4 max-w-4xl text-3xl font-black leading-tight sm:text-5xl md:text-6xl bg-gradient-to-b from-neutral-100 via-neutral-100 to-neutral-400 bg-clip-text text-transparent">
+              แผนเทรดทองคำ XAUUSD<br className="hidden sm:inline" /> ที่ชัดเจนก่อนตัดสินใจ
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
+              ระบบสรุปแผนหลักเพียงแผนเดียว Real-time พร้อม Entry · SL · TP · Risk/Reward ชัดเจน ไม่ส่งแผนเมื่อคุณภาพไม่ผ่านเกณฑ์
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row px-4">
+              <Link href="/pricing" className="inline-flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-7 text-base font-bold text-neutral-950 hover:from-amber-300 hover:to-amber-400 shadow-[0_4px_24px_rgba(245,158,11,0.3)] transition-all">
+                <Rocket className="h-5 w-5" /> เริ่มทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน
+              </Link>
+              <Link href="/login" className="inline-flex h-13 items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 px-6 font-semibold text-neutral-200 hover:bg-neutral-800 transition-all">
+                <LogIn className="h-4 w-4" /> เข้าสู่ระบบสมาชิก
+              </Link>
+            </div>
           </div>
-        </div>
-      </section>
-
-      {/* Live Market Preview Section */}
-      <section className="pb-16 sm:pb-24 relative z-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <LiveMarketPreview stats={stats} loading={loading} />
-        </div>
-      </section>
-
-      {/* Feature Showcase */}
-      <section id="features" className="py-16 sm:py-24 bg-neutral-950 border-t border-neutral-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-12 sm:mb-20">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6">ฟีเจอร์ระดับโปร <br className="sm:hidden"/>ในราคาที่จับต้องได้</h2>
-            <p className="text-neutral-400 max-w-2xl mx-auto text-base sm:text-lg px-2">เครื่องมือวิเคราะห์ตลาดครบวงจร ที่ถูกออกแบบมาเพื่อนักเทรดทองคำโดยเฉพาะ</p>
+          <div className="relative z-10 mx-auto max-w-5xl px-4 pb-14 sm:px-6">
+            <LiveMarketPreview stats={stats} loading={loading} />
           </div>
+        </section>
 
-          <div className="grid lg:grid-cols-3 gap-8">
+        {/* ═══════════ FEATURES ═══════════ */}
+        <section className="border-b border-neutral-900">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+            <div className="text-center mb-12">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-0.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider">
+                <Star className="h-3 w-3" /> ทำไมต้อง Gold AI Signal
+              </span>
+              <h2 className="mt-4 text-2xl sm:text-3xl font-black text-neutral-100">ระบบช่วยวิเคราะห์ที่ออกแบบมาเพื่อเทรดเดอร์ทองคำ</h2>
+            </div>
             
-            {/* Feature 1: Market Intelligence */}
-            {(() => {
-              const xauIntel = stats?.marketIntelligence?.XAUUSD;
-              const goldBias = xauIntel?.bias || 'NEUTRAL';
-              const goldTrendStrength = xauIntel?.trendStrength || 50;
-              return (
-                <div className="bg-neutral-900/50 border border-neutral-800 rounded-3xl p-8 hover:border-amber-500/50 transition-colors group">
-                  <div className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform border ${
-                    loading 
-                      ? 'bg-neutral-800 border-neutral-700 text-neutral-500' 
-                      : goldBias === 'BULLISH' 
-                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                      : goldBias === 'BEARISH' 
-                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
-                      : 'bg-neutral-800 border-neutral-700 text-neutral-400'
-                  }`}>
-                    <Activity className="h-7 w-7" />
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                { icon: Target, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', title: 'หนึ่งแผนหลัก · ไม่ซ้ำซ้อน', desc: 'ระบบจะมีแผนที่ยังทำงานอยู่เพียงแผนเดียว ไม่มีสัญญาณชุดใหม่มาทับกัน แผนจะอยู่จนกว่าจะเข้าเงื่อนไขหรือหมดอายุ' },
+                { icon: ShieldAlert, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', title: 'ประเมินความเสี่ยงทุกแผน', desc: 'ทุกแผนมาพร้อมคะแนนความเสี่ยง 0-100 วิเคราะห์จากความผันผวน ทิศทางขัดแย้ง ข่าว และปัจจัยอื่นๆ ชัดเจน' },
+                { icon: BarChart3, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', title: 'วัดผลโปร่งใส · ตรวจสอบได้', desc: 'ทุกแผนที่ราคาแตะจุดเข้าจะถูกติดตามจนชน TP/SL เพื่อสรุป Win rate และ R-multiple จากข้อมูลจริงแบบไร้การบิดเบือน' },
+                { icon: Bell, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20', title: 'แจ้งเตือน LINE ทันที', desc: 'เมื่อระบบออกแผนใหม่ สมาชิกจะได้รับแจ้งเตือนผ่าน LINE ทันที ไม่พลาดจังหวะเทรดสำคัญตลอด 24 ชั่วโมง' },
+                { icon: LineChart, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', title: 'แนวรับแนวต้านจากโครงสร้างจริง', desc: 'คำนวณจากข้อมูลแท่งเทียน M15 และ H1 จาก MT5 โดยตรง ไม่ใช้การลากเส้นด้วยมือ ทำให้ได้ระดับราคาที่แม่นยำ' },
+                { icon: Shield, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', title: 'ข้อมูล Real-time จาก MT5', desc: 'ระบบเชื่อมตรงกับ MetaTrader 5 เพื่อรับข้อมูลราคาและแท่งเทียน XAUUSD แบบ Real-time ไม่ใช้ข้อมูลจากแหล่งที่สาม' },
+              ].map(({ icon: Icon, color, bg, title, desc }) => (
+                <div key={title} className="group bg-neutral-900/30 border border-neutral-900 p-6 rounded-2xl shadow-xl hover:border-neutral-800 hover:bg-neutral-900/50 transition-all duration-300">
+                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${bg}`}>
+                    <Icon className={`h-5 w-5 ${color}`} />
                   </div>
-                  <h3 className="text-2xl font-bold mb-4">ศูนย์วิเคราะห์ตลาด <br/><span className="text-sm font-mono text-neutral-500 font-normal">MARKET INTELLIGENCE</span></h3>
-                  <p className="text-neutral-400 mb-8 leading-relaxed">
-                    รู้ทิศทางตลาด (Directional Bias) ก่อนใคร พร้อมมาตรวัดความแรงเทรนด์ (Trend Strength) และประเมินความผันผวน (Volatility) แบบเรียลไทม์
-                  </p>
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-neutral-500">ทิศทางตลาด</span>
-                      {loading ? (
-                        <span className="text-xs text-neutral-500 animate-pulse font-mono">กำลังประมวลผล...</span>
-                      ) : (
-                        <span className={`font-bold font-sans text-xs ${
-                          goldBias === 'BULLISH' 
-                            ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]' 
-                            : goldBias === 'BEARISH' 
-                            ? 'text-rose-450 drop-shadow-[0_0_8px_rgba(244,63,94,0.4)]' 
-                            : 'text-neutral-400'
-                        }`}>
-                          {goldBias === 'BULLISH' ? 'มองขึ้น (BULLISH)' : goldBias === 'BEARISH' ? 'มองลง (BEARISH)' : 'ไซด์เวย์ (NEUTRAL)'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-neutral-500">ความแรงเทรนด์</span>
-                        <span className="text-xs font-bold text-indigo-400">
-                          {loading ? '...' : `${goldTrendStrength}%`}
-                        </span>
-                      </div>
-                      <div className="w-full bg-neutral-800 rounded-full h-1.5">
-                        <div 
-                          className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" 
-                          style={{ width: `${loading ? 50 : goldTrendStrength}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="mt-4 text-sm font-bold text-neutral-100">{title}</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
                 </div>
-              );
-            })()}
-
-            {/* Feature 2: Zone Radar */}
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-3xl p-8 hover:border-amber-500/50 transition-colors group">
-              <div className="h-14 w-14 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <Crosshair className="h-7 w-7 text-emerald-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4">เรดาร์สแกนโซน <br/><span className="text-sm font-mono text-neutral-500 font-normal">LIVE ZONE RADAR</span></h3>
-              <p className="text-neutral-400 mb-8 leading-relaxed">
-                สแกนหาแนวรับ-แนวต้านที่แข็งแกร่งที่สุด พร้อมบอกระยะห่างจากราคาปัจจุบัน ให้คุณรู้จุดเข้าทำกำไรที่ได้เปรียบที่สุด
-              </p>
-              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 space-y-3">
-                <div className="text-[10px] text-rose-500 font-mono mb-2">แนวต้าน (SELL ZONES)</div>
-                <div className="flex justify-between bg-rose-500/5 border border-rose-500/10 p-2 rounded-lg text-xs font-mono">
-                  <span className="text-neutral-300">$4466.20 - $4467.20</span>
-                  <span className="text-rose-400">+$13.95</span>
-                </div>
-                <div className="text-[10px] text-emerald-500 font-mono mt-4 mb-2">แนวรับ (BUY ZONES)</div>
-                <div className="flex justify-between bg-emerald-500/5 border border-emerald-500/10 p-2 rounded-lg text-xs font-mono">
-                  <span className="text-neutral-300">$4447.06 - $4448.06</span>
-                  <span className="text-emerald-400">-$4.19</span>
-                </div>
-              </div>
+              ))}
             </div>
-
-            {/* Feature 3: Proactive Strategies */}
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-3xl p-8 hover:border-amber-500/50 transition-colors group">
-              <div className="h-14 w-14 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <Brain className="h-7 w-7 text-indigo-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4">แผนเทรดแนะนำ <br/><span className="text-sm font-mono text-neutral-500 font-normal">PROACTIVE STRATEGIES</span></h3>
-              <p className="text-neutral-400 mb-8 leading-relaxed">
-                AI คำนวณจุดเข้า (Entry), จุดตัดขาดทุน (SL), และจุดทำกำไร (TP) ให้เสร็จสรรพ พร้อมบอกเปอร์เซ็นต์ความมั่นใจในแต่ละแผน
-              </p>
-              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded ${
-                    showcasePlan?.type?.includes('BUY')
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : showcasePlan?.type?.includes('SELL')
-                        ? 'bg-rose-500/20 text-rose-400'
-                        : 'bg-amber-500/20 text-amber-300'
-                  }`}>
-                    {showcasePlan?.type || 'WAIT'}
-                  </span>
-                  <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">
-                    {showcasePlan ? `ความมั่นใจ ${showcasePlan.confidence}%` : 'รอแผน >70%'}
-                  </span>
-                </div>
-                <p className="text-sm font-bold mb-4">{showcasePlan?.title || 'รอข้อมูล MT5 สดและแผนที่ผ่านเกณฑ์'}</p>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
-                  <div className="bg-neutral-900 p-2 rounded-lg">
-                    <div className="text-[9px] text-neutral-500 mb-1">ENTRY</div>
-                    <div>{showcasePrice(showcasePlan?.entry)}</div>
-                  </div>
-                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-2 rounded-lg">
-                    <div className="text-[9px] mb-1">SL</div>
-                    <div>{showcasePrice(showcasePlan?.stopLoss)}</div>
-                  </div>
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2 rounded-lg">
-                    <div className="text-[9px] mb-1">TP</div>
-                    <div>{showcasePrice(showcasePlan?.takeProfit)}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Pricing CTA Section */}
-      <section className="py-16 sm:py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-amber-500/5" />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 relative z-10 text-center">
-          <ShieldCheck className="h-12 w-12 sm:h-16 sm:w-16 text-amber-500 mx-auto mb-4 sm:mb-6" />
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6">เริ่มต้นปั้นพอร์ตทองคำวันนี้</h2>
-          <p className="text-base sm:text-xl text-neutral-400 mb-8 sm:mb-10 px-2">ระบบพรีเมียมในราคาที่ทุกคนเข้าถึงได้ ไม่มีค่าธรรมเนียมแอบแฝง</p>
+        {/* ═══════════ SERVICE FLOW ═══════════ */}
+        <section className="border-b border-neutral-900 bg-neutral-900/10">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+            <div className="text-center max-w-2xl mx-auto mb-10">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/40 px-3 py-0.5 text-[10px] font-bold text-neutral-300 uppercase tracking-wider">
+                <TrendingUp className="h-3 w-3 text-amber-400" /> ขั้นตอนการทำงาน
+              </span>
+              <h2 className="mt-4 text-2xl font-black text-neutral-100">ข้อมูลจริงเข้าสู่ระบบ สรุปผลกลับไปพัฒนาระบบ</h2>
+              <p className="mt-3 text-sm text-neutral-400">ทุกขั้นตอนทำงานอัตโนมัติ ตั้งแต่รับราคาจาก MT5 จนถึงส่งแจ้งเตือนและเก็บสถิติวัดผล</p>
+            </div>
+            <div className="rounded-2xl border border-neutral-900 bg-neutral-950/60 p-3 sm:p-5 shadow-2xl overflow-hidden">
+              <img src="/service-flow.jpg" alt="Service Flow: MT5 → AI Analysis → Quality Filter → LINE Alerts → Performance Analytics" className="w-full h-auto rounded-xl" />
+            </div>
+          </div>
+        </section>
+
+        {/* ═══════════ PRICING — HERO SECTION ═══════════ */}
+        <section className="relative overflow-hidden">
+          {/* Glow decorations */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-0 right-0 w-72 h-72 bg-emerald-500/3 rounded-full blur-[100px] pointer-events-none" />
           
-          <div className="bg-neutral-900/80 backdrop-blur-md border border-amber-500/30 rounded-3xl p-6 sm:p-8 md:p-12 shadow-[0_0_50px_rgba(245,158,11,0.1)]">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-              <div className="text-left w-full">
-                <h3 className="text-xl sm:text-2xl font-bold mb-2">สมาชิกรายเดือน PRO (PRO Plan)</h3>
-                <p className="text-sm sm:text-base text-neutral-400">เข้าถึงทุกฟีเจอร์ AI วิเคราะห์และส่งสัญญาณแบบไร้ขีดจำกัด</p>
-                <ul className="mt-6 space-y-3">
-                  {['อัปเดตสถานะตลาดเรียลไทม์ 24/7', 'สแกนโซนรับ-ต้านอัตโนมัติข้าม Timeframe (MTF)', 'แผนการเทรดละเอียด (Entry, SL, TP)', 'ระบบแจ้งเตือนจุดเข้าซื้อขายผ่าน Line/Telegram'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs sm:text-sm text-neutral-300">
-                      <Zap className="h-4 w-4 text-amber-500 shrink-0" /> {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          <div className="mx-auto max-w-5xl px-4 py-20 sm:px-6 relative z-10">
+            <div className="text-center mb-12">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-3.5 py-1 text-[10px] font-black text-amber-400 uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                <Crown className="h-3.5 w-3.5" /> แพ็กเกจสมาชิก PRO
+              </span>
+              <h2 className="mt-5 text-3xl sm:text-4xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                เข้าถึงแผนเทรดระดับ PRO
+              </h2>
+              <p className="mt-3 text-sm text-neutral-400 max-w-lg mx-auto">ดูแผนพร้อมวิเคราะห์ความเสี่ยง รับแจ้งเตือนทันทีผ่าน LINE และตรวจสอบสถิติได้ตลอดเวลา</p>
+            </div>
+
+            {/* Price Card */}
+            <div className="max-w-lg mx-auto rounded-3xl border-2 border-amber-500/30 bg-gradient-to-b from-neutral-900/80 via-neutral-900/60 to-neutral-950/80 p-8 sm:p-10 shadow-[0_8px_60px_rgba(245,158,11,0.08)] relative overflow-hidden backdrop-blur-lg">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
               
-              <div className="text-center md:text-right shrink-0 w-full md:w-auto border-t md:border-t-0 border-neutral-800 pt-6 md:pt-0">
-                <div className="flex flex-col md:items-end justify-center mb-1">
-                  <span className="text-3xl sm:text-4xl font-extrabold text-amber-500">
-                    {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}
-                  </span>
-                  <span className="text-xs text-neutral-400 font-mono">ต่อเดือน ช่วงโปรโมชัน</span>
-                </div>
-                <div className="text-xs sm:text-sm text-neutral-400 mb-3 font-mono">
-                  ราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span> / ทดลองฟรี {TRIAL_DURATION_DAYS} วัน
-                </div>
-                <p className="text-emerald-400 text-[10px] sm:text-xs font-bold mb-4 leading-relaxed">
-                  สิทธิ์การทดลองใช้งาน {TRIAL_DURATION_DAYS} วัน <br />
-                  จะถูกมอบให้บัญชีใหม่ทุกบัญชีโดยอัตโนมัติเมื่อสมัครใช้งานสำเร็จ!
-                </p>
-                <Link 
-                  href="/pricing" 
-                  className="inline-block w-full px-6 sm:px-8 py-3.5 sm:py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-base sm:text-lg font-bold rounded-xl transition-transform hover:-translate-y-1 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
-                >
-                  เริ่มต้นทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน
+              {/* Badge */}
+              <div className="flex items-center justify-between mb-6">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-xs font-black text-neutral-950">
+                  <Sparkles className="h-3 w-3" /> แนะนำ
+                </span>
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                  <Gift className="h-3.5 w-3.5" /> ทดลองฟรี {TRIAL_DURATION_DAYS} วัน
+                </span>
+              </div>
+
+              {/* Plan Name */}
+              <h3 className="text-xl font-black text-neutral-100">สมาชิก PRO รายเดือน</h3>
+              
+              {/* Price */}
+              <div className="mt-5 flex items-baseline gap-2">
+                <span className="text-5xl sm:text-6xl font-black text-amber-400">{formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}</span>
+                <span className="text-neutral-500 text-sm font-bold">/เดือน</span>
+              </div>
+              <p className="mt-1.5 text-xs text-neutral-500">ราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span> · ราคาพิเศษช่วงเปิดตัว</p>
+
+              {/* CTA */}
+              <Link href="/pricing" className="mt-7 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-base font-black text-neutral-950 hover:from-amber-300 hover:to-amber-400 shadow-[0_6px_30px_rgba(245,158,11,0.3)] transition-all active:scale-[0.98]">
+                <Rocket className="h-5 w-5" /> เริ่มทดลองใช้ฟรี
+              </Link>
+              <p className="mt-3 text-center text-[11px] text-neutral-500">ไม่ต้องผูกบัตร · ยกเลิกได้ทุกเมื่อ</p>
+
+              {/* Divider */}
+              <div className="my-7 border-t border-neutral-800/80" />
+
+              {/* Feature List */}
+              <ul className="space-y-4">
+                {[
+                  { icon: Target, color: 'text-amber-400', text: 'แผนเทรดหลัก XAUUSD พร้อม Entry / SL / TP' },
+                  { icon: ShieldAlert, color: 'text-rose-400', text: 'วิเคราะห์ความเสี่ยงทุกแผน พร้อมคะแนน 0-100' },
+                  { icon: Bell, color: 'text-sky-400', text: 'แจ้งเตือนแผนใหม่ผ่าน LINE ทันที' },
+                  { icon: LineChart, color: 'text-emerald-400', text: 'แนวรับแนวต้านจากข้อมูล MT5 Real-time' },
+                  { icon: BarChart3, color: 'text-violet-400', text: 'ประวัติแผน · Win rate · สถิติ R-multiple' },
+                  { icon: Clock, color: 'text-cyan-400', text: 'ข้อมูลราคาอัปเดตทุก 10 วินาที' },
+                  { icon: MessageCircle, color: 'text-emerald-400', text: 'ช่องทางแจ้งปัญหาและแชทกับทีมงาน' },
+                ].map(({ icon: Icon, color, text }) => (
+                  <li key={text} className="flex items-start gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-neutral-900/80 border border-neutral-800 mt-0.5">
+                      <Icon className={`h-3.5 w-3.5 ${color}`} />
+                    </span>
+                    <span className="text-sm text-neutral-300 leading-snug">{text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Secondary CTA */}
+            <div className="mt-10 text-center">
+              <p className="text-sm text-neutral-400">มีบัญชีอยู่แล้ว?</p>
+              <Link href="/login" className="mt-2 inline-flex items-center gap-2 text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors">
+                <LogIn className="h-4 w-4" /> เข้าสู่ระบบสมาชิก <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══════════ FINAL CTA BANNER ═══════════ */}
+        <section className="border-t border-neutral-900">
+          <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 text-center">
+            <div className="rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/5 via-neutral-950/40 to-neutral-950 p-8 sm:p-12 relative overflow-hidden">
+              <div className="absolute -top-20 -right-20 w-60 h-60 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+              <Zap className="mx-auto h-10 w-10 text-amber-400 mb-4" />
+              <h2 className="text-2xl sm:text-3xl font-black text-neutral-100">พร้อมเทรดทองคำด้วย AI แล้วหรือยัง?</h2>
+              <p className="mt-3 text-sm text-neutral-400 max-w-md mx-auto">เริ่มต้นทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วัน ดูแผนเทรดจริง วิเคราะห์ความเสี่ยงจริง วัดผลจริง</p>
+              <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
+                <Link href="/pricing" className="inline-flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-8 text-base font-bold text-neutral-950 hover:from-amber-300 hover:to-amber-400 shadow-[0_4px_24px_rgba(245,158,11,0.25)] transition-all">
+                  <Sparkles className="h-5 w-5" /> สมัครทดลองฟรี
                 </Link>
+                <a href="https://line.me/R/ti/p/@413aryiz" target="_blank" rel="noreferrer" className="inline-flex h-13 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-6 font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all">
+                  <MessageCircle className="h-5 w-5" /> สอบถามทาง LINE
+                </a>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       {/* Footer */}
-      <footer className="border-t border-neutral-900 py-12 text-center text-neutral-500 text-sm">
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <Zap className="h-5 w-5 text-amber-500" />
-          <span className="font-bold text-white">GOLD AI SIGNAL LAB</span>
-        </div>
-        <p>© {new Date().getFullYear()} Gold AI Signal Lab. All rights reserved.</p>
-        <p className="mt-2 text-xs text-neutral-600 max-w-lg mx-auto">
-          การลงทุนมีความเสี่ยง ข้อมูลที่ให้เป็นเพียงการวิเคราะห์ทางสถิติและ AI ไม่ใช่คำแนะนำทางการเงิน ผู้ลงทุนควรศึกษาข้อมูลก่อนตัดสินใจลงทุน
+      <footer className="border-t border-neutral-900 px-4 py-12 text-center text-xs leading-relaxed text-neutral-500 bg-neutral-950">
+        <p className="font-bold text-neutral-300 tracking-wider">GOLD AI SIGNAL</p>
+        <p className="mx-auto mt-2 max-w-xl text-[11px]">
+          การเทรดทองคำมีความเสี่ยง ข้อมูลที่นำเสนอผ่านระบบนี้เป็นเครื่องมือช่วยวิเคราะห์ทางเทคนิคเท่านั้น ไม่ถือเป็นการชี้นำหรือระดมทุนใดๆ ผู้ใช้งานควรพิจารณาความเสี่ยงและตั้ง SL ทุกครั้งก่อนเข้าออเดอร์
         </p>
       </footer>
 
-      {/* Mobile Sticky Footer Menu - Golden Theme */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-neutral-950/95 backdrop-blur-xl border-t border-amber-500/20 md:hidden shadow-[0_-10px_40px_rgba(245,158,11,0.15)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 via-transparent to-amber-500/5 pointer-events-none" />
-        <div className="grid grid-cols-4 h-16 max-w-md mx-auto relative z-10">
-          <Link href="/pricing" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
-            <UserPlus className="h-5 w-5" />
-            <span className="text-[10px] font-medium tracking-wide">สมัคร</span>
-          </Link>
-          <Link href="/login" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
-            <LogIn className="h-5 w-5" />
-            <span className="text-[10px] font-medium tracking-wide">เข้าสู่ระบบ</span>
-          </Link>
-          <Link href="/checkout" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
-            <CreditCard className="h-5 w-5" />
-            <span className="text-[10px] font-medium tracking-wide">ชำระเงิน</span>
-          </Link>
-          <a href="https://line.me/R/ti/p/@413aryiz" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center gap-1 text-amber-200/50 hover:text-amber-400 transition-all hover:-translate-y-0.5">
-            <MessageCircle className="h-5 w-5" />
-            <span className="text-[10px] font-medium tracking-wide">ติดต่อเรา</span>
-          </a>
-        </div>
-        {/* iOS Safe Area spacing */}
-        <div className="h-safe-bottom"></div>
-      </div>
+      {/* Floating Glass Bottom Navigation on Mobile */}
+      <nav className="fixed inset-x-4 bottom-4 z-40 grid h-14 grid-cols-4 items-center rounded-2xl border border-neutral-900/60 bg-neutral-950/80 backdrop-blur-lg shadow-[0_8px_32px_rgba(0,0,0,0.6)] md:hidden">
+        <Link href="/pricing" className="flex flex-col items-center justify-center gap-0.5 text-[10px] text-amber-400 hover:text-amber-300 transition-colors font-bold">
+          <Sparkles className="h-4 w-4" />
+          <span>ทดลองฟรี</span>
+        </Link>
+        <Link href="/login" className="flex flex-col items-center justify-center gap-0.5 text-[10px] text-neutral-400 hover:text-white transition-colors">
+          <LogIn className="h-4 w-4" />
+          <span>เข้าสู่ระบบ</span>
+        </Link>
+        <Link href="/checkout" className="flex flex-col items-center justify-center gap-0.5 text-[10px] text-neutral-400 hover:text-white transition-colors">
+          <CreditCard className="h-4 w-4" />
+          <span>ชำระเงิน</span>
+        </Link>
+        <a href="https://line.me/R/ti/p/@413aryiz" target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center gap-0.5 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors font-bold">
+          <MessageCircle className="h-4 w-4" />
+          <span>LINE</span>
+        </a>
+      </nav>
     </div>
   );
 }

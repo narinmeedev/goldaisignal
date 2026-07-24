@@ -3,11 +3,17 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { getPaidDurationDays, getTrialDurationDays } from '@/lib/billing';
+import { getJwtSecretKey } from '@/lib/auth';
 
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
+const ALLOWED_SETTING_KEYS = new Set([
+  'MAINTENANCE_MODE',
+  'TRIAL_DURATION_DAYS',
+  'PAID_DURATION_DAYS',
+  'FUNDAMENTAL_BIAS_XAUUSD',
+  'FUNDAMENTAL_NEWS_WARNING_XAUUSD',
+  'LINE_CHANNEL_ID',
+  'LINE_CHANNEL_SECRET',
+]);
 
 async function isAdmin() {
   const cookieStore = await cookies();
@@ -27,12 +33,17 @@ export async function GET() {
   }
 
   try {
-    const settings = await prisma.systemSetting.findMany();
+    const settings = await prisma.systemSetting.findMany({
+      where: { key: { in: Array.from(ALLOWED_SETTING_KEYS) } },
+    });
     // Convert array to object key-value pairs
     const config = settings.reduce((acc: Record<string, string>, curr) => {
-      acc[curr.key] = curr.value;
+      if (curr.key !== 'LINE_CHANNEL_SECRET') acc[curr.key] = curr.value;
       return acc;
     }, {});
+    config.LINE_CHANNEL_SECRET_CONFIGURED = settings.some(
+      (setting) => setting.key === 'LINE_CHANNEL_SECRET' && Boolean(setting.value.trim()),
+    ) ? 'true' : 'false';
     
     return NextResponse.json({ success: true, settings: config });
   } catch (err: any) {
@@ -47,26 +58,30 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { key, value } = body;
-
-    if (!key || value === undefined) {
-      return NextResponse.json({ error: 'Missing key or value' }, { status: 400 });
+    const entries = body.settings && typeof body.settings === 'object'
+      ? Object.entries(body.settings)
+      : [[body.key, body.value]];
+    if (!entries.length || entries.some(([key, value]) => !ALLOWED_SETTING_KEYS.has(String(key)) || value === undefined)) {
+      return NextResponse.json({ error: 'Invalid setting key or value' }, { status: 400 });
     }
 
-    const normalizedValue =
-      key === 'TRIAL_DURATION_DAYS'
+    const normalizedEntries = entries.map(([key, value]) => {
+      const normalizedKey = String(key);
+      const normalizedValue = normalizedKey === 'TRIAL_DURATION_DAYS'
         ? String(getTrialDurationDays(value))
-        : key === 'PAID_DURATION_DAYS'
+        : normalizedKey === 'PAID_DURATION_DAYS'
           ? String(getPaidDurationDays(value))
           : String(value);
-
-    const setting = await prisma.systemSetting.upsert({
-      where: { key },
-      update: { value: normalizedValue },
-      create: { key, value: normalizedValue }
+      return [normalizedKey, normalizedValue] as const;
     });
 
-    return NextResponse.json({ success: true, setting });
+    await prisma.$transaction(normalizedEntries.map(([key, value]) => prisma.systemSetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    })));
+
+    return NextResponse.json({ success: true, updatedKeys: normalizedEntries.map(([key]) => key) });
   } catch (err: any) {
     return NextResponse.json({ error: 'Failed to update setting' }, { status: 500 });
   }

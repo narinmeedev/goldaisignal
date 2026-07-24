@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { hashPassword } from '@/lib/auth';
+import { getJwtSecretKey, hashPassword } from '@/lib/auth';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
-  return new TextEncoder().encode(secret);
-};
 
 async function isAdmin() {
   const cookieStore = await cookies();

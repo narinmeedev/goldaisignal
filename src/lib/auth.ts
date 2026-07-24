@@ -1,8 +1,11 @@
-import { jwtVerify, SignJWT } from 'jose';
+import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 import bcrypt from 'bcryptjs';
 
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET || 'gold-signal-fallback-secret-key-32-chars';
+export const getJwtSecretKey = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters.');
+  }
   return new TextEncoder().encode(secret);
 };
 
@@ -24,7 +27,7 @@ export const verifyToken = async (token: string) => {
   try {
     const { payload } = await jwtVerify(token, getJwtSecretKey());
     return payload as unknown as AuthPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
@@ -37,7 +40,7 @@ export const verifyPassword = async (password: string, hash: string) => {
   return await bcrypt.compare(password, hash);
 };
 
-export const signVerificationToken = async (payload: any) => {
+export const signVerificationToken = async (payload: JWTPayload) => {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -49,7 +52,7 @@ export const verifyVerificationToken = async (token: string) => {
   try {
     const { payload } = await jwtVerify(token, getJwtSecretKey());
     return payload;
-  } catch (error) {
+  } catch {
     return null;
   }
 };

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, signVerificationToken } from '@/lib/auth';
 import { sendOtpEmail } from '@/lib/email';
+import { randomInt } from 'node:crypto';
 
 export async function POST(req: Request) {
   try {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(password);
     
     // Generate a 6-digit random code
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = randomInt(100000, 1_000_000).toString();
     const otpExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes from now
 
     // Generate stateless verification token containing hashed password and OTP

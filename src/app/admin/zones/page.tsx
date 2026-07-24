@@ -1,254 +1,158 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Layers, RefreshCw, Star } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDownToLine, ArrowUpToLine, Layers3, Loader2, RefreshCw } from 'lucide-react';
 
 interface Zone {
   id: string;
   symbol: string;
   timeframe: string;
-  type: string;
+  type: 'SUPPORT' | 'RESISTANCE';
   priceMin: number;
   priceMax: number;
   strength: number;
   touchCount: number;
-  lastTouchedAt: string;
+  updatedAt: string;
+}
+
+interface ZonesResponse {
+  symbol: string;
+  zones: Zone[];
+  updatedAt?: string | null;
+}
+
+const formatPrice = (value: number) => value.toLocaleString('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const formatDate = (value?: string | null) => value
+  ? new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Bangkok',
+    }).format(new Date(value))
+  : '-';
+
+function ZoneList({ title, type, zones }: { title: string; type: Zone['type']; zones: Zone[] }) {
+  const isSupport = type === 'SUPPORT';
+  const Icon = isSupport ? ArrowDownToLine : ArrowUpToLine;
+  return (
+    <section className="border border-neutral-800 bg-neutral-900/50">
+      <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-4 sm:px-5">
+        <h2 className={`flex items-center gap-2 font-bold ${isSupport ? 'text-emerald-300' : 'text-rose-300'}`}>
+          <Icon className="h-5 w-5" />{title}
+        </h2>
+        <span className="text-xs text-neutral-500">{zones.length} ระดับ</span>
+      </header>
+      {zones.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-neutral-500">ยังไม่มีระดับที่ยืนยันจากแท่งเทียน MT5</p>
+      ) : (
+        <div className="divide-y divide-neutral-800">
+          {zones.map((zone) => {
+            const isStrong = zone.strength >= 4;
+            const isMedium = zone.strength === 3;
+            let highlightClass = "";
+            if (isStrong) {
+              highlightClass = isSupport 
+                ? "bg-emerald-500/5 border-l-4 border-l-emerald-500" 
+                : "bg-rose-500/5 border-l-4 border-l-rose-500";
+            } else if (isMedium) {
+              highlightClass = "bg-amber-500/5 border-l-4 border-l-amber-500";
+            }
+            return (
+              <div key={zone.id} className={`grid grid-cols-[1fr_auto] gap-4 px-4 py-4 sm:px-5 transition-all ${highlightClass}`}>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-lg font-bold text-neutral-100">{formatPrice(zone.priceMin)} - {formatPrice(zone.priceMax)}</p>
+                    {isStrong && (
+                      <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold ${isSupport ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                        ★ แข็งแรงมาก
+                      </span>
+                    )}
+                    {isMedium && (
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-300">
+                        ★ แข็งปานกลาง
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500">{zone.timeframe} · ยืนยัน {zone.touchCount} ครั้ง</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-neutral-500">ความแข็งแรง</p>
+                  <p className={`mt-1 font-bold ${isStrong ? (isSupport ? 'text-emerald-400' : 'text-rose-400') : isMedium ? 'text-amber-400' : 'text-neutral-200'}`}>
+                    {Math.min(5, zone.strength)}/5
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default function ZonesPage() {
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<ZonesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchZones = async () => {
-    try {
-      const res = await fetch('/api/admin/zones');
-      const data = await res.json();
-      if (res.ok) {
-        setZones(data);
-      } else {
-        setError(data.error || 'ไม่สามารถโหลดข้อมูลโซนแนวรับ/ต้านได้');
-      }
-    } catch {
-      setError('เกิดข้อผิดพลาดเครือข่ายในการโหลดแนวรับ/ต้าน');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const scanZones = async () => {
-    setIsLoading(true);
+  const loadZones = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch('/api/admin/zones', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        setZones(data.data);
-      } else {
-        setError(data.error || 'ไม่สามารถโหลดข้อมูลโซนแนวรับ/ต้านได้');
-      }
-    } catch {
-      setError('เกิดข้อผิดพลาดเครือข่ายในการสแกนแนวรับ/ต้าน');
+      const response = await fetch('/api/admin/zones', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'โหลดแนวรับและแนวต้านไม่สำเร็จ');
+      setData(payload);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'โหลดแนวรับและแนวต้านไม่สำเร็จ');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchZones();
   }, []);
 
-  const filteredZones = zones.filter((z) => z.symbol.toUpperCase().includes('XAU'));
+  useEffect(() => {
+    const initialLoad = window.setTimeout(loadZones, 0);
+    const timer = window.setInterval(loadZones, 60_000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(timer);
+    };
+  }, [loadZones]);
 
+  const support = useMemo(() => data?.zones.filter((zone) => zone.type === 'SUPPORT') ?? [], [data]);
+  const resistance = useMemo(() => data?.zones.filter((zone) => zone.type === 'RESISTANCE') ?? [], [data]);
 
-  const support = filteredZones.filter((z) => z.type === 'SUPPORT');
-  const resistance = filteredZones.filter((z) => z.type === 'RESISTANCE');
-  const liquidity = filteredZones.filter((z) => z.type === 'LIQUIDITY');
-
-  const renderStrengthStars = (strength: number) => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-      stars.push(
-        <Star 
-          key={i} 
-          className={`h-3 w-3 ${i <= strength ? 'text-amber-500 fill-amber-500' : 'text-neutral-700'}`} 
-        />
-      );
-    }
-    return <div className="flex gap-0.5">{stars}</div>;
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 font-mono text-sm text-amber-500 animate-pulse">
-        <RefreshCw className="h-6 w-6 animate-spin" />
-        กำลังสแกนหาจุดสวิงดัชนีระดับสูง/ต่ำ และประมวลผลความหนาแน่น...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 font-mono text-sm">
-        {error}
-      </div>
-    );
-  }
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-neutral-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />กำลังโหลดแนวรับและแนวต้าน</div>;
 
   return (
-    <div className="space-y-8 animate-fade-in font-sans">
-      {/* Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-4 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-100 flex items-center gap-2">
-            <Layers className="h-5 w-5 text-amber-500" />
-            แผนภูมิโซนแนวรับ & แนวต้าน (Swing Extreme Zones)
-          </h1>
-          <p className="text-neutral-400 text-xs mt-1">
-            โซนคัดกรองหนาแน่นซึ่งคำนวณโดยอัลกอริทึมมองหาราคาปิดที่มีนัยสำคัญระดับสวิงดัชนีผ่านกรอบเวลา H1 และ H4
-          </p>
+          <div className="flex items-center gap-2 text-amber-400"><Layers3 className="h-5 w-5" /><span className="text-xs font-semibold uppercase">Market levels</span></div>
+          <h1 className="mt-2 text-2xl font-bold">แนวรับและแนวต้านทองคำ</h1>
+          <p className="mt-1 text-sm text-neutral-400">คำนวณจากแท่งเทียน MT5 ของ {data?.symbol || 'XAUUSD'} เท่านั้น</p>
         </div>
-        <button 
-          onClick={scanZones}
-          className="p-2 border border-neutral-850 rounded-xl bg-neutral-900/40 text-neutral-400 hover:text-neutral-100 hover:border-neutral-700 transition-all cursor-pointer self-end md:self-auto"
-          title="สแกนและคำนวณโซนใหม่จากข้อมูลล่าสุด"
-        >
-          <RefreshCw className="h-4 w-4" />
+        <button onClick={loadZones} className="inline-flex h-11 items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-4 text-sm font-medium hover:border-neutral-500 hover:bg-neutral-800">
+          <RefreshCw className="h-4 w-4" />อัปเดตข้อมูล
         </button>
+      </header>
+
+      {error && <div className="border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div>}
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-500">
+        <span>สัญลักษณ์ {data?.symbol || '-'}</span>
+        <span>อัปเดต {formatDate(data?.updatedAt)}</span>
+        <span>แสดงเฉพาะระดับที่ระบบคำนวณได้จริง</span>
       </div>
 
-      <div className="flex bg-neutral-950 p-1 rounded-xl border border-neutral-900 w-full md:w-fit gap-1 text-xs overflow-x-auto hide-scrollbar">
-        <div className="px-4 py-2 rounded-lg font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-inner">
-          ทองคำ XAUUSD ({filteredZones.length})
-        </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ZoneList title="แนวรับ" type="SUPPORT" zones={support} />
+        <ZoneList title="แนวต้าน" type="RESISTANCE" zones={resistance} />
       </div>
-
-      {/* Main Grid View */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Support Column */}
-        <div className="bg-neutral-900/20 border border-neutral-900 rounded-2xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
-            <h2 className="text-xs font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2 font-mono">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              แนวรับแข็งแกร่ง (Support Zones)
-            </h2>
-            <span className="text-[10px] text-neutral-500 font-mono font-bold">{support.length} แนว</span>
-          </div>
-
-          {support.length > 0 ? (
-            <div className="space-y-4">
-              {support.map((zone) => (
-                <div key={zone.id} className="bg-neutral-900/50 border border-neutral-850 hover:border-emerald-500/20 rounded-xl p-4 transition-all space-y-3 relative group">
-                  <div className="absolute top-4 right-4 text-[9px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-900 uppercase">
-                    {zone.symbol} • {zone.timeframe}
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">กรอบระดับราคา</span>
-                    <span className="text-sm font-mono font-bold text-neutral-200">${zone.priceMin.toLocaleString()} - ${zone.priceMax.toLocaleString()}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">ความหนาแน่นระดับ</span>
-                      {renderStrengthStars(zone.strength)}
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">จำนวนครั้งที่ราคาชน</span>
-                      <span className="text-emerald-400 font-bold">{zone.touchCount} ครั้ง</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-neutral-600 font-mono text-xs italic">
-              ไม่พบโซนแนวรับที่มีผลในดัชนีคัดกรองปัจจุบัน
-            </div>
-          )}
-        </div>
-
-        {/* Resistance Column */}
-        <div className="bg-neutral-900/20 border border-neutral-900 rounded-2xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
-            <h2 className="text-xs font-extrabold text-rose-450 uppercase tracking-widest flex items-center gap-2 font-mono">
-              <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-              แนวต้านแข็งแกร่ง (Resistance Zones)
-            </h2>
-            <span className="text-[10px] text-neutral-500 font-mono font-bold">{resistance.length} แนว</span>
-          </div>
-
-          {resistance.length > 0 ? (
-            <div className="space-y-4">
-              {resistance.map((zone) => (
-                <div key={zone.id} className="bg-neutral-900/50 border border-neutral-850 hover:border-rose-500/20 rounded-xl p-4 transition-all space-y-3 relative group">
-                  <div className="absolute top-4 right-4 text-[9px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-900 uppercase">
-                    {zone.symbol} • {zone.timeframe}
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">กรอบระดับราคา</span>
-                    <span className="text-sm font-mono font-bold text-neutral-200">${zone.priceMin.toLocaleString()} - ${zone.priceMax.toLocaleString()}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">ความหนาแน่นระดับ</span>
-                      {renderStrengthStars(zone.strength)}
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">จำนวนครั้งที่ราคาชน</span>
-                      <span className="text-rose-450 font-bold">{zone.touchCount} ครั้ง</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-neutral-600 font-mono text-xs italic">
-              ไม่พบโซนแนวต้านที่มีผลในดัชนีคัดกรองปัจจุบัน
-            </div>
-          )}
-        </div>
-
-        {/* Liquidity Column */}
-        <div className="bg-neutral-900/20 border border-neutral-900 rounded-2xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
-            <h2 className="text-xs font-extrabold text-indigo-400 uppercase tracking-widest flex items-center gap-2 font-mono">
-              <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
-              แหล่งสภาพคล่อง (Liquidity Pools)
-            </h2>
-            <span className="text-[10px] text-neutral-500 font-mono font-bold">{liquidity.length} โซน</span>
-          </div>
-
-          {liquidity.length > 0 ? (
-            <div className="space-y-4">
-              {liquidity.map((zone) => (
-                <div key={zone.id} className="bg-neutral-900/50 border border-neutral-850 hover:border-indigo-500/20 rounded-xl p-4 transition-all space-y-3 relative group">
-                  <div className="absolute top-4 right-4 text-[9px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-900 uppercase">
-                    {zone.symbol} • {zone.timeframe}
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">กึ่งกลางสภาพคล่องจำลอง</span>
-                    <span className="text-sm font-mono font-bold text-neutral-200">${((zone.priceMin + zone.priceMax) / 2).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">กลุ่มราคาหยุดสะสม</span>
-                      <span className="text-indigo-400 font-bold text-[10px]">Stops Pool</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-neutral-500 uppercase block">สถานะอัปเดต</span>
-                      <span className="text-neutral-400 text-[10px]">มีผลรุนแรง</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-neutral-600 font-mono text-xs italic">
-              ไม่พบพื้นที่รวบรวม Stop Loss (Liquidity Pool)
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    </main>
   );
 }
