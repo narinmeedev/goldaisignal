@@ -91,7 +91,7 @@ export default function LandingPage() {
               </span>
               Gold AI Trade Assistant Active
             </div>
-            <h1 className="mx-auto mt-4 max-w-4xl text-3xl font-black leading-tight sm:text-5xl md:text-6xl bg-gradient-to-b from-neutral-100 via-neutral-100 to-neutral-400 bg-clip-text text-transparent">
+            <h1 className="mx-auto mt-4 max-w-4xl text-3xl font-black leading-tight sm:text-5xl md:text-6xl bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">
               แผนเทรดทองคำ XAUUSD<br className="hidden sm:inline" /> ที่ชัดเจนก่อนตัดสินใจ
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
@@ -118,7 +118,7 @@ export default function LandingPage() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-0.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider">
                 <Star className="h-3 w-3" /> ทำไมต้อง Gold AI Signal
               </span>
-              <h2 className="mt-4 text-2xl sm:text-3xl font-black text-neutral-100">ระบบช่วยวิเคราะห์ที่ออกแบบมาเพื่อเทรดเดอร์ทองคำ</h2>
+              <h2 className="mt-4 text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">ระบบช่วยวิเคราะห์ที่ออกแบบมาเพื่อเทรดเดอร์ทองคำ</h2>
             </div>
             
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -134,7 +134,7 @@ export default function LandingPage() {
                   <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${bg}`}>
                     <Icon className={`h-5 w-5 ${color}`} />
                   </div>
-                  <h3 className="mt-4 text-sm font-bold text-neutral-100">{title}</h3>
+                  <h3 className="mt-4 text-sm font-bold bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">{title}</h3>
                   <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
                 </div>
               ))}
@@ -149,7 +149,7 @@ export default function LandingPage() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/40 px-3 py-0.5 text-[10px] font-bold text-neutral-300 uppercase tracking-wider">
                 <TrendingUp className="h-3 w-3 text-amber-400" /> ขั้นตอนการทำงาน
               </span>
-              <h2 className="mt-4 text-2xl font-black text-neutral-100">ข้อมูลจริงเข้าสู่ระบบ สรุปผลกลับไปพัฒนาระบบ</h2>
+              <h2 className="mt-4 text-2xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">ข้อมูลจริงเข้าสู่ระบบ สรุปผลกลับไปพัฒนาระบบ</h2>
               <p className="mt-3 text-sm text-neutral-400">ทุกขั้นตอนทำงานอัตโนมัติ ตั้งแต่รับราคาจาก MT5 จนถึงส่งแจ้งเตือนและเก็บสถิติวัดผล</p>
             </div>
             <div className="rounded-2xl border border-neutral-900 bg-neutral-950/60 p-3 sm:p-5 shadow-2xl overflow-hidden">
@@ -169,7 +169,7 @@ export default function LandingPage() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-3.5 py-1 text-[10px] font-black text-amber-400 uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.1)]">
                 <Crown className="h-3.5 w-3.5" /> แพ็กเกจสมาชิก PRO
               </span>
-              <h2 className="mt-5 text-3xl sm:text-4xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+              <h2 className="mt-5 text-3xl sm:text-4xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">
                 เข้าถึงแผนเทรดระดับ PRO
               </h2>
               <p className="mt-3 text-sm text-neutral-400 max-w-lg mx-auto">ดูแผนพร้อมวิเคราะห์ความเสี่ยง รับแจ้งเตือนทันทีผ่าน LINE และตรวจสอบสถิติได้ตลอดเวลา</p>
@@ -191,7 +191,7 @@ export default function LandingPage() {
               </div>
 
               {/* Plan Name */}
-              <h3 className="text-xl font-black text-neutral-100">สมาชิก PRO รายเดือน</h3>
+              <h3 className="text-xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">สมาชิก PRO รายเดือน</h3>
               
               {/* Price */}
               <div className="mt-5 flex items-baseline gap-2">
@@ -246,7 +246,7 @@ export default function LandingPage() {
             <div className="rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/5 via-neutral-950/40 to-neutral-950 p-8 sm:p-12 relative overflow-hidden">
               <div className="absolute -top-20 -right-20 w-60 h-60 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
               <Zap className="mx-auto h-10 w-10 text-amber-400 mb-4" />
-              <h2 className="text-2xl sm:text-3xl font-black text-neutral-100">พร้อมเทรดทองคำด้วย AI แล้วหรือยัง?</h2>
+              <h2 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100 bg-clip-text text-transparent">พร้อมเทรดทองคำด้วย AI แล้วหรือยัง?</h2>
               <p className="mt-3 text-sm text-neutral-400 max-w-md mx-auto">เริ่มต้นทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วัน ดูแผนเทรดจริง วิเคราะห์ความเสี่ยงจริง วัดผลจริง</p>
               <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
                 <Link href="/pricing" className="inline-flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-8 text-base font-bold text-neutral-950 hover:from-amber-300 hover:to-amber-400 shadow-[0_4px_24px_rgba(245,158,11,0.25)] transition-all">
