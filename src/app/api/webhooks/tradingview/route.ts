@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     const result = await WebhookService.processWebhook({
       secret: payload.secret,
-      symbol: payload.symbol,
+      symbol: String(payload.symbol).toUpperCase().includes('XAU') ? 'XAUUSD' : payload.symbol,
       timeframe: payload.timeframe,
       direction: payload.direction,
       price: parseFloat(payload.price),

@@ -106,7 +106,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400, headers: noStoreHeaders });
   }
 
-  const { symbol, timeframe, candles, secret } = body;
+  const { symbol: rawSymbol, timeframe, candles, secret } = body;
+  const symbol = rawSymbol && String(rawSymbol).toUpperCase().includes('XAU') ? 'XAUUSD' : rawSymbol;
 
   try {
     if (!symbol || !timeframe || !Array.isArray(candles)) {
