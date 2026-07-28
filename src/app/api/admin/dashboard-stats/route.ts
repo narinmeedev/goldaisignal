@@ -1621,6 +1621,10 @@ export async function GET(request?: Request) {
       let isCrashingGlobal = false;
       let isM5SurgingGlobal = false;
       let isM5CrashingGlobal = false;
+      let isEmaCrossBullish = false;
+      let isEmaCrossBearish = false;
+      let isHigherLow = false;
+      let isDoubleBottom = false;
 
       if (recentCandles.length >= 20) {
         // --- Calculate MTF Trends ---
@@ -1641,6 +1645,32 @@ export async function GET(request?: Request) {
         const m15Trend = currentPrice > ema20_m15 ? 'BULLISH' : 'BEARISH';
         const h1Trend = currentPrice > ema20_h1 ? 'BULLISH' : 'BEARISH';
         const d1Trend = d1Candles.length > 0 ? (currentPrice > ema20_d1 ? 'BULLISH' : 'BEARISH') : 'NEUTRAL';
+
+        // EMA 9 & EMA 21 Crossover calculation
+        const ema9_m5 = m5AnalysisCandles.length >= 9 ? calcEMA(m5AnalysisCandles, 9) : currentPrice;
+        const ema21_m5 = m5AnalysisCandles.length >= 21 ? calcEMA(m5AnalysisCandles, 21) : currentPrice;
+        const prevEma9_m5 = m5AnalysisCandles.length >= 10 ? calcEMA(m5AnalysisCandles.slice(1), 9) : currentPrice;
+        const prevEma21_m5 = m5AnalysisCandles.length >= 22 ? calcEMA(m5AnalysisCandles.slice(1), 21) : currentPrice;
+        isEmaCrossBullish = prevEma9_m5 <= prevEma21_m5 && ema9_m5 > ema21_m5;
+        isEmaCrossBearish = prevEma9_m5 >= prevEma21_m5 && ema9_m5 < ema21_m5;
+
+        // Double Bottom & Higher Low Pattern detection
+        if (m5AnalysisCandles.length >= 8) {
+          const c0 = m5AnalysisCandles[0];
+          const c1 = m5AnalysisCandles[1];
+          const c2 = m5AnalysisCandles[2];
+          const c3 = m5AnalysisCandles[3];
+          const c4 = m5AnalysisCandles[4];
+          const low1 = Math.min(c0.low, c1.low);
+          const low2 = Math.min(c2.low, c3.low, c4.low);
+
+          if (low1 > low2 + (atr14M5 * 0.1) && c0.close > c0.open) {
+            isHigherLow = true;
+          }
+          if (Math.abs(low1 - low2) <= atr14M5 * 0.4 && c0.close > c0.open) {
+            isDoubleBottom = true;
+          }
+        }
 
         d1Bias = d1Trend;
         h1Bias = h1Trend;
@@ -2087,191 +2117,144 @@ export async function GET(request?: Request) {
         });
       }
 
-      // --- BUY Plan (Always generated) ---
-      if (isOverbought) {
-         proactivePlans.push({
-           id: `ai-plan-follow-buy-${symbol}`,
-           type: 'WAIT',
-           title: '🚫 งดซื้อไล่ราคา: ตลาดซื้อมากเกินไป',
-           entry: currentPrice,
-           stopLoss: currentPrice - atrSL,
-           takeProfit: currentPrice + atrTP,
-           reason: `RSI สูงเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะซื้อมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาย่อตัว`,
-           confidence: 10,
-           strategyId: 'follow_trend_ema20_pullback',
-           strategyMode: 'FOLLOW_TREND',
-           strategyLabel: 'Follow trend pullback',
-           confirmation: 'Wait for RSI cooling',
-           timeframe: 'M15',
-         });
-      } else {
-        let buyConfidence = bias === 'BULLISH' ? Math.round(trendStrength) : (bias === 'BEARISH' ? 35 : 50);
-        if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') buyConfidence -= 15;
+      // --- Actionable BUY Plans (Pullback / Double Bottom / EMA Cross / Oversold Bounce) ---
+      let buyConfidence = bias === 'BULLISH' ? Math.round(trendStrength) : (bias === 'BEARISH' ? 45 : 60);
+      if (isHigherLow || isDoubleBottom) buyConfidence += 15;
+      if (isEmaCrossBullish) buyConfidence += 15;
+      if (rsi14M5 < 40) buyConfidence += 10;
+      buyConfidence = Math.min(95, Math.max(55, buyConfidence));
 
-        const isExtended = currentPrice > ema20_m15 + (atr14 * 0.5);
-        const isTooExtended = currentPrice > ema20_m15 + (atr14 * 2.5);
+      const buyPullbackTarget = triggerSupport?.priceMax ?? (ema20_m15 - atr14 * 0.3);
+      const buyEntry1 = roundPrice(Math.min(currentPrice, buyPullbackTarget));
+      const buyEntry2 = roundPrice(buyEntry1 - diff * 0.5);
+      const buyEntry3 = roundPrice(buyEntry1 - diff);
+      const buyStopLoss = roundPrice(buyEntry3 - atrSL);
+      const buyRiskPoints = Math.max(1.5, buyEntry1 - buyStopLoss);
+      const buyTakeProfit = roundPrice(buyEntry1 + (buyRiskPoints * 2.5)); // 1:2.5 RR
 
-        if (isTooExtended) {
-          proactivePlans.push({
-            id: `ai-plan-follow-buy-${symbol}`,
-            type: 'WAIT',
-            title: '🚫 งดซื้อไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
-            entry: currentPrice,
-            stopLoss: currentPrice - atrSL,
-            takeProfit: currentPrice + atrTP,
-            reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวขึ้นร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวรับยกโลว์ฐานใหม่เพื่อความปลอดภัย`,
-            confidence: 10,
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: 'Wait for price pullback',
-            timeframe: 'M15',
-          });
-        } else if (isExtended) {
-          // Extended from EMA: Recommend waiting for pullback (Higher Low / ยกโลว์)
-          const entry1 = ema20_m15 + (atr14 * 0.2);
-          const entry2 = ema20_m15;
-          const entry3 = ema20_m15 - (atr14 * 0.5);
-          const stopLoss = ema20_m15 - (atr14 * 1.5);
-          const takeProfit = entry1 + (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
-
-          proactivePlans.push({
-            id: `ai-plan-follow-buy-${symbol}`,
-            type: 'BUY_LIMIT',
-            title: bias === 'BULLISH' ? 'ดักซื้อตอนย่อตัว / ยกโลว์' : 'ดักซื้อสวนเทรนด์เมื่อย่อตัว (Counter-Buy Pullback)',
-            entry: entry1,
-            entry1,
-            entry2,
-            entry3,
-            stopLoss,
-            takeProfit,
-            reason: bias === 'BULLISH'
-              ? `ทิศทางหลักเป็นขาขึ้น แต่ราคาปัจจุบันสูงเกินไป ควรรอราคารย่อตัวลงมาสร้างฐานแนวรับยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`
-              : `เทรนด์หลักเป็นขาลง การดักซื้อมีความเสี่ยงสูง ควรรอราคาลงมาสร้างฐานยกโลว์ลึกใกล้ EMA 20 (${ema20_m15.toFixed(2)}) เพื่อเล่นรอบกลับตัวสั้นๆ เท่านั้น`,
-            confidence: Math.min(95, Math.max(10, buyConfidence + (bias === 'BULLISH' ? 5 : 0))),
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: bias === 'BULLISH' ? 'M15 pullback holds above EMA20' : 'Counter-trend Scalping Setup',
-            timeframe: 'M15',
-          });
-        } else {
-          // Not extended: Recommending BUY at current support base
-          proactivePlans.push({
-            id: `ai-plan-follow-buy-${symbol}`,
-            type: 'BUY_MARKET',
-            title: bias === 'BULLISH' ? 'ซื้อสะสมที่แนวรับ / ยกโลว์' : 'ซื้อสะสมสวนเทรนด์ (Counter-Buy at Support)',
-            entry: currentPrice,
-            entry1: currentPrice,
-            entry2: currentPrice - diff,
-            entry3: currentPrice - diff * 2,
-            stopLoss: currentPrice - atrSL,
-            takeProfit: currentPrice + atrTP,
-            reason: bias === 'BULLISH'
-              ? `กราฟเป็นแนวโน้มขาขึ้น และราคาปัจจุบันอยู่ในโซนแนวรับพักฐาน/ยกโลว์ใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าซื้อที่ปลอดภัยและน่าสนใจ`
-              : `กราฟเป็นแนวโน้มขาลง การเข้าซื้อสะสมในโซนนี้เป็นการสวนเทรนด์หลักอย่างชัดเจน ควรแบ่งไม้ควบคุมความเสี่ยงอย่างเข้มงวด`,
-            confidence: Math.max(10, buyConfidence),
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: bias === 'BULLISH' ? 'M15 stays above EMA20 with H1 alignment' : 'Counter-trend Scalping Setup',
-            timeframe: 'M15',
-          });
-        }
+      if (isDoubleBottom || isHigherLow) {
+        proactivePlans.push({
+          id: `ai-plan-double-bottom-buy-${symbol}`,
+          type: 'BUY_MARKET',
+          title: isDoubleBottom ? 'ซื้อกลับตัว: รูปแบบ Double Bottom (ฐานคู่)' : 'ซื้อสะสมพักฐาน: รูปแบบ Higher Low (ย่อยก)',
+          entry: currentPrice,
+          entry1: currentPrice,
+          entry2: buyEntry2,
+          entry3: buyEntry3,
+          stopLoss: buyStopLoss,
+          takeProfit: buyTakeProfit,
+          reason: isDoubleBottom
+            ? `กราฟ M5/M15 ทำรูปแบบ Double Bottom (ฐานคู่กลับตัว) บริเวณแนวรับ มีแรงซื้อเด้งกลับชัดเจน เหมาะเข้าซื้อสะสมจุดย่อเพื่อเป้าทำกำไร 1:2.5`
+            : `กราฟ M5/M15 ยกฐานราคาขึ้น (Higher Low / ย่อยก) บ่งบอกโครงสร้างฝั่งซื้อแข็งแกร่ง เหมาะเข้าซื้อสะสมตามเทรนด์`,
+          confidence: Math.min(95, buyConfidence + 10),
+          strategyId: 'support_m5_bullish_engulfing',
+          strategyMode: 'SWING',
+          strategyLabel: 'Double Bottom / Higher Low Bounce',
+          confirmation: 'Pattern reversal confirmed on M5/M15',
+          pointStopLoss: Math.round(buyRiskPoints * 100),
+          timeframe: 'M5',
+        });
       }
 
-      // --- SELL Plan (Always generated) ---
-      if (isOversold) {
-         proactivePlans.push({
-           id: `ai-plan-follow-sell-${symbol}`,
-           type: 'WAIT',
-           title: '🚫 งดขายไล่ราคา: ตลาดขายมากเกินไป',
-           entry: currentPrice,
-           stopLoss: currentPrice + atrSL,
-           takeProfit: currentPrice - atrTP,
-           reason: `RSI ต่ำเกินไป (${Math.round(rsi14)}) ตลาดอยู่ในภาวะขายมากเกินไป ห้ามไล่ราคาเด็ดขาด ให้รอราคาเด้งกลับ`,
-           confidence: 10,
-           strategyId: 'follow_trend_ema20_pullback',
-           strategyMode: 'FOLLOW_TREND',
-           strategyLabel: 'Follow trend pullback',
-           confirmation: 'Wait for RSI cooling',
-           timeframe: 'M15',
-         });
-      } else {
-        let sellConfidence = bias === 'BEARISH' ? Math.round(trendStrength) : (bias === 'BULLISH' ? 35 : 50);
-        if (sessionVolatility === 'EXTREME' || sessionVolatility === 'HIGH') sellConfidence -= 15;
-
-        const isExtended = currentPrice < ema20_m15 - (atr14 * 0.5);
-        const isTooExtended = currentPrice < ema20_m15 - (atr14 * 2.5);
-
-        if (isTooExtended) {
-          proactivePlans.push({
-            id: `ai-plan-follow-sell-${symbol}`,
-            type: 'WAIT',
-            title: '🚫 งดขายไล่ราคา: ราคาห่างฐานเฉลี่ยมากเกินไป',
-            entry: currentPrice,
-            stopLoss: currentPrice + atrSL,
-            takeProfit: currentPrice - atrTP,
-            reason: `ราคาปัจจุบัน ($${currentPrice.toFixed(2)}) ปรับตัวลงร้อนแรงฉีกห่างจากแนวเส้นเฉลี่ยหลัก EMA 20 ($${ema20_m15.toFixed(2)}) มากเกินไป การเปิดออเดอร์เก็งกำไรโซนนี้มีความเสี่ยงสูง ควรรอตลาดสะสมกำลังทำแนวต้านลดไฮฐานใหม่เพื่อความปลอดภัย`,
-            confidence: 10,
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: 'Wait for price pullback',
-            timeframe: 'M15',
-          });
-        } else if (isExtended) {
-          // Extended from EMA: Recommend waiting for pullback (Lower High / ย่อไฮ)
-          const entry1 = ema20_m15 - (atr14 * 0.2);
-          const entry2 = ema20_m15;
-          const entry3 = ema20_m15 + (atr14 * 0.5);
-          const stopLoss = ema20_m15 + (atr14 * 1.5);
-          const takeProfit = entry1 - (Math.abs(entry1 - stopLoss) * 2.5); // 1:2.5 RR
-
-          proactivePlans.push({
-            id: `ai-plan-follow-sell-${symbol}`,
-            type: 'SELL_LIMIT',
-            title: bias === 'BEARISH' ? 'ดักขายตอนเด้งตัว / ย่อไฮ' : 'ดักขายสวนเทรนด์เมื่อเด้งตัว (Counter-Sell Pullback)',
-            entry: entry1,
-            entry1,
-            entry2,
-            entry3,
-            stopLoss,
-            takeProfit,
-            reason: bias === 'BEARISH'
-              ? `ทิศทางหลักเป็นขาลง แต่ราคาปัจจุบันต่ำเกินไป ควรรอราคารีบาวด์ขึ้นมาสร้างฐานแนวต้านย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เพื่อให้ได้เปรียบราคาและลดความเสี่ยง`
-              : `เทรนด์หลักเป็นขาขึ้น การดักขายมีความเสี่ยงสูง ควรรอราคาฟื้นตัวขึ้นไปสร้างจุดย่อไฮใกล้ EMA 20 (${ema20_m15.toFixed(2)}) ก่อนพิจารณา Sell สั้นๆ`,
-            confidence: Math.min(95, Math.max(10, sellConfidence + (bias === 'BEARISH' ? 5 : 0))),
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: bias === 'BEARISH' ? 'M15 pullback holds below EMA20' : 'Counter-trend Scalping Setup',
-            timeframe: 'M15',
-          });
-        } else {
-          // Not extended: Recommend selling at current resistance base
-          proactivePlans.push({
-            id: `ai-plan-follow-sell-${symbol}`,
-            type: 'SELL_MARKET',
-            title: bias === 'BEARISH' ? 'ขายสะสมที่แนวต้าน / ย่อไฮ' : 'ขายสะสมสวนเทรนด์ (Counter-Sell at Resistance)',
-            entry: currentPrice,
-            entry1: currentPrice,
-            entry2: currentPrice + diff,
-            entry3: currentPrice + diff * 2,
-            stopLoss: currentPrice + atrSL,
-            takeProfit: currentPrice - atrTP,
-            reason: bias === 'BEARISH'
-              ? `กราฟเป็นแนวโน้มขาลง และราคาปัจจุบันมีการฟื้นตัวขึ้นมาในโซนแนวต้าน/ย่อไฮใกล้เส้น EMA 20 (${ema20_m15.toFixed(2)}) เป็นจุดเข้าขายที่ได้เปรียบ`
-              : `กราฟเป็นแนวโน้มขาขึ้น การเข้าขายในโซนนี้ถือเป็นจุดสวนเทรนด์ ควรเน้นเล่นรอบสั้นและตั้งจุดตัดขาดทุนอย่างเข้มงวด`,
-            confidence: Math.max(10, sellConfidence),
-            strategyId: 'follow_trend_ema20_pullback',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'Follow trend pullback',
-            confirmation: bias === 'BEARISH' ? 'M15 stays below EMA20 with H1 alignment' : 'Counter-trend Scalping Setup',
-            timeframe: 'M15',
-          });
-        }
+      if (isEmaCrossBullish) {
+        proactivePlans.push({
+          id: `ai-plan-ema-cross-buy-${symbol}`,
+          type: 'BUY_MARKET',
+          title: 'ซื้อตามสัญญาณ: EMA 9 ตัดขึ้น EMA 21 (Bullish Cross)',
+          entry: currentPrice,
+          entry1: currentPrice,
+          entry2: buyEntry2,
+          entry3: buyEntry3,
+          stopLoss: buyStopLoss,
+          takeProfit: buyTakeProfit,
+          reason: `เส้นเฉลี่ยระยะสั้น EMA 9 ตัดขึ้นเหนือ EMA 21 บน M5 บ่งชี้โมเมนตัมขาขึ้นเริ่มต้น เหมาะเข้าซื้อสะสมตามสัญญาณ EMA Cross`,
+          confidence: Math.min(95, buyConfidence + 12),
+          strategyId: 'follow_trend_ema20_pullback',
+          strategyMode: 'FOLLOW_TREND',
+          strategyLabel: 'EMA Cross Bullish',
+          confirmation: 'EMA 9/21 bullish crossover',
+          pointStopLoss: Math.round(buyRiskPoints * 100),
+          timeframe: 'M5',
+        });
       }
+
+      // Standard / Pullback BUY Plan
+      proactivePlans.push({
+        id: `ai-plan-follow-buy-${symbol}`,
+        type: currentPrice <= buyEntry1 + 0.5 ? 'BUY_MARKET' : 'BUY_LIMIT',
+        title: bias === 'BULLISH' ? 'แผนย่อซื้อ (Pullback BUY): โซนแนวรับ/EMA20' : 'ดักซื้อสวนกลับ (Counter-BUY) โซนแนวรับ',
+        entry: buyEntry1,
+        entry1: buyEntry1,
+        entry2: buyEntry2,
+        entry3: buyEntry3,
+        stopLoss: buyStopLoss,
+        takeProfit: buyTakeProfit,
+        reason: `ราคาย่อตัวลงมาในโซนแนวรับพักฐาน / EMA20 (${ema20_m15.toFixed(2)}) RSI อยู่ในระดับเหมาะสม (${Math.round(rsi14M5)}) ตั้งจุดย่อซื้อที่ได้เปรียบราคาและ R:R ไม่ต่ำกว่า 1:2.5`,
+        confidence: buyConfidence,
+        strategyId: 'follow_trend_ema20_pullback',
+        strategyMode: 'FOLLOW_TREND',
+        strategyLabel: 'Follow trend pullback',
+        confirmation: 'M15/M5 pullback to support zone',
+        pointStopLoss: Math.round(buyRiskPoints * 100),
+        timeframe: 'M15',
+      });
+
+      // --- Actionable SELL Plans (Pullback / EMA Cross / Overbought Rejection) ---
+      let sellConfidence = bias === 'BEARISH' ? Math.round(trendStrength) : (bias === 'BULLISH' ? 45 : 60);
+      if (isEmaCrossBearish) sellConfidence += 15;
+      if (rsi14M5 > 60) sellConfidence += 10;
+      sellConfidence = Math.min(95, Math.max(55, sellConfidence));
+
+      const sellPullbackTarget = triggerResistance?.priceMin ?? (ema20_m15 + atr14 * 0.3);
+      const sellEntry1 = roundPrice(Math.max(currentPrice, sellPullbackTarget));
+      const sellEntry2 = roundPrice(sellEntry1 + diff * 0.5);
+      const sellEntry3 = roundPrice(sellEntry1 + diff);
+      const sellStopLoss = roundPrice(sellEntry3 + atrSL);
+      const sellRiskPoints = Math.max(1.5, sellStopLoss - sellEntry1);
+      const sellTakeProfit = roundPrice(sellEntry1 - (sellRiskPoints * 2.5)); // 1:2.5 RR
+
+      if (isEmaCrossBearish) {
+        proactivePlans.push({
+          id: `ai-plan-ema-cross-sell-${symbol}`,
+          type: 'SELL_MARKET',
+          title: 'ขายตามสัญญาณ: EMA 9 ตัดลง EMA 21 (Bearish Cross)',
+          entry: currentPrice,
+          entry1: currentPrice,
+          entry2: sellEntry2,
+          entry3: sellEntry3,
+          stopLoss: sellStopLoss,
+          takeProfit: sellTakeProfit,
+          reason: `เส้นเฉลี่ยระยะสั้น EMA 9 ตัดลงใต้ EMA 21 บน M5 บ่งชี้โมเมนตัมขาลงเริ่มต้น เหมาะเข้าขายสะสมตามสัญญาณ EMA Cross`,
+          confidence: Math.min(95, sellConfidence + 12),
+          strategyId: 'resistance_m5_bearish_engulfing',
+          strategyMode: 'FOLLOW_TREND',
+          strategyLabel: 'EMA Cross Bearish',
+          confirmation: 'EMA 9/21 bearish crossover',
+          pointStopLoss: Math.round(sellRiskPoints * 100),
+          timeframe: 'M5',
+        });
+      }
+
+      // Standard / Pullback SELL Plan
+      proactivePlans.push({
+        id: `ai-plan-follow-sell-${symbol}`,
+        type: currentPrice >= sellEntry1 - 0.5 ? 'SELL_MARKET' : 'SELL_LIMIT',
+        title: bias === 'BEARISH' ? 'แผนเด้งขาย (Pullback SELL): โซนแนวต้าน/EMA20' : 'ดักขายสวนกลับ (Counter-SELL) โซนแนวต้าน',
+        entry: sellEntry1,
+        entry1: sellEntry1,
+        entry2: sellEntry2,
+        entry3: sellEntry3,
+        stopLoss: sellStopLoss,
+        takeProfit: sellTakeProfit,
+        reason: `ราคาฟื้นตัวขึ้นไปในโซนแนวต้านพักฐาน / EMA20 (${ema20_m15.toFixed(2)}) RSI อยู่ในระดับเหมาะสม (${Math.round(rsi14M5)}) ตั้งจุดเด้งขายที่ได้เปรียบราคาและ R:R ไม่ต่ำกว่า 1:2.5`,
+        confidence: sellConfidence,
+        strategyId: 'resistance_m5_bearish_engulfing',
+        strategyMode: 'FOLLOW_TREND',
+        strategyLabel: 'Follow trend pullback',
+        confirmation: 'M15/M5 pullback to resistance zone',
+        pointStopLoss: Math.round(sellRiskPoints * 100),
+        timeframe: 'M15',
+      });
 
       // --- Scalping Logic: M5 trigger + M15 support/resistance structure ---
       if (scalpDirection === 'BUY' && rsi14M5 < 75) {
