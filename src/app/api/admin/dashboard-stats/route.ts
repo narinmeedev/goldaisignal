@@ -316,8 +316,8 @@ const getResearchCandidate = (report: StrategyResearchReport | null, strategyId?
 
 const normalizePlanConfidence = (confidence: number) => Math.min(95, Math.max(0, Math.round(confidence)));
 
-const MIN_RECOMMENDATION_CONFIDENCE = 70;
-const MAX_RECOMMENDATION_RISK_SCORE = 55;
+const MIN_RECOMMENDATION_CONFIDENCE = 60;
+const MAX_RECOMMENDATION_RISK_SCORE = 65;
 const STALE_MT5_CANDLE_BASE_MS = 60 * 60 * 1000;
 const STALE_M5_CANDLE_SYNC_MS = 10 * 60 * 1000;
 const CHART_CANDLE_LIMIT = 360;
@@ -891,9 +891,9 @@ const getStableOrderPlan = async (
   const storedPlan = parseStoredOrderPlan(storedSetting?.value);
   const storedPlanAllowed = allowStoredPlans && (!storedPlan || allowM5DependentPlans || !isM5DependentPlan(storedPlan));
   const storedPlanResearchRejected = !!storedPlan &&
-    (storedPlan.researchSampleSize || 0) >= 5 &&
+    (storedPlan.researchSampleSize || 0) >= 15 &&
     typeof storedPlan.researchWinRate === 'number' &&
-    storedPlan.researchWinRate < 45;
+    storedPlan.researchWinRate < 35;
 
   if (!candidate) {
     // Keep a valid locked plan, but retire stale plans and strategies with poor measured results.
@@ -2339,14 +2339,14 @@ export async function GET(request?: Request) {
         .map((plan) => {
           const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
 
-          if (researchCandidate && researchCandidate.sampleSize >= 5 && researchCandidate.winRate < 45) {
+          if (researchCandidate && researchCandidate.sampleSize >= 15 && researchCandidate.winRate < 35) {
             console.log(`[AI TUNING] Pruned low-performing strategy: ${plan.strategyId} (${researchCandidate.winRate}% over ${researchCandidate.sampleSize} samples)`);
             return null;
           }
 
           if (researchCandidate && researchCandidate.liveForwardTest) {
             const { winRate, sampleSize } = researchCandidate.liveForwardTest;
-            if (sampleSize >= 5 && winRate < 45) {
+            if (sampleSize >= 15 && winRate < 35) {
               console.log(`[AI TUNING] Pruned low winrate recommendation strategy: ${plan.strategyId} (${winRate}% winrate over ${sampleSize} samples)`);
               return null;
             }
@@ -2354,11 +2354,11 @@ export async function GET(request?: Request) {
 
           let confidence = normalizePlanConfidence(plan.confidence);
 
-          // Asian Session Rule: Penalize signals during low volume / high fakeout hours
+          // Asian Session Rule: Moderate penalty during low volume hours
           const isAsianSession = currentUtcHour >= 23 || currentUtcHour < 8;
           let planReason = plan.reason;
           if (isAsianSession) {
-            confidence = Math.max(10, confidence - 25);
+            confidence = Math.max(10, confidence - 12);
             planReason = `(ช่วงเอเชียวอลุ่มต่ำ - เพิ่มความระมัดระวัง) ${planReason}`;
           }
 
