@@ -16,9 +16,8 @@ export interface OpenTradeParams {
 
 export class PaperTradeService {
   private static getSymbolFilter(symbol: string) {
-    const normalizedSymbol = symbol.toUpperCase();
-    if (normalizedSymbol.includes('XAU')) return { contains: 'XAU' };
-    return symbol;
+    const normalizedSymbol = symbol.toUpperCase().includes('XAU') ? 'XAUUSD' : symbol;
+    return { in: [normalizedSymbol, 'XAUUSD', 'GOLD', symbol] };
   }
 
   private static async clearActivePlanSetting(symbol: string) {
