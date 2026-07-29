@@ -41,25 +41,20 @@ export async function POST(request: Request) {
         lockedAt: new Date().toISOString(),
       };
 
-      // Save as active order plan for MT5 & Dashboard
-      await prisma.systemSetting.upsert({
-        where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
-        update: { value: JSON.stringify(planToApply) },
-        create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
-      });
-
-      // Clear caches so the next dashboard-stats query fetches the new plan immediately
-      await prisma.systemSetting.deleteMany({
-        where: {
-          key: {
-            in: [
-              'CACHE_DASHBOARD_STATS_PUBLIC',
-              'CACHE_DASHBOARD_STATS_VIEWER',
-              'CACHE_DASHBOARD_STATS_ADMIN',
-            ],
-          },
-        },
-      });
+      // Save as active order plan for MT5 & Dashboard with retry safety
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await prisma.systemSetting.upsert({
+            where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
+            update: { value: JSON.stringify(planToApply) },
+            create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
+          });
+          break;
+        } catch (dbErr) {
+          if (attempt === 2) throw dbErr;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
 
       // Create a paper trade record
       try {
