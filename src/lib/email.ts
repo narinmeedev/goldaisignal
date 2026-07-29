@@ -10,10 +10,10 @@ export async function sendOtpEmail(email: string, otp: string) {
     create: { key: `otp_${email}`, value: JSON.stringify({ otp, expiresAt: Date.now() + 5 * 60 * 1000 }) }
   });
 
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASSWORD;
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = process.env.SMTP_PORT || '465';
+  const smtpUser = process.env.SMTP_USER || 'narinmeedev@gmail.com';
+  const smtpPass = process.env.SMTP_PASSWORD || 'afhg cboc gxsn mjtw';
 
   const subject = 'รหัสผ่าน OTP ยืนยันตัวตน Gold AI';
   const htmlContent = `
@@ -28,34 +28,34 @@ export async function sendOtpEmail(email: string, otp: string) {
     </div>
   `;
 
-  // 1. If SMTP is configured, use nodemailer
-  if (smtpHost && smtpUser && smtpPass) {
-    try {
-      const nodemailer = await import('nodemailer');
-      const transporter = nodemailer.default.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort || '465'),
-        secure: smtpPort === '465' || !smtpPort, // true for 465, false for other ports
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
+  // 1. Send via SMTP (Gmail)
+  try {
+    const nodemailer = await import('nodemailer');
+    const transporter = nodemailer.default.createTransport({
+      host: smtpHost,
+      port: parseInt(smtpPort),
+      secure: smtpPort === '465',
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
 
-      const mailOptions = {
-        from: `"Gold AI" <${smtpUser}>`,
-        to: email,
-        subject: subject,
-        html: htmlContent,
-      };
+    const mailOptions = {
+      from: `"Gold AI System" <${smtpUser}>`,
+      to: email,
+      subject: subject,
+      html: htmlContent,
+    };
 
-      const info = await transporter.sendMail(mailOptions);
-      console.log(`[SMTP EMAIL OTP] Sent successfully via SMTP. MessageId: ${info.messageId}`);
-      return true;
-    } catch (smtpError) {
-      console.error('[SMTP EMAIL OTP ERROR] Failed to send via SMTP:', smtpError);
-      // Fall through to Resend if SMTP fails
-    }
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[SMTP EMAIL OTP] Sent successfully via SMTP to ${email}. MessageId: ${info.messageId}`);
+    return true;
+  } catch (smtpError) {
+    console.error('[SMTP EMAIL OTP ERROR] Failed to send via SMTP:', smtpError);
   }
 
   // 2. Fallback to Resend HTTP API
@@ -100,10 +100,10 @@ export async function sendPasswordResetEmail(email: string, otp: string) {
     create: { key: `otp_reset_${email}`, value: JSON.stringify({ otp, expiresAt: Date.now() + 5 * 60 * 1000 }) }
   });
 
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASSWORD;
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = process.env.SMTP_PORT || '465';
+  const smtpUser = process.env.SMTP_USER || 'narinmeedev@gmail.com';
+  const smtpPass = process.env.SMTP_PASSWORD || 'afhg cboc gxsn mjtw';
 
   const subject = 'รหัสผ่าน OTP เพื่อตั้งค่ารหัสผ่านใหม่ - Gold AI';
   const htmlContent = `
@@ -118,33 +118,34 @@ export async function sendPasswordResetEmail(email: string, otp: string) {
     </div>
   `;
 
-  // 1. If SMTP is configured, use nodemailer
-  if (smtpHost && smtpUser && smtpPass) {
-    try {
-      const nodemailer = await import('nodemailer');
-      const transporter = nodemailer.default.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort || '465'),
-        secure: smtpPort === '465' || !smtpPort,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
+  // 1. Send via SMTP (Gmail)
+  try {
+    const nodemailer = await import('nodemailer');
+    const transporter = nodemailer.default.createTransport({
+      host: smtpHost,
+      port: parseInt(smtpPort),
+      secure: smtpPort === '465',
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
 
-      const mailOptions = {
-        from: `"Gold AI" <${smtpUser}>`,
-        to: email,
-        subject: subject,
-        html: htmlContent,
-      };
+    const mailOptions = {
+      from: `"Gold AI System" <${smtpUser}>`,
+      to: email,
+      subject: subject,
+      html: htmlContent,
+    };
 
-      const info = await transporter.sendMail(mailOptions);
-      console.log(`[SMTP RESET OTP] Sent successfully via SMTP. MessageId: ${info.messageId}`);
-      return true;
-    } catch (smtpError) {
-      console.error('[SMTP RESET OTP ERROR] Failed to send via SMTP:', smtpError);
-    }
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[SMTP RESET OTP] Sent successfully via SMTP to ${email}. MessageId: ${info.messageId}`);
+    return true;
+  } catch (smtpError) {
+    console.error('[SMTP RESET OTP ERROR] Failed to send via SMTP:', smtpError);
   }
 
   // 2. Fallback to Resend HTTP API
