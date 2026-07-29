@@ -50,8 +50,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -70,24 +71,27 @@ export async function POST(req: Request) {
       );
     }
 
-    // Update last login time
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    // Update last login time and log activity safely
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+      await prisma.activityLog.create({
+        data: {
+          userId: user.id,
+          action: 'LOGIN',
+          details: 'User logged in'
+        }
+      });
+    } catch (logErr) {
+      console.error('[Login DB Logging Failed - Ignored]:', logErr);
+    }
 
     const token = await signToken({
       userId: user.id,
       email: user.email,
       role: user.role,
-    });
-
-    await prisma.activityLog.create({
-      data: {
-        userId: user.id,
-        action: 'LOGIN',
-        details: 'User logged in'
-      }
     });
 
     // Report user login to Mini SaaS Center

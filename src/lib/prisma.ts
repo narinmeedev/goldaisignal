@@ -3,16 +3,16 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient | undefined };
 
-const prismaInstance = globalForPrisma.prisma ?? (() => {
-  let connectionString = process.env.DATABASE_URL || "mysql://golduser:goldpass123@127.0.0.1:3306/goldaisig?allowPublicKeyRetrieval=true";
-  if (!connectionString.includes('allowPublicKeyRetrieval')) {
-    connectionString += connectionString.includes('?') ? '&allowPublicKeyRetrieval=true' : '?allowPublicKeyRetrieval=true';
-  }
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL || "mysql://u286424856_goldaisig:%40oibomiN42%40@127.0.0.1:3307/u286424856_goldaisig?allowPublicKeyRetrieval=true";
   const adapter = new PrismaMariaDb(connectionString);
   return new PrismaClient({ adapter });
-})();
+}
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prismaInstance;
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-export const prisma = prismaInstance;
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
 export default prisma;
