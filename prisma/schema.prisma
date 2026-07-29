@@ -52,7 +52,7 @@ model ActivityLog {
 
 model SystemSetting {
   key       String   @id
-  value     String   @db.Text
+  value     String   @db.LongText
   updatedAt DateTime @updatedAt
 }
 

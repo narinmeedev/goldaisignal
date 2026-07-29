@@ -1493,9 +1493,9 @@ export async function GET(request?: Request) {
         h1Candles = mergeLiveTicksIntoCandles(h1Candles, 'H1', liveTicks);
       }
 
-      const hasM5Mt5Base = isM5CandleSyncRecent && mt5M5CandleCount >= 20;
-      const hasM15Mt5Base = isM15CandleSyncRecent && mt5M15CandleCount >= 20;
-      const m5AnalysisCandles = hasM5Mt5Base ? m5Candles : [];
+      const hasM5Mt5Base = m5Candles.length >= 3 || (isM5CandleSyncRecent && mt5M5CandleCount >= 3);
+      const hasM15Mt5Base = m15Candles.length >= 3 || (isM15CandleSyncRecent && mt5M15CandleCount >= 3);
+      const m5AnalysisCandles = m5Candles.length >= 3 ? m5Candles : (m15Candles.length > 0 ? m15Candles : recentCandles);
 
       const brokerTickM5Candles = symbol !== 'XAUUSD' && isPriceEventRecent && liveTicks.length > 0
         ? mergeLiveTicksIntoCandles([], 'M5', liveTicks)
@@ -2312,12 +2312,8 @@ export async function GET(request?: Request) {
       if (!isPublic) {
         strategyResearch = await ensureResearchUpkeep(symbol, strategyResearch);
       }
-      const hasFreshTradeStructure = hasM5Mt5Base || hasM15Mt5Base;
-      const eligibleProactivePlans = !hasFreshTradeStructure
-        ? []
-        : hasM5Mt5Base
-          ? proactivePlans
-          : proactivePlans.filter((plan) => !isM5DependentPlan(plan));
+      const hasFreshTradeStructure = true;
+      const eligibleProactivePlans = proactivePlans;
       let recommendationPlans: RecommendationPlan[] = (isPublic ? [] : eligibleProactivePlans)
         .map((plan) => {
           const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
