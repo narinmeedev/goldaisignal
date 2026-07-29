@@ -2769,18 +2769,29 @@ export async function GET(request?: Request) {
       },
     };
 
-    // Fetch Qwen AI track record stats
-    const qwenTrades = await prisma.paperTrade.findMany({
-      where: {
-        OR: [
-          { notes: { contains: 'Qwen' } },
-          { signal: { reason: { contains: 'qwen' } } },
-        ],
-      },
-      select: { id: true, result: true, rrResult: true, closedAt: true, entry: true, stopLoss: true, takeProfit1: true, direction: true, openedAt: true, notes: true },
+    // Fetch Qwen AI track record stats safely without MySQL collation errors
+    const allRecentPaperTrades = await prisma.paperTrade.findMany({
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 50,
+      select: {
+        id: true,
+        result: true,
+        rrResult: true,
+        closedAt: true,
+        entry: true,
+        stopLoss: true,
+        takeProfit1: true,
+        direction: true,
+        openedAt: true,
+        notes: true,
+        signal: { select: { reason: true } },
+      },
     });
+
+    const qwenTrades = allRecentPaperTrades.filter((t) =>
+      (t.notes && t.notes.includes('Qwen')) ||
+      (t.signal?.reason && t.signal.reason.toLowerCase().includes('qwen'))
+    ).slice(0, 20);
 
     const qwenWins = qwenTrades.filter((t) => t.result === 'WIN').length;
     const qwenLosses = qwenTrades.filter((t) => t.result === 'LOSS').length;
