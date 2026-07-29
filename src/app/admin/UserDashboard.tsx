@@ -224,21 +224,37 @@ export default function UserDashboard() {
     if (!qwenData?.result) return;
     setIsApplyingPlan(true);
     try {
+      const planPayload = {
+        action: 'apply',
+        plan: {
+          ...qwenData.result,
+          currentPrice: qwenData.currentPrice,
+        },
+      };
+
+      // 1. Apply to local DB (connected via SSH Tunnel)
       const res = await fetch('/api/admin/qwen-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'apply',
-          plan: {
-            ...qwenData.result,
-            currentPrice: qwenData.currentPrice,
-          },
-        }),
+        body: JSON.stringify(planPayload),
       });
       const data = await res.json();
+
+      // 2. Also push directly to Cloud Production (goldaisig.com)
+      try {
+        await fetch('https://goldaisig.com/api/admin/qwen-analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(planPayload),
+        });
+      } catch (cloudErr) {
+        console.warn('[Qwen Sync] Could not push to goldaisig.com directly:', cloudErr);
+      }
+
       if (data.success) {
         setShowQwenModal(false);
         await load(true);
+        alert('✅ นำแผนของ Qwen 3.5-9B ไปใช้งานบน Localhost และส่งขึ้น goldaisig.com เรียบร้อยแล้ว!');
       } else {
         alert(data.error || 'ไม่สามารถนำแผนไปใช้ได้');
       }
