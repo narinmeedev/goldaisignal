@@ -2432,55 +2432,22 @@ export async function GET(request?: Request) {
       }
 
       let activeOrderPlan: RecommendationPlan | null = null;
-      if (isPublic) {
+      const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
+      const storedPlan = parseStoredOrderPlan(storedSetting?.value);
+      const isQwenApplied = storedPlan && (storedPlan.id?.toLowerCase().includes('qwen') || storedPlan.title?.toLowerCase().includes('qwen') || storedPlan.strategyLabel?.toLowerCase().includes('qwen'));
+
+      if (isQwenApplied && storedPlan && !isPlanStale(storedPlan, currentPrice, now)) {
+        activeOrderPlan = storedPlan;
+      } else {
         const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
         if (openTrackingPlan) {
           activeOrderPlan = openTrackingPlan;
         } else {
-          const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
-          const storedPlan = parseStoredOrderPlan(storedSetting?.value);
-          activeOrderPlan = storedPlan && !isPlanStale(storedPlan, currentPrice, now) ? storedPlan : null;
+          activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
         }
-      } else {
-        activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
       }
+
       if (activeOrderPlan) {
-        // Refine top active order plan with local Qwen 3.5-9b LLM via LM Studio
-        try {
-          const qwenRefinement = await QwenLocalAiService.refineTradePlan({
-            symbol,
-            currentPrice,
-            bias,
-            trendStrength: Math.round(trendStrength),
-            rsi14M5,
-            rsi14,
-            atr14,
-            ema20_m15,
-            nearestSupport: nearestSupport.map((z: any) => z.priceMax),
-            nearestResistance: nearestResistance.map((z: any) => z.priceMin),
-            proposedType: activeOrderPlan.type,
-            proposedEntry: activeOrderPlan.entry,
-            proposedSL: activeOrderPlan.stopLoss,
-            proposedTP: activeOrderPlan.takeProfit,
-          });
-
-          if (qwenRefinement.source === 'LOCAL_QWEN_LLM') {
-            console.log(`[Qwen 3.5 9B] Refined active plan: ${qwenRefinement.reason}`);
-            activeOrderPlan = {
-              ...activeOrderPlan,
-              entry: qwenRefinement.refinedEntry,
-              entry1: qwenRefinement.refinedEntry,
-              stopLoss: qwenRefinement.refinedSL,
-              takeProfit: qwenRefinement.refinedTP,
-              confidence: Math.max(activeOrderPlan.confidence, qwenRefinement.confidence),
-              reason: `🤖 [Qwen 3.5-9B AI]: ${qwenRefinement.reason}`,
-              strategyLabel: `${activeOrderPlan.strategyLabel || 'Strategy'} (Qwen 3.5-9B Refined)`,
-            };
-          }
-        } catch (qwenErr) {
-          console.error('[Qwen 3.5 9B] Plan refinement skipped:', qwenErr);
-        }
-
         recommendationPlans = [
           activeOrderPlan,
           ...recommendationPlans.filter((plan) =>

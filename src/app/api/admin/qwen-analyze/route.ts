@@ -131,17 +131,22 @@ export async function POST(request: Request) {
     }
 
     const isBullish = currentPrice > (m15Candles[10]?.close || currentPrice);
+    
+    // Find support/resistance that is close (within $4.5) to current price, otherwise use tight $2.5 pullback/rebound
+    const closeSupport = supports.find((s) => currentPrice - s >= 1.0 && currentPrice - s <= 4.5);
+    const closeResistance = resistances.find((r) => r - currentPrice >= 1.0 && r - currentPrice <= 4.5);
+
     const targetEntry = isBullish
-      ? (supports[0] ? Number(supports[0].toFixed(2)) : Number((currentPrice - 3.5).toFixed(2)))
-      : (resistances[0] ? Number(resistances[0].toFixed(2)) : Number((currentPrice + 3.5).toFixed(2)));
+      ? (closeSupport ? Number(closeSupport.toFixed(2)) : Number((currentPrice - 2.5).toFixed(2)))
+      : (closeResistance ? Number(closeResistance.toFixed(2)) : Number((currentPrice + 2.5).toFixed(2)));
 
     const targetSL = isBullish
       ? Number((targetEntry - 4.5).toFixed(2))
       : Number((targetEntry + 4.5).toFixed(2));
 
     const targetTP = isBullish
-      ? Number((targetEntry + 12.0).toFixed(2))
-      : Number((targetEntry - 12.0).toFixed(2));
+      ? Number((targetEntry + 11.5).toFixed(2))
+      : Number((targetEntry - 11.5).toFixed(2));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
