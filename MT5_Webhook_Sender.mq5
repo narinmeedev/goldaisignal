@@ -8,7 +8,7 @@
 //--- Inputs
 input string   ServerURL        = "https://goldaisig.com/api/webhooks/tradingview";
 input string   SyncURL          = "https://goldaisig.com/api/admin/candles/sync";
-input string   LocalSyncURL     = "http://localhost:3000/api/admin/candles/sync";
+input string   LocalSyncURL     = "http://100.64.189.114:3000/api/admin/candles/sync";
 input bool     EnableLocalSync  = true;
 input string   SecretKey        = "GOLD_AI_SECRET";
 input string   StrategyName   = "support_bounce";
