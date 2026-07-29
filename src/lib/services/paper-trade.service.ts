@@ -36,7 +36,7 @@ export class PaperTradeService {
 
     return prisma.paperTrade.create({
       data: {
-        signalId,
+        signalId: signalId && signalId.trim() !== '' ? signalId : undefined,
         symbol,
         direction,
         entry,

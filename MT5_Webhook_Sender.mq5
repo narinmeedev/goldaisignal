@@ -208,7 +208,7 @@ void SyncCandlesToWeb(bool fullHistory)
 }
 
 //+------------------------------------------------------------------+
-//| วาดเส้นออเดอร์ Entry, SL, TP บนกราฟ MT5 อัตโนมัติ                    |
+//| วาดเส้นออเดอร์และ Text ข้อความ Entry, SL, TP by AI บนกราฟ MT5    |
 //+------------------------------------------------------------------+
 void UpdateChartTradePlan(string json)
 {
@@ -221,14 +221,17 @@ void UpdateChartTradePlan(string json)
 
    if(entry <= 0 || sl <= 0 || tp <= 0) return;
 
-   // 1. Draw Entry Line
-   DrawChartLine("GoldAI_ENTRY", entry, clrDodgerBlue, STYLE_SOLID, 2, "GoldAI ENTRY: " + DoubleToString(entry, 2));
+   // 1. Draw Entry Line & Text Label
+   DrawChartLine("GoldAI_ENTRY", entry, clrDodgerBlue, STYLE_SOLID, 2, "🔹 Entry by AI: $" + DoubleToString(entry, 2));
    
-   // 2. Draw SL Line
-   DrawChartLine("GoldAI_SL", sl, clrCrimson, STYLE_DASH, 1, "GoldAI SL: " + DoubleToString(sl, 2));
+   // 2. Draw SL Line & Text Label
+   DrawChartLine("GoldAI_SL", sl, clrCrimson, STYLE_DASH, 2, "🔻 SL by AI: $" + DoubleToString(sl, 2));
 
-   // 3. Draw TP Line
-   DrawChartLine("GoldAI_TP", tp, clrGold, STYLE_SOLID, 2, "GoldAI TP: " + DoubleToString(tp, 2));
+   // 3. Draw TP Line & Text Label
+   DrawChartLine("GoldAI_TP", tp, clrGold, STYLE_SOLID, 2, "🎯 TP by AI: $" + DoubleToString(tp, 2));
+
+   // 4. Draw Overlay Information Badge on Top-Right Corner
+   DrawChartCornerText("GoldAI_BADGE", "🤖 Gold AI Signal: Entry by AI $" + DoubleToString(entry, 2) + " | SL $" + DoubleToString(sl, 2) + " | TP $" + DoubleToString(tp, 2), clrYellow);
 }
 
 double ExtractJsonDouble(string json, string key)
@@ -258,6 +261,23 @@ void DrawChartLine(string name, double price, color clr, ENUM_LINE_STYLE style, 
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_STYLE, style);
    ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+}
+
+void DrawChartCornerText(string name, string text, color clr)
+{
+   if(ObjectFind(0, name) < 0) {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   }
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, 20);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, 30);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+}
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
 }
