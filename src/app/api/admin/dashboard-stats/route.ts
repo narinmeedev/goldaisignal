@@ -612,15 +612,17 @@ const getPlanMaxDistance = (plan: RecommendationPlan) => {
 const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) => {
   if (hasPlanFinishedOrFailed(plan, currentPrice)) return true;
 
+  const isQwenPlan = !!plan.id?.toLowerCase().includes('qwen') || !!plan.title?.toLowerCase().includes('qwen') || !!plan.strategyLabel?.toLowerCase().includes('qwen');
+
   // Price deviation stale check: if current price is too far away from entry zone, cancel/expire the recommendation
-  const maxDist = getPlanMaxDistance(plan);
+  const maxDist = isQwenPlan ? 45.0 : getPlanMaxDistance(plan);
   if (Math.abs(currentPrice - plan.entry) > maxDist) return true;
 
-  // Lifetime safety stale check (max 3x lock duration, i.e., 45 minutes for M5, 2.25 hours for Swing)
+  // Lifetime safety stale check (max 6 hours for Qwen plan, or 3x lock duration for normal plans)
   const lockedAt = plan.lockedAt ? new Date(plan.lockedAt) : null;
   if (lockedAt && Number.isFinite(lockedAt.getTime())) {
-    const lockMinutes = getPlanLockMinutes(plan);
-    const maxLifetimeMs = lockMinutes * 3 * 60 * 1000;
+    const lockMinutes = isQwenPlan ? 360 : getPlanLockMinutes(plan);
+    const maxLifetimeMs = lockMinutes * (isQwenPlan ? 1 : 3) * 60 * 1000;
     if (now.getTime() - lockedAt.getTime() > maxLifetimeMs) return true;
   }
 
@@ -895,6 +897,11 @@ const getStableOrderPlan = async (
     (storedPlan.researchSampleSize || 0) >= 15 &&
     typeof storedPlan.researchWinRate === 'number' &&
     storedPlan.researchWinRate < 35;
+
+  const isQwenPlan = storedPlan && (storedPlan.id?.toLowerCase().includes('qwen') || storedPlan.title?.toLowerCase().includes('qwen') || storedPlan.strategyLabel?.toLowerCase().includes('qwen'));
+  if (isQwenPlan && !isPlanStale(storedPlan, currentPrice, now)) {
+    return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
+  }
 
   if (!candidate) {
     // Keep a valid locked plan, but retire stale plans and strategies with poor measured results.
