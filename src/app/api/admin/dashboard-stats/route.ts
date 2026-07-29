@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
 import { NotificationService } from '@/lib/services/notification.service';
+import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -2437,11 +2438,47 @@ export async function GET(request?: Request) {
         activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
       }
       if (activeOrderPlan) {
+        // Refine top active order plan with local Qwen 3.5-9b LLM via LM Studio
+        try {
+          const qwenRefinement = await QwenLocalAiService.refineTradePlan({
+            symbol,
+            currentPrice,
+            bias,
+            trendStrength: Math.round(trendStrength),
+            rsi14M5,
+            rsi14,
+            atr14,
+            ema20_m15,
+            nearestSupport: nearestSupport.map((z: any) => z.priceMax),
+            nearestResistance: nearestResistance.map((z: any) => z.priceMin),
+            proposedType: activeOrderPlan.type,
+            proposedEntry: activeOrderPlan.entry,
+            proposedSL: activeOrderPlan.stopLoss,
+            proposedTP: activeOrderPlan.takeProfit,
+          });
+
+          if (qwenRefinement.source === 'LOCAL_QWEN_LLM') {
+            console.log(`[Qwen 3.5 9B] Refined active plan: ${qwenRefinement.reason}`);
+            activeOrderPlan = {
+              ...activeOrderPlan,
+              entry: qwenRefinement.refinedEntry,
+              entry1: qwenRefinement.refinedEntry,
+              stopLoss: qwenRefinement.refinedSL,
+              takeProfit: qwenRefinement.refinedTP,
+              confidence: Math.max(activeOrderPlan.confidence, qwenRefinement.confidence),
+              reason: `🤖 [Qwen 3.5-9B AI]: ${qwenRefinement.reason}`,
+              strategyLabel: `${activeOrderPlan.strategyLabel || 'Strategy'} (Qwen 3.5-9B Refined)`,
+            };
+          }
+        } catch (qwenErr) {
+          console.error('[Qwen 3.5 9B] Plan refinement skipped:', qwenErr);
+        }
+
         recommendationPlans = [
           activeOrderPlan,
           ...recommendationPlans.filter((plan) =>
-            plan.id !== activeOrderPlan.id &&
-            plan.id !== activeOrderPlan.sourcePlanId,
+            plan.id !== activeOrderPlan!.id &&
+            plan.id !== activeOrderPlan!.sourcePlanId,
           ),
         ].slice(0, 6);
         decisionChart.orderPlan = activeOrderPlan;
