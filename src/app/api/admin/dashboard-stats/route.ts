@@ -2387,10 +2387,41 @@ export async function GET(request?: Request) {
           plan.type !== 'WAIT' &&
           plan.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
           (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
-          (plan.riskReward ?? 0) >= 2
+          (plan.riskReward ?? 0) >= 1.8
         )
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, 6);
+
+      // Safeguard: Fallback to top proactive plans if filtering yields 0 plans
+      if (recommendationPlans.length === 0 && eligibleProactivePlans.length > 0) {
+        recommendationPlans = eligibleProactivePlans
+          .filter((p) => p.type !== 'WAIT')
+          .map((plan) => {
+            const candidatePlan: RecommendationPlan = {
+              ...plan,
+              confidence: Math.max(65, plan.confidence || 65),
+              stopLoss: roundPrice(plan.stopLoss),
+              takeProfit: roundPrice(plan.takeProfit),
+              researchStatus: 'NOT_RUN',
+              researchWinRate: null,
+              researchSampleSize: 0,
+            };
+            return {
+              ...candidatePlan,
+              ...buildPlanRiskProfile(candidatePlan, {
+                currentPrice,
+                volatility,
+                h1Bias,
+                m15Bias,
+                researchSampleSize: 0,
+                fundamentalBias,
+                fundamentalWarning,
+              }),
+            };
+          })
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 6);
+      }
 
       let activeOrderPlan: RecommendationPlan | null = null;
       if (isPublic) {
