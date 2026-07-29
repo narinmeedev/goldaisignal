@@ -262,7 +262,7 @@ export class StrategyResearchService {
     const searchSymbol = 'XAU';
     const testedTrades = await prisma.paperTrade.findMany({
       where: {
-        symbol: { contains: searchSymbol },
+        symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
         result: { in: ['WIN', 'LOSS', 'BE'] },
         signal: { isNot: null },
       },
@@ -337,17 +337,17 @@ export class StrategyResearchService {
     const searchSymbol = 'XAU';
     const [m5Candles, m15Candles, h1Candles] = await Promise.all([
       prisma.candle.findMany({
-        where: { symbol: { contains: searchSymbol }, timeframe: 'M5' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M5' },
         orderBy: { time: 'desc' },
         take: 240,
       }),
       prisma.candle.findMany({
-        where: { symbol: { contains: searchSymbol }, timeframe: 'M15' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M15' },
         orderBy: { time: 'desc' },
         take: 200,
       }),
       prisma.candle.findMany({
-        where: { symbol: { contains: searchSymbol }, timeframe: 'H1' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'H1' },
         orderBy: { time: 'desc' },
         take: 160,
       }),

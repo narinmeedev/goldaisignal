@@ -25,12 +25,12 @@ export class ZoneService {
       take: lookback,
     });
 
-    if (candles.length < 20) {
-      // Need enough candles to detect swing points
+    if (candles.length < 5) {
+      // Need at least 5 candles to detect swing points
       return;
     }
 
-    const swingWindow = timeframe === 'M5' ? 3 : timeframe === 'M15' ? 4 : 5; // Faster confirmation for scalping timeframes
+    const swingWindow = Math.min(2, Math.floor(candles.length / 4)); // Flexible swing window
     const swingHighs: number[] = [];
     const swingLows: number[] = [];
 
