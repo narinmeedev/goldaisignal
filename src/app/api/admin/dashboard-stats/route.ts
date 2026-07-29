@@ -2770,7 +2770,38 @@ export async function GET(request?: Request) {
       },
     };
 
+    // Fetch Qwen AI track record stats
+    const qwenTrades = await prisma.paperTrade.findMany({
+      where: {
+        OR: [
+          { notes: { contains: 'Qwen' } },
+          { signal: { reason: { contains: 'qwen' } } },
+        ],
+      },
+      select: { id: true, result: true, rrResult: true, closedAt: true, entry: true, stopLoss: true, takeProfit1: true, direction: true, openedAt: true, notes: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    const qwenWins = qwenTrades.filter((t) => t.result === 'WIN').length;
+    const qwenLosses = qwenTrades.filter((t) => t.result === 'LOSS').length;
+    const qwenOpen = qwenTrades.filter((t) => t.result === 'OPEN' || t.result === 'PLAN').length;
+    const qwenTotalClosed = qwenWins + qwenLosses;
+    const qwenWinRate = qwenTotalClosed > 0 ? Number(((qwenWins / qwenTotalClosed) * 100).toFixed(1)) : 100.0;
+    const qwenTotalR = qwenTrades.reduce((acc, t) => acc + (t.rrResult || 0), 0);
+
+    const qwenPerformance = {
+      totalRecorded: qwenTrades.length,
+      wins: qwenWins,
+      losses: qwenLosses,
+      open: qwenOpen,
+      winRate: qwenWinRate,
+      totalRR: Number(qwenTotalR.toFixed(2)),
+      trades: qwenTrades,
+    };
+
     const responseData = {
+      qwenPerformance,
       totalSignals,
       totalTrades,
       openTradesCount: openTrades.length,

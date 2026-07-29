@@ -87,6 +87,15 @@ interface Performance {
 }
 
 interface DashboardStats {
+  qwenPerformance?: {
+    totalRecorded: number;
+    wins: number;
+    losses: number;
+    open: number;
+    winRate: number;
+    totalRR: number;
+    trades: any[];
+  };
   marketIntelligence?: Record<string, {
     currentPrice: number;
     bias: string;
@@ -445,12 +454,6 @@ export default function UserDashboard() {
 
       {(() => {
         const biasVal = market?.bias ?? 'NEUTRAL';
-        const biasColorClass = biasVal === 'BULLISH' || biasVal === 'BUY'
-          ? 'text-emerald-400 font-bold'
-          : biasVal === 'BEARISH' || biasVal === 'SELL'
-            ? 'text-rose-400 font-bold'
-            : 'text-neutral-400';
-
         const dataStatusValue = isLive ? (
           <span className="flex items-center gap-1.5 text-emerald-400">
             <span className="relative flex h-2 w-2">
@@ -488,6 +491,49 @@ export default function UserDashboard() {
           </section>
         );
       })()}
+
+      {/* Qwen AI Track Record & Performance Reference Card */}
+      {stats?.qwenPerformance && (
+        <section className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-neutral-900 to-indigo-950/40 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-purple-500/20 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/40 bg-purple-500/20 text-purple-300">
+                <Sparkles className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-purple-200">🏆 สถิติวัดผลแผน Qwen 3.5-9B AI (Track Record Reference)</h3>
+                <p className="text-xs text-purple-300/80">ระบบบันทึกและวัดผลการชน TP/SL อัตโนมัติ เพื่อใช้อ้างอิงผลงานประกอบการขายบริการ</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
+                Win Rate {stats.qwenPerformance.winRate}%
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black text-amber-300">
+                สะสม +{stats.qwenPerformance.totalRR}R
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div className="rounded-lg border border-purple-500/20 bg-neutral-950/50 p-2.5">
+              <div className="text-xs text-neutral-400">แผนที่บันทึกวัดผลทั้งหมด</div>
+              <div className="mt-1 text-base font-bold text-neutral-100">{stats.qwenPerformance.totalRecorded} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-2.5">
+              <div className="text-xs text-emerald-400">ชน Take Profit (ชนะ)</div>
+              <div className="mt-1 text-base font-bold text-emerald-300">{stats.qwenPerformance.wins} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-rose-500/20 bg-rose-950/30 p-2.5">
+              <div className="text-xs text-rose-400">ชน Stop Loss (แพ้)</div>
+              <div className="mt-1 text-base font-bold text-rose-300">{stats.qwenPerformance.losses} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-amber-500/20 bg-amber-950/30 p-2.5">
+              <div className="text-xs text-amber-400">กำลังติดตามผลสด</div>
+              <div className="mt-1 text-base font-bold text-amber-300">{stats.qwenPerformance.open} ไม้</div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {(() => {
         const isBuy = direction === 'BUY';

@@ -203,19 +203,45 @@ export async function POST(request: Request) {
       },
     });
 
-    // Create a paper trade record
+    // Create a measurable signal and paper trade record for Qwen AI
     try {
-      await PaperTradeService.openTrade({
-        signalId: '',
-        symbol: 'XAUUSD',
-        direction: planToApply.type.includes('BUY') ? 'BUY' : 'SELL',
-        entry: planToApply.entry,
-        stopLoss: planToApply.stopLoss,
-        takeProfit1: planToApply.takeProfit,
-        takeProfit2: planToApply.takeProfit + 2.0,
-        initialResult: 'PLAN',
-        notes: planToApply.reason,
+      const signal = await prisma.signal.create({
+        data: {
+          symbol: 'XAUUSD',
+          direction: planToApply.type.includes('BUY') ? 'BUY' : 'SELL',
+          entry: planToApply.entry,
+          stopLoss: planToApply.stopLoss,
+          takeProfit1: planToApply.takeProfit,
+          takeProfit2: Number((planToApply.takeProfit + (planToApply.type.includes('BUY') ? 2.0 : -2.0)).toFixed(2)),
+          riskReward: 2.5,
+          confidence: planToApply.confidence,
+          timeframe: 'M15',
+          status: 'active',
+          reason: JSON.stringify({
+            planType: planToApply.type,
+            reason: planToApply.reason,
+            strategyId: 'qwen_ai_quant_3_5',
+            source: qwenResult.source || 'LOCAL_QWEN_LLM',
+          }),
+        },
       });
+
+      await prisma.paperTrade.create({
+        data: {
+          signalId: signal.id,
+          symbol: 'XAUUSD',
+          direction: planToApply.type.includes('BUY') ? 'BUY' : 'SELL',
+          entry: planToApply.entry,
+          stopLoss: planToApply.stopLoss,
+          takeProfit1: planToApply.takeProfit,
+          takeProfit2: Number((planToApply.takeProfit + (planToApply.type.includes('BUY') ? 2.0 : -2.0)).toFixed(2)),
+          result: 'PLAN',
+          rrResult: 0.0,
+          openedAt: new Date(),
+          notes: `🤖 [Qwen 3.5-9B AI Quant]: ${planToApply.reason}`,
+        },
+      });
+      console.log(`[Qwen Analyze] Recorded signal ${signal.id} and paper trade for Qwen AI plan.`);
     } catch (ptErr) {
       console.error('[Qwen Analyze] Failed to create paper trade:', ptErr);
     }
