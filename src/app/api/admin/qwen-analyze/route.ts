@@ -85,18 +85,25 @@ export async function POST(request: Request) {
       }, { headers: noStoreHeaders });
     }
 
-    // Default Action: Run Qwen Analysis
-    const m15Candles = await prisma.candle.findMany({
-      where: { symbol, timeframe: 'M15' },
-      orderBy: { time: 'desc' },
-      take: 30,
-    });
-
-    const m5Candles = await prisma.candle.findMany({
-      where: { symbol, timeframe: 'M5' },
-      orderBy: { time: 'desc' },
-      take: 30,
-    });
+    // Fetch candle history and recent loss records for Qwen post-mortem analysis
+    const [m15Candles, m5Candles, recentLosses] = await Promise.all([
+      prisma.candle.findMany({
+        where: { symbol, timeframe: 'M15' },
+        orderBy: { time: 'desc' },
+        take: 20,
+      }),
+      prisma.candle.findMany({
+        where: { symbol, timeframe: 'M5' },
+        orderBy: { time: 'desc' },
+        take: 20,
+      }),
+      prisma.paperTrade.findMany({
+        where: { symbol, result: 'LOSS' },
+        orderBy: { closedAt: 'desc' },
+        take: 5,
+        select: { direction: true, entry: true, stopLoss: true, notes: true, closedAt: true },
+      }),
+    ]);
 
     const currentPriceCandle = m5Candles[0] || m15Candles[0];
     const currentPrice = currentPriceCandle ? currentPriceCandle.close : 4015.0;
@@ -110,7 +117,7 @@ export async function POST(request: Request) {
     const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
 
     // Compute dynamic ATR(14) from M15 candles
-    let atr14 = 5.0;
+    let atr14 = 5.5;
     if (m15Candles.length >= 14) {
       let trSum = 0;
       for (let i = 0; i < 14; i++) {
@@ -142,19 +149,75 @@ export async function POST(request: Request) {
       proposedEntry: Number((isBullish ? currentPrice - 1.5 : currentPrice + 1.5).toFixed(2)),
       proposedSL: Number((isBullish ? currentPrice - 1.5 - slBuffer : currentPrice + 1.5 + slBuffer).toFixed(2)),
       proposedTP: Number((isBullish ? currentPrice - 1.5 + tpBuffer : currentPrice + 1.5 - tpBuffer).toFixed(2)),
+      m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      m15Candles: m15Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      recentLosses: recentLosses.map((l) => ({ direction: l.direction, entry: l.entry, stopLoss: l.stopLoss, notes: l.notes, closedAt: l.closedAt })),
     });
+
+    // AUTO-APPLY Qwen's plan directly to ACTIVE_ORDER_PLAN_XAUUSD
+    const planToApply = {
+      id: `qwen-plan-${Date.now()}`,
+      type: qwenResult.type || (qwenResult.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
+      title: `แผนวิเคราะห์โดย Qwen 3.5-9B AI (วิเคราะห์ลำดับแท่งเทียน + ทบทวน SL)`,
+      entry: qwenResult.refinedEntry,
+      entry1: qwenResult.refinedEntry,
+      stopLoss: qwenResult.refinedSL,
+      takeProfit: qwenResult.refinedTP,
+      confidence: qwenResult.confidence,
+      reason: `🤖 [Qwen 3.5-9B AI]: ${qwenResult.reason}`,
+      strategyLabel: `Qwen 3.5-9B Quantitative AI (${qwenResult.source})`,
+      timeframe: 'M15',
+      lockedAt: new Date().toISOString(),
+    };
+
+    await prisma.systemSetting.upsert({
+      where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
+      update: { value: JSON.stringify(planToApply) },
+      create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
+    });
+
+    // Clear caches so the next dashboard-stats query fetches the new plan immediately
+    await prisma.systemSetting.deleteMany({
+      where: {
+        key: {
+          in: [
+            'CACHE_DASHBOARD_STATS_PUBLIC',
+            'CACHE_DASHBOARD_STATS_VIEWER',
+            'CACHE_DASHBOARD_STATS_ADMIN',
+          ],
+        },
+      },
+    });
+
+    // Create a paper trade record
+    try {
+      await PaperTradeService.openTrade({
+        signalId: '',
+        symbol: 'XAUUSD',
+        direction: planToApply.type.includes('BUY') ? 'BUY' : 'SELL',
+        entry: planToApply.entry,
+        stopLoss: planToApply.stopLoss,
+        takeProfit1: planToApply.takeProfit,
+        takeProfit2: planToApply.takeProfit + 2.0,
+        initialResult: 'PLAN',
+        notes: planToApply.reason,
+      });
+    } catch (ptErr) {
+      console.error('[Qwen Analyze] Failed to create paper trade:', ptErr);
+    }
 
     return NextResponse.json({
       success: true,
       model: 'Qwen 3.5-9B (LM Studio)',
       currentPrice,
       result: qwenResult,
-      analyzedAt: new Date().toISOString(),
+      appliedPlan: planToApply,
+      autoApplied: true,
     }, { headers: noStoreHeaders });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Failed to run Qwen analysis.', details: err.message },
-      { status: 500, headers: noStoreHeaders }
-    );
+  } catch (error) {
+    console.error('[Qwen Analyze Route Error]:', error);
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'ไม่สามารถประมวลผล Qwen AI ได้',
+    }, { status: 500, headers: noStoreHeaders });
   }
 }

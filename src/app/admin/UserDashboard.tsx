@@ -210,6 +210,7 @@ export default function UserDashboard() {
       const data = await res.json();
       if (data.success) {
         setQwenData(data);
+        await load(true); // Refresh dashboard to show Qwen's auto-applied plan immediately!
       } else {
         alert(data.error || 'Qwen 3.5-9B ไม่ตอบกลับ');
       }
