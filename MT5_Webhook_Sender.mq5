@@ -278,9 +278,6 @@ void DrawChartCornerText(string name, string text, color clr)
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
 }
-   ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-}
 
 datetime ToUtc(datetime serverTime)
 {
