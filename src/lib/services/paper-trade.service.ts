@@ -320,11 +320,16 @@ export class PaperTradeService {
       } catch {
         planType = '';
       }
+      const isMarketOrder = planType.includes('MARKET');
       const isStopOrder = planType.includes('STOP');
 
-      isTriggered = isStopOrder
-        ? direction === 'BUY' ? currentPrice >= entry : currentPrice <= entry
-        : direction === 'BUY' ? currentPrice <= entry : currentPrice >= entry;
+      if (isMarketOrder) {
+        isTriggered = true;
+      } else {
+        isTriggered = isStopOrder
+          ? direction === 'BUY' ? currentPrice >= entry : currentPrice <= entry
+          : direction === 'BUY' ? currentPrice <= entry : currentPrice >= entry;
+      }
 
       if (isTriggered) {
         // Update plan status to OPEN
