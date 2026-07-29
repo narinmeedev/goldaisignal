@@ -220,6 +220,11 @@ export default function UserDashboard() {
       if (data.success) {
         setQwenData(data);
         if (data.appliedPlan) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('GOLDAI_SAVED_QWEN_PLAN', JSON.stringify(data.appliedPlan));
+            } catch {}
+          }
           setStats((prev) => {
             if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
             return {
@@ -268,6 +273,11 @@ export default function UserDashboard() {
       if (data.success) {
         setShowQwenModal(false);
         if (data.appliedPlan) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('GOLDAI_SAVED_QWEN_PLAN', JSON.stringify(data.appliedPlan));
+            } catch {}
+          }
           setStats((prev) => {
             if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
             return {
@@ -299,10 +309,32 @@ export default function UserDashboard() {
     if (manual) setRefreshing(true);
     try {
       const data = await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 15_000, cacheBust: true });
+      
+      // Fallback: If DB hasn't returned active plan yet, restore from localStorage if applied recently
+      let currentActivePlan = data?.marketIntelligence?.XAUUSD?.activeOrderPlan;
+      if (!currentActivePlan && typeof window !== 'undefined') {
+        try {
+          const cachedPlanStr = localStorage.getItem('GOLDAI_SAVED_QWEN_PLAN');
+          if (cachedPlanStr) {
+            const cachedPlan = JSON.parse(cachedPlanStr);
+            const planAgeHours = (Date.now() - new Date(cachedPlan.lockedAt || Date.now()).getTime()) / (1000 * 60 * 60);
+            if (planAgeHours < 6) {
+              currentActivePlan = cachedPlan;
+            }
+          }
+        } catch {}
+      }
+
+      if (data?.marketIntelligence?.XAUUSD) {
+        data.marketIntelligence.XAUUSD.activeOrderPlan = currentActivePlan;
+        data.marketIntelligence.XAUUSD.hasActivePlan = Boolean(currentActivePlan);
+      }
+
       setStats(data);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลไม่สำเร็จ');
+      console.warn('[UserDashboard] Non-fatal load error:', loadError);
+      // Keep existing stats visible instead of breaking the UI
     } finally {
       setLoading(false);
       setRefreshing(false);

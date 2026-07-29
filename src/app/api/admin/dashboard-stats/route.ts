@@ -2434,9 +2434,8 @@ export async function GET(request?: Request) {
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
       const storedPlan = parseStoredOrderPlan(storedSetting?.value);
-      const isQwenApplied = storedPlan && (storedPlan.id?.toLowerCase().includes('qwen') || storedPlan.title?.toLowerCase().includes('qwen') || storedPlan.strategyLabel?.toLowerCase().includes('qwen'));
 
-      if (isQwenApplied && storedPlan && !isPlanStale(storedPlan, currentPrice, now)) {
+      if (storedPlan) {
         activeOrderPlan = storedPlan;
       } else {
         const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
