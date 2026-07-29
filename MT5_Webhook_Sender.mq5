@@ -193,14 +193,73 @@ void SyncCandlesToWeb(bool fullHistory)
       if(res == 200) {
          Print(">>> อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") เข้าระบบ Zones สำเร็จ!");
          string responseText = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
+         
          if(StringFind(responseText, "\"command\":\"RECONNECT\"") >= 0 || StringFind(responseText, "\"command\":\"RESYNC\"") >= 0) {
             Print(">>> [SERVER COMMAND] ได้รับคำสั่งสั่ง RECONNECT / RESYNC จากเว็บหลังบ้าน! กำลังเริ่มโหลดรีเซ็ตบอทใหม่...");
             Alert("ได้รับคำสั่งให้เชื่อมต่อใหม่จากเซิร์ฟเวอร์เว็บ!");
-            ChartSetSymbolPeriod(0, _Symbol, _Period); // โหลดบอทใหม่เพื่อเชื่อมต่อและดึงข้อมูลใหม่ทั้งหมด
+            ChartSetSymbolPeriod(0, _Symbol, _Period);
          }
+         
+         // วาดเส้นแนวออเดอร์ Entry / SL / TP บนกราฟ MT5 อัตโนมัติเมื่อได้รับแผนจากเซิร์ฟเวอร์
+         UpdateChartTradePlan(responseText);
       }
       else Print(">>> อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
    }
+}
+
+//+------------------------------------------------------------------+
+//| วาดเส้นออเดอร์ Entry, SL, TP บนกราฟ MT5 อัตโนมัติ                    |
+//+------------------------------------------------------------------+
+void UpdateChartTradePlan(string json)
+{
+   int planPos = StringFind(json, "\"activePlan\":{");
+   if(planPos < 0) return;
+
+   double entry = ExtractJsonDouble(json, "\"entry\":");
+   double sl = ExtractJsonDouble(json, "\"stopLoss\":");
+   double tp = ExtractJsonDouble(json, "\"takeProfit\":");
+
+   if(entry <= 0 || sl <= 0 || tp <= 0) return;
+
+   // 1. Draw Entry Line
+   DrawChartLine("GoldAI_ENTRY", entry, clrDodgerBlue, STYLE_SOLID, 2, "GoldAI ENTRY: " + DoubleToString(entry, 2));
+   
+   // 2. Draw SL Line
+   DrawChartLine("GoldAI_SL", sl, clrCrimson, STYLE_DASH, 1, "GoldAI SL: " + DoubleToString(sl, 2));
+
+   // 3. Draw TP Line
+   DrawChartLine("GoldAI_TP", tp, clrGold, STYLE_SOLID, 2, "GoldAI TP: " + DoubleToString(tp, 2));
+}
+
+double ExtractJsonDouble(string json, string key)
+{
+   int pos = StringFind(json, key);
+   if(pos < 0) return 0.0;
+   pos += StringLen(key);
+   string valStr = "";
+   for(int i = pos; i < StringLen(json); i++) {
+      ushort ch = StringGetCharacter(json, i);
+      if((ch >= '0' && ch <= '9') || ch == '.') {
+         valStr += ShortToString(ch);
+      } else if(StringLen(valStr) > 0) {
+         break;
+      }
+   }
+   return StringToDouble(valStr);
+}
+
+void DrawChartLine(string name, double price, color clr, ENUM_LINE_STYLE style, int width, string text)
+{
+   if(ObjectFind(0, name) < 0) {
+      ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+   } else {
+      ObjectMove(0, name, 0, 0, price);
+   }
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
 }
 
 datetime ToUtc(datetime serverTime)

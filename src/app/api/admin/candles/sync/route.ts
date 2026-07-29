@@ -337,13 +337,39 @@ export async function POST(request: Request) {
       console.error('Failed to consume MT5 command:', cmdErr);
     }
 
+    // Attach active trade plan for MT5 automatic line drawing & execution
+    let activePlan = null;
+    try {
+      const activePlanSetting = await prisma.systemSetting.findUnique({
+        where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' }
+      });
+      if (activePlanSetting?.value) {
+        const parsed = JSON.parse(activePlanSetting.value);
+        if (parsed && parsed.entry && parsed.stopLoss && parsed.takeProfit) {
+          activePlan = {
+            id: parsed.id,
+            type: parsed.type,
+            title: parsed.title,
+            entry: parsed.entry,
+            stopLoss: parsed.stopLoss,
+            takeProfit: parsed.takeProfit,
+            confidence: parsed.confidence,
+            timeframe: parsed.timeframe
+          };
+        }
+      }
+    } catch (planErr) {
+      console.error('Failed to attach activePlan to MT5 sync response:', planErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Successfully synced ${dataToInsert.length} candles for ${symbol} ${timeframe}.`,
       latestCandleAt: latestIncoming.time.toISOString(),
       zonesUpdated: latestChanged,
       planAutomation,
-      command: pendingCommand
+      command: pendingCommand,
+      activePlan,
     }, { headers: noStoreHeaders });
   } catch (err: any) {
     await prisma.webhookEvent.create({
