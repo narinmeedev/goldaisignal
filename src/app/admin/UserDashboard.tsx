@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Bot,
   CheckCircle2,
   Clock3,
   Gauge,
@@ -15,9 +16,11 @@ import {
   Loader2,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Target,
   TrendingDown,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { fetchDashboardStats } from '@/lib/dashboard-fetch';
 
@@ -194,6 +197,27 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
+  const [qwenData, setQwenData] = useState<any>(null);
+  const [showQwenModal, setShowQwenModal] = useState(false);
+
+  const runQwenAnalysis = async () => {
+    setIsQwenAnalyzing(true);
+    setShowQwenModal(true);
+    try {
+      const res = await fetch('/api/admin/qwen-analyze', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setQwenData(data);
+      } else {
+        alert(data.error || 'Qwen 3.5-9B ไม่ตอบกลับ');
+      }
+    } catch {
+      alert('ไม่สามารถเชื่อมต่อกับ Qwen 3.5-9B API บนเครื่องได้');
+    } finally {
+      setIsQwenAnalyzing(false);
+    }
+  };
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -259,27 +283,113 @@ export default function UserDashboard() {
           <h1 className="mt-1.5 text-2xl font-bold bg-gradient-to-r from-neutral-50 via-neutral-100 to-amber-200 bg-clip-text text-transparent">ผู้ช่วยวิเคราะห์เทรดทองคำ AI</h1>
           <p className="mt-1 text-sm text-neutral-400">ใช้แผนหลักล่าสุดเพียงแผนเดียว และรอ Entry ตามเงื่อนไขก่อนตัดสินใจ</p>
         </div>
-        <button
-          type="button"
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          อัปเดตข้อมูล
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={runQwenAnalysis}
+            disabled={isQwenAnalyzing}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-4 text-sm font-bold text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_20px_rgba(168,85,247,0.25)] hover:shadow-[0_0_25px_rgba(168,85,247,0.4)]"
+          >
+            {isQwenAnalyzing ? <Loader2 className="h-4 w-4 animate-spin text-purple-300" /> : <Sparkles className="h-4 w-4 text-purple-400" />}
+            🤖 สั่ง Qwen 3.5-9B วิเคราะห์กราฟสด
+          </button>
+          <button
+            type="button"
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900 px-3 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            อัปเดตข้อมูล
+          </button>
+        </div>
       </header>
 
-      {(error || !isLive) && (
-        <section className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-          <div>
-            <p className="font-semibold">ข้อมูลตลาดยังไม่ครบสถานะ Live</p>
-            <p className="mt-1 text-sm text-amber-100/80">
-              {error || stats?.mt5Connection?.realtimeStatus?.message || 'ระบบกำลังรอราคาสดและแท่ง M5 จาก MT5'} ห้ามใช้ราคาที่ค้างเพื่อตัดสินใจเข้าออเดอร์
-            </p>
+      {/* Qwen 3.5-9B Analysis Modal */}
+      {showQwenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-purple-500/40 bg-neutral-950 p-6 text-neutral-100 shadow-[0_0_50px_rgba(168,85,247,0.3)]">
+            <div className="flex items-center justify-between border-b border-purple-500/20 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-400">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-purple-200">Qwen 3.5-9B Local AI Analyst</h3>
+                  <p className="text-xs text-neutral-400">ประมวลผลตรงผ่าน LM Studio (127.0.0.1:1234)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQwenModal(false)}
+                className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {isQwenAnalyzing ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
+                  <p className="mt-4 font-bold text-neutral-200">กำลังยิงข้อมูลกราฟสดเข้า Qwen 3.5-9B LLM...</p>
+                  <p className="mt-1 text-xs text-neutral-400">วิเคราะห์ราคาปัจจุบัน, RSI, EMA, และแนวรับต้าน</p>
+                </div>
+              ) : qwenData?.result ? (
+                <>
+                  <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-purple-400">แหล่งประมวลผล: {qwenData.result.source}</span>
+                      <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300 border border-emerald-500/30">
+                        ความมั่นใจ {qwenData.result.confidence}%
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-neutral-200">
+                      {qwenData.result.reason}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5 text-center">
+                      <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">จุดเข้าเสนอแนะ (ENTRY)</p>
+                      <p className="mt-1 text-xl font-black text-amber-200">${qwenData.result.refinedEntry?.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3.5 text-center">
+                      <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">ตัดขาดทุน (STOP LOSS)</p>
+                      <p className="mt-1 text-xl font-black text-rose-200">${qwenData.result.refinedSL?.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 text-center">
+                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">ทำกำไร (TAKE PROFIT)</p>
+                      <p className="mt-1 text-xl font-black text-emerald-200">${qwenData.result.refinedTP?.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowQwenModal(false)}
+                      className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2 text-xs font-bold text-neutral-300 hover:bg-neutral-800"
+                    >
+                      ปิดหน้าต่าง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        load(true);
+                        setShowQwenModal(false);
+                      }}
+                      className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                    >
+                      นำแผนไปใช้และอัปเดตหน้าจอ
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-center py-6 text-neutral-400">ไม่พบผลการวิเคราะห์</p>
+              )}
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
       {(() => {
