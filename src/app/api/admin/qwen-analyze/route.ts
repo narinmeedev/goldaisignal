@@ -66,7 +66,7 @@ export async function POST(request: Request) {
           stopLoss: planToApply.stopLoss,
           takeProfit1: planToApply.takeProfit,
           takeProfit2: planToApply.takeProfit + 2.0,
-          initialResult: 'PLAN',
+          initialResult: 'OPEN',
           notes: planToApply.reason,
         });
       } catch (ptErr) {
@@ -217,7 +217,7 @@ export async function POST(request: Request) {
           stopLoss: planToApply.stopLoss,
           takeProfit1: planToApply.takeProfit,
           takeProfit2: Number((planToApply.takeProfit + (planToApply.type.includes('BUY') ? 2.0 : -2.0)).toFixed(2)),
-          result: 'PLAN',
+          result: 'OPEN',
           rrResult: 0.0,
           openedAt: new Date(),
           notes: `🤖 [Qwen 3.5-9B AI Quant]: ${planToApply.reason}`,
