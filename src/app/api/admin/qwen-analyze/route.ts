@@ -190,19 +190,6 @@ export async function POST(request: Request) {
       create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
     });
 
-    // Clear caches so the next dashboard-stats query fetches the new plan immediately
-    await prisma.systemSetting.deleteMany({
-      where: {
-        key: {
-          in: [
-            'CACHE_DASHBOARD_STATS_PUBLIC',
-            'CACHE_DASHBOARD_STATS_VIEWER',
-            'CACHE_DASHBOARD_STATS_ADMIN',
-          ],
-        },
-      },
-    });
-
     // Create a measurable signal and paper trade record for Qwen AI
     try {
       const signal = await prisma.signal.create({

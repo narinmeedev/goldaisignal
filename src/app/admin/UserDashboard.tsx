@@ -219,7 +219,23 @@ export default function UserDashboard() {
       const data = await res.json();
       if (data.success) {
         setQwenData(data);
-        await load(true); // Refresh dashboard to show Qwen's auto-applied plan immediately!
+        if (data.appliedPlan) {
+          setStats((prev) => {
+            if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
+            return {
+              ...prev,
+              marketIntelligence: {
+                ...prev.marketIntelligence,
+                XAUUSD: {
+                  ...prev.marketIntelligence.XAUUSD,
+                  activeOrderPlan: data.appliedPlan,
+                  hasActivePlan: true,
+                },
+              },
+            };
+          });
+        }
+        load(true).catch(() => {});
       } else {
         alert(data.error || 'Qwen 3.5-9B ไม่ตอบกลับ');
       }
@@ -242,7 +258,6 @@ export default function UserDashboard() {
         },
       };
 
-      // 1. Apply to local DB (connected via SSH Tunnel)
       const res = await fetch('/api/admin/qwen-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -250,21 +265,26 @@ export default function UserDashboard() {
       });
       const data = await res.json();
 
-      // 2. Also push directly to Cloud Production (goldaisig.com)
-      try {
-        await fetch('https://goldaisig.com/api/admin/qwen-analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(planPayload),
-        });
-      } catch (cloudErr) {
-        console.warn('[Qwen Sync] Could not push to goldaisig.com directly:', cloudErr);
-      }
-
       if (data.success) {
         setShowQwenModal(false);
-        await load(true);
-        alert('✅ นำแผนของ Qwen 3.5-9B ไปใช้งานบน Localhost และส่งขึ้น goldaisig.com เรียบร้อยแล้ว!');
+        if (data.appliedPlan) {
+          setStats((prev) => {
+            if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
+            return {
+              ...prev,
+              marketIntelligence: {
+                ...prev.marketIntelligence,
+                XAUUSD: {
+                  ...prev.marketIntelligence.XAUUSD,
+                  activeOrderPlan: data.appliedPlan,
+                  hasActivePlan: true,
+                },
+              },
+            };
+          });
+        }
+        alert('✅ บันทึกและนำแผน Qwen 3.5-9B ขึ้นแสดงผลเรียบร้อยแล้ว!');
+        load(true).catch(() => {});
       } else {
         alert(data.error || 'ไม่สามารถนำแผนไปใช้ได้');
       }
