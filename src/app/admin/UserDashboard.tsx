@@ -568,7 +568,7 @@ export default function UserDashboard() {
                 <Sparkles className="h-5 w-5 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-purple-200">🏆 สถิติวัดผลแผน Qwen 3.5-9B AI (Track Record Reference)</h3>
+                <h3 className="text-sm font-bold text-purple-200">🏆 สถิติวัดผลแผน Qwen AI (Track Record Reference)</h3>
                 <p className="text-xs text-purple-300/80">ระบบบันทึกและวัดผลการชน TP/SL อัตโนมัติ เพื่อใช้อ้างอิงผลงานประกอบการขายบริการ</p>
               </div>
             </div>
