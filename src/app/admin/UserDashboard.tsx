@@ -198,6 +198,7 @@ export default function UserDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
+  const [isApplyingPlan, setIsApplyingPlan] = useState(false);
   const [qwenData, setQwenData] = useState<any>(null);
   const [showQwenModal, setShowQwenModal] = useState(false);
 
@@ -216,6 +217,35 @@ export default function UserDashboard() {
       alert('ไม่สามารถเชื่อมต่อกับ Qwen 3.5-9B API บนเครื่องได้');
     } finally {
       setIsQwenAnalyzing(false);
+    }
+  };
+
+  const applyQwenPlan = async () => {
+    if (!qwenData?.result) return;
+    setIsApplyingPlan(true);
+    try {
+      const res = await fetch('/api/admin/qwen-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'apply',
+          plan: {
+            ...qwenData.result,
+            currentPrice: qwenData.currentPrice,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowQwenModal(false);
+        await load(true);
+      } else {
+        alert(data.error || 'ไม่สามารถนำแผนไปใช้ได้');
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาดในการบันทึกแผน Qwen');
+    } finally {
+      setIsApplyingPlan(false);
     }
   };
 
@@ -374,12 +404,11 @@ export default function UserDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        load(true);
-                        setShowQwenModal(false);
-                      }}
-                      className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                      onClick={applyQwenPlan}
+                      disabled={isApplyingPlan}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)] disabled:opacity-50 transition-all"
                     >
+                      {isApplyingPlan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                       นำแผนไปใช้และอัปเดตหน้าจอ
                     </button>
                   </div>
