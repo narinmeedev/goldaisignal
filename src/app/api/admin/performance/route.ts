@@ -56,10 +56,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Subscription required' }, { status: 403 });
     }
 
+    const xauSymbolsFilter = { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] };
+
     const [totalSignalsCount, closedTrades] = await Promise.all([
-      prisma.signal.count({ where: { symbol: { contains: 'XAU' } } }),
+      prisma.signal.count({ where: { symbol: xauSymbolsFilter } }),
       prisma.paperTrade.findMany({
-        where: { symbol: { contains: 'XAU' }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+        where: { symbol: xauSymbolsFilter, result: { in: ['WIN', 'LOSS', 'BE'] } },
         orderBy: { closedAt: 'asc' },
         include: { signal: true },
       }),

@@ -100,11 +100,33 @@ export class QwenLocalAiService {
       const parsed = JSON.parse(jsonMatch[0]);
       if (!parsed || typeof parsed.entry !== 'number') return fallback;
 
+      const refinedEntry = Number(parsed.entry.toFixed(2));
+      let refinedSL = Number((parsed.stopLoss || input.proposedSL).toFixed(2));
+      let refinedTP = Number((parsed.takeProfit || input.proposedTP).toFixed(2));
+
+      // Sanity Guard: Enforce minimum Stop Loss distance (at least 2.0x ATR or $10.0 for Gold)
+      const minSlDist = Math.max(10.0, (input.atr14 || 5.0) * 2.0);
+      if (input.proposedType.includes('BUY')) {
+        if (refinedEntry - refinedSL < minSlDist) {
+          refinedSL = Number((refinedEntry - minSlDist).toFixed(2));
+        }
+        if (refinedTP <= refinedEntry) {
+          refinedTP = Number((refinedEntry + minSlDist * 2.0).toFixed(2));
+        }
+      } else {
+        if (refinedSL - refinedEntry < minSlDist) {
+          refinedSL = Number((refinedEntry + minSlDist).toFixed(2));
+        }
+        if (refinedTP >= refinedEntry) {
+          refinedTP = Number((refinedEntry - minSlDist * 2.0).toFixed(2));
+        }
+      }
+
       return {
         isApproved: parsed.approved !== false,
-        refinedEntry: Number(parsed.entry.toFixed(2)),
-        refinedSL: Number((parsed.stopLoss || input.proposedSL).toFixed(2)),
-        refinedTP: Number((parsed.takeProfit || input.proposedTP).toFixed(2)),
+        refinedEntry,
+        refinedSL,
+        refinedTP,
         confidence: Math.min(95, Math.max(50, Number(parsed.confidence) || 85)),
         reason: parsed.reason || fallback.reason,
         source: 'LOCAL_QWEN_LLM',

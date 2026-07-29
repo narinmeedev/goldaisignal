@@ -4,7 +4,10 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 const globalForPrisma = global as unknown as { prisma: PrismaClient | undefined };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL || "mysql://u286424856_goldaisig:%40oibomiN42%40@127.0.0.1:3307/u286424856_goldaisig?allowPublicKeyRetrieval=true";
+  let connectionString = process.env.DATABASE_URL || "mysql://u286424856_goldaisig:%40oibomiN42%40@127.0.0.1:3306/u286424856_goldaisig?allowPublicKeyRetrieval=true";
+  if (!connectionString.includes('allowPublicKeyRetrieval')) {
+    connectionString += connectionString.includes('?') ? '&allowPublicKeyRetrieval=true' : '?allowPublicKeyRetrieval=true';
+  }
   const adapter = new PrismaMariaDb(connectionString);
   return new PrismaClient({ adapter });
 }

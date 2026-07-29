@@ -25,7 +25,7 @@ export async function GET() {
     }
 
     const trades = await prisma.paperTrade.findMany({
-      where: { symbol: { contains: 'XAU' } },
+      where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } },
       orderBy: { openedAt: 'desc' },
       include: {
         signal: true,

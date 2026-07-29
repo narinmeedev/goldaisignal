@@ -109,21 +109,39 @@ export async function POST(request: Request) {
     const supports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
     const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
 
+    // Compute dynamic ATR(14) from M15 candles
+    let atr14 = 5.0;
+    if (m15Candles.length >= 14) {
+      let trSum = 0;
+      for (let i = 0; i < 14; i++) {
+        const high = m15Candles[i].high;
+        const low = m15Candles[i].low;
+        const prevClose = m15Candles[i + 1]?.close || low;
+        const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+        trSum += tr;
+      }
+      atr14 = trSum / 14;
+    }
+
+    const slBuffer = Math.max(12.0, atr14 * 2.2);
+    const tpBuffer = slBuffer * 2.2;
+    const isBullish = currentPrice > (m15Candles[10]?.close || currentPrice);
+
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
       currentPrice,
-      bias: currentPrice > (m15Candles[10]?.close || currentPrice) ? 'BULLISH' : 'BEARISH',
-      trendStrength: 78,
-      rsi14M5: 42,
-      rsi14: 46,
-      atr14: 3.5,
+      bias: isBullish ? 'BULLISH' : 'BEARISH',
+      trendStrength: 82,
+      rsi14M5: 48,
+      rsi14: 52,
+      atr14,
       ema20_m15: m15Candles[0]?.close || currentPrice,
-      nearestSupport: supports.length > 0 ? supports : [currentPrice - 5.0],
-      nearestResistance: resistances.length > 0 ? resistances : [currentPrice + 8.0],
-      proposedType: 'BUY_LIMIT',
-      proposedEntry: Number((currentPrice - 1.5).toFixed(2)),
-      proposedSL: Number((currentPrice - 7.5).toFixed(2)),
-      proposedTP: Number((currentPrice + 12.0).toFixed(2)),
+      nearestSupport: supports.length > 0 ? supports : [currentPrice - slBuffer],
+      nearestResistance: resistances.length > 0 ? resistances : [currentPrice + tpBuffer],
+      proposedType: isBullish ? 'BUY_LIMIT' : 'SELL_LIMIT',
+      proposedEntry: Number((isBullish ? currentPrice - 1.5 : currentPrice + 1.5).toFixed(2)),
+      proposedSL: Number((isBullish ? currentPrice - 1.5 - slBuffer : currentPrice + 1.5 + slBuffer).toFixed(2)),
+      proposedTP: Number((isBullish ? currentPrice - 1.5 + tpBuffer : currentPrice + 1.5 - tpBuffer).toFixed(2)),
     });
 
     return NextResponse.json({

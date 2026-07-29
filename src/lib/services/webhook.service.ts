@@ -40,9 +40,8 @@ export class WebhookService {
       if (strategy === 'price_feed' || strategy === 'tick') {
         const latestPriceEvent = await prisma.webhookEvent.findFirst({
           where: {
-            symbol: { contains: 'XAU' },
+            symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
             source: 'tradingview',
-            rawPayload: { contains: '"strategy":"price_feed"' },
           },
           orderBy: { receivedAt: 'desc' },
           select: { id: true },

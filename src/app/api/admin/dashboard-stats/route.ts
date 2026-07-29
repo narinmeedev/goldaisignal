@@ -511,7 +511,7 @@ const getOpenTrackingPlan = async (
 ): Promise<RecommendationPlan | null> => {
   const openTrade = await prisma.paperTrade.findFirst({
     where: {
-      symbol: { contains: symbol.toUpperCase().includes('XAU') ? 'XAU' : symbol },
+      symbol: { in: [symbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
       result: 'OPEN',
     },
     orderBy: { openedAt: 'desc' },
@@ -707,7 +707,7 @@ const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string)
 };
 
 const reconcileOpenPlanLifecycle = async (symbol: string) => {
-  const symbolFilter = { contains: symbol.toUpperCase().includes('XAU') ? 'XAU' : symbol };
+  const symbolFilter = { in: [symbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] };
   const [openTrades, pendingTrades] = await Promise.all([
     prisma.paperTrade.findMany({
       where: { symbol: symbolFilter, result: 'OPEN' },
@@ -938,7 +938,7 @@ const getStableOrderPlan = async (
     try {
       const activeTrackingTrade = await prisma.paperTrade.findFirst({
         where: {
-          symbol: { contains: 'XAU' },
+          symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
           direction: nextPlan.direction,
           result: { in: ['OPEN', 'PLAN', 'TESTING'] },
           signal: {
@@ -1135,33 +1135,33 @@ export async function GET(request?: Request) {
         recentPlanResults,
         zoneCount,
       ] = await Promise.all([
-        prisma.signal.count({ where: { symbol: { contains: 'XAU' } } }),
-        prisma.paperTrade.count({ where: { symbol: { contains: 'XAU' } } }),
+        prisma.signal.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
+        prisma.paperTrade.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
         prisma.paperTrade.findMany({
-          where: { symbol: { contains: 'XAU' }, result: 'OPEN' },
+          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'OPEN' },
           orderBy: { openedAt: 'desc' },
           include: { signal: true },
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { contains: 'XAU' }, result: { in: ['PLAN', 'TESTING'] } },
+          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['PLAN', 'TESTING'] } },
           orderBy: { openedAt: 'desc' },
           include: { signal: true },
         }),
         prisma.signal.findMany({
-          where: { symbol: { contains: 'XAU' } },
+          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } },
           orderBy: { createdAt: 'desc' },
           take: 6,
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { contains: 'XAU' }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { contains: 'XAU' }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
           orderBy: { closedAt: 'desc' },
           take: 8,
           include: { signal: true },
         }),
-        prisma.zone.count({ where: { symbol: { contains: 'XAU' } } }),
+        prisma.zone.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
       ]);
     }
 
@@ -1192,7 +1192,7 @@ export async function GET(request?: Request) {
         ] = await Promise.all([
           prisma.signal.findMany({
             where: {
-              symbol: { contains: 'XAU' },
+              symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
               createdAt: { gte: todayRange.start, lt: todayRange.end },
             },
             orderBy: { createdAt: 'desc' },
@@ -1219,19 +1219,19 @@ export async function GET(request?: Request) {
             },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
             orderBy: { closedAt: 'desc' },
             take: 30,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: 'WIN' },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'WIN' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: 'LOSS' },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'LOSS' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
@@ -1289,7 +1289,7 @@ export async function GET(request?: Request) {
         ] = await Promise.all([
           prisma.signal.findMany({
             where: {
-              symbol: { contains: 'XAU' },
+              symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
               createdAt: { gte: todayRange.start, lt: todayRange.end },
             },
             orderBy: { createdAt: 'desc' },
@@ -1316,19 +1316,19 @@ export async function GET(request?: Request) {
             },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
             orderBy: { closedAt: 'desc' },
             take: 30,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: 'WIN' },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'WIN' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { contains: 'XAU' }, result: 'LOSS' },
+            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'LOSS' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
@@ -1396,7 +1396,7 @@ export async function GET(request?: Request) {
       const [recentPriceEvents, latestAnySyncEvent] = await Promise.all([
         prisma.webhookEvent.findMany({
           where: {
-            symbol: { contains: searchSymbol },
+            symbol: { in: [searchSymbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
             status: 'processed',
             source: 'tradingview',
             receivedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
@@ -1405,7 +1405,7 @@ export async function GET(request?: Request) {
           take: 36,
         }),
         prisma.webhookEvent.findFirst({
-          where: { symbol: { contains: searchSymbol }, status: 'processed', source: 'mt5_sync' },
+          where: { symbol: { in: [searchSymbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, status: 'processed', source: 'mt5_sync' },
           orderBy: { receivedAt: 'desc' },
         }),
       ]);
@@ -2616,7 +2616,7 @@ export async function GET(request?: Request) {
     let formattedEvents: any[] = [];
     if (!isPublic && userRole === 'admin') {
       const selectedSymbolFilters = assets.map((asset) => ({
-        symbol: { contains: 'XAU' },
+        symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
       }));
       const recentEvents = await prisma.webhookEvent.findMany({
         where: { OR: selectedSymbolFilters },

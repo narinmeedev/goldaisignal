@@ -6,9 +6,11 @@
 #property version   "2.10"
 
 //--- Inputs
-input string   ServerURL      = "https://goldaisig.com/api/webhooks/tradingview";
-input string   SyncURL        = "https://goldaisig.com/api/admin/candles/sync";
-input string   SecretKey      = "GOLD_AI_SECRET";
+input string   ServerURL        = "https://goldaisig.com/api/webhooks/tradingview";
+input string   SyncURL          = "https://goldaisig.com/api/admin/candles/sync";
+input string   LocalSyncURL     = "http://localhost:3000/api/admin/candles/sync";
+input bool     EnableLocalSync  = true;
+input string   SecretKey        = "GOLD_AI_SECRET";
 input string   StrategyName   = "support_bounce";
 input int      FastMA_Period  = 9;
 input int      SlowMA_Period  = 21;
@@ -188,10 +190,26 @@ void SyncCandlesToWeb(bool fullHistory)
       ArrayResize(postData, ArraySize(postData) - 1); // Remove null terminator
 
       string headers = "Content-Type: application/json\r\n";
+      
+      // 1. ส่งข้อมูลเข้า Localhost (Qwen 3.5-9B Engine) หากเปิดใช้งาน
+      if(EnableLocalSync && StringLen(LocalSyncURL) > 0)
+      {
+         uchar localResult[];
+         string localHeaders;
+         int localRes = WebRequest("POST", LocalSyncURL, headers, 3000, postData, localResult, localHeaders);
+         if(localRes == 200)
+         {
+            Print(">>> 🤖 [LOCAL QWEN ENGINE] ส่งแท่งเทียนเข้า Qwen 3.5-9B บนเครื่องสำเร็จ!");
+            string localResp = CharArrayToString(localResult, 0, WHOLE_ARRAY, CP_UTF8);
+            UpdateChartTradePlan(localResp);
+         }
+      }
+
+      // 2. ส่งข้อมูลเข้า Cloud (goldaisig.com)
       int res = WebRequest("POST", SyncURL, headers, 5000, postData, resultData, resultHeaders);
 
       if(res == 200) {
-         Print(">>> อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") เข้าระบบ Zones สำเร็จ!");
+         Print(">>> ☁️ [CLOUD SERVER] อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") ขึ้น goldaisig.com สำเร็จ!");
          string responseText = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
          
          if(StringFind(responseText, "\"command\":\"RECONNECT\"") >= 0 || StringFind(responseText, "\"command\":\"RESYNC\"") >= 0) {
@@ -203,7 +221,7 @@ void SyncCandlesToWeb(bool fullHistory)
          // วาดเส้นแนวออเดอร์ Entry / SL / TP บนกราฟ MT5 อัตโนมัติเมื่อได้รับแผนจากเซิร์ฟเวอร์
          UpdateChartTradePlan(responseText);
       }
-      else Print(">>> อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
+      else Print(">>> ☁️ [CLOUD SERVER] อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
    }
 }
 

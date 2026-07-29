@@ -30,7 +30,7 @@ async function getAuthorizedUser() {
 async function getActiveGoldSymbol() {
   const latestSync = await prisma.webhookEvent.findFirst({
     where: {
-      symbol: { contains: 'XAU' },
+      symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
       source: 'mt5_sync',
       status: 'processed',
     },
