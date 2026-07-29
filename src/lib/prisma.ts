@@ -17,6 +17,9 @@ function createPrismaClient() {
   if (!connectionString.includes('allowPublicKeyRetrieval')) {
     connectionString += connectionString.includes('?') ? '&allowPublicKeyRetrieval=true' : '?allowPublicKeyRetrieval=true';
   }
+  if (!connectionString.includes('connectTimeout')) {
+    connectionString += '&connectTimeout=3000&connectionLimit=25';
+  }
 
   const adapter = new PrismaMariaDb(connectionString);
   return new PrismaClient({ adapter });

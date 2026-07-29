@@ -38,6 +38,19 @@ const runPlanAutomation = async (request: Request, symbol: string, timeframe: st
     return 'skipped';
   }
 
+  // 1. Trigger Qwen 3.5-9B AI re-analysis automatically on every M15 candle close
+  try {
+    const qwenUrl = new URL('/api/admin/qwen-analyze', request.url);
+    await fetch(qwenUrl, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    console.info('[Plan Automation] M15 candle close triggered automatic Qwen 3.5-9B AI re-analysis.');
+  } catch (qwenErr) {
+    console.warn('[Plan Automation] Automatic Qwen re-analysis skipped:', qwenErr);
+  }
+
   const automationUrl = new URL('/api/admin/dashboard-stats', request.url);
   automationUrl.searchParams.set('asset', 'XAUUSD');
   automationUrl.searchParams.set('public', 'true');

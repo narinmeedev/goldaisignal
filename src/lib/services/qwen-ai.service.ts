@@ -93,13 +93,18 @@ export class QwenLocalAiService {
       const systemPrompt = `คุณคือ Quant Master & Senior Institutional Gold Analyst (XAUUSD Specialist)
 หน้าที่ของคุณคือวิเคราะห์ลำดับแท่งเทียนจริง OHLCV และประวัติการโดน SL ล่าสุด เพื่อคำนวณแผนการเทรดทองคำที่มีความได้เปรียบราคาสูงสุด
 
+กฎเหล็กในการคำนวณแผน:
+1. ห้ามตั้งจุดเข้า (Entry) ที่ราคาปัจจุบันเด็ดขาด หากราคาปัจจุบันอยู่ห่างจากแนวรับแนวต้าน
+2. ให้เลือกวางแผนเป็น LIMIT Order (Pullback) ย่อซื้อที่แนวรับ (สำหรับ BUY) หรือเด้งขายที่แนวต้าน (สำหรับ SELL)
+3. ระยะ Stop Loss ต้องแคบกระชับ วางไว้หลังแนวรับ/แนวต้าน เพียง $4.0 ถึง $6.0 เท่านั้น (40-60 pips) เพื่อให้ได้อัตรา Risk:Reward ดีกว่า 1:2.5
+
 ตอบกลับเฉพาะ JSON รูปแบบนี้เท่านั้น (ห้ามใส่คำบรรยายอื่นนอก JSON):
 {
   "direction": "BUY" หรือ "SELL",
   "approved": true,
-  "entry": number,
-  "stopLoss": number,
-  "takeProfit": number,
+  "entry": number (ราคาแนวรับ/แนวต้านที่ได้เปรียบ),
+  "stopLoss": number (อยู่หลัง Entry เพียง 4-6$),
+  "takeProfit": number (ระยะกำไรมากกว่า 10-15$),
   "confidence": number (65-95),
   "reason": "คำอธิบายเชิงเทคนิคภาษาไทยสั้นๆ ชัดเจน สรุปจากพฤติกรรมแท่งเทียน M5/M15"
 }`;
@@ -116,7 +121,7 @@ export class QwenLocalAiService {
 แท่งเทียนย้อนหลัง M15 (OHLC): ${formattedM15 || 'N/A'}
 ประวัติไม้ที่ชน SL ล่าสุด (เพื่อทบทวนบทเรียน): ${formattedLosses}
 
-โปรดวิเคราะห์โครงสร้างราคา ป้องกันการโดน SL ซ้ำซ้อน และคำนวณแผนจุดเข้า (Entry), SL, TP ที่เหมาะสมที่สุด`;
+โปรดเลือกจุดเข้า Pullback ที่ได้เปรียบราคาที่สุด และส่งคืน JSON แผนการเทรดที่มี SL แคบ (4-6$)`;
 
       const response = await fetch(this.LM_STUDIO_URL, {
         method: 'POST',
@@ -152,21 +157,21 @@ export class QwenLocalAiService {
       let refinedSL = Number((parsed.stopLoss || input.proposedSL).toFixed(2));
       let refinedTP = Number((parsed.takeProfit || input.proposedTP).toFixed(2));
 
-      // Enforce ATR safety buffer (at least 2.2x ATR or $12.0 for Gold)
-      const minSlDist = Math.max(12.0, (input.atr14 || 5.5) * 2.2);
+      // Tight SL distance guard (between $4.0 and $6.5 for precision Gold trading)
+      const targetSlDist = Math.max(4.0, Math.min(6.5, (input.atr14 || 5.0) * 0.8));
       if (direction === 'BUY') {
-        if (refinedEntry - refinedSL < minSlDist) {
-          refinedSL = Number((refinedEntry - minSlDist).toFixed(2));
+        if (refinedEntry - refinedSL > 8.0 || refinedEntry - refinedSL < 3.5) {
+          refinedSL = Number((refinedEntry - targetSlDist).toFixed(2));
         }
         if (refinedTP <= refinedEntry) {
-          refinedTP = Number((refinedEntry + minSlDist * 2.0).toFixed(2));
+          refinedTP = Number((refinedEntry + targetSlDist * 2.5).toFixed(2));
         }
       } else {
-        if (refinedSL - refinedEntry < minSlDist) {
-          refinedSL = Number((refinedEntry + minSlDist).toFixed(2));
+        if (refinedSL - refinedEntry > 8.0 || refinedSL - refinedEntry < 3.5) {
+          refinedSL = Number((refinedEntry + targetSlDist).toFixed(2));
         }
         if (refinedTP >= refinedEntry) {
-          refinedTP = Number((refinedEntry - minSlDist * 2.0).toFixed(2));
+          refinedTP = Number((refinedEntry - targetSlDist * 2.5).toFixed(2));
         }
       }
 

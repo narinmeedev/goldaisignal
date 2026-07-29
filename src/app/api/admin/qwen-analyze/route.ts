@@ -130,9 +130,18 @@ export async function POST(request: Request) {
       atr14 = trSum / 14;
     }
 
-    const slBuffer = Math.max(12.0, atr14 * 2.2);
-    const tpBuffer = slBuffer * 2.2;
     const isBullish = currentPrice > (m15Candles[10]?.close || currentPrice);
+    const targetEntry = isBullish
+      ? (supports[0] ? Number(supports[0].toFixed(2)) : Number((currentPrice - 3.5).toFixed(2)))
+      : (resistances[0] ? Number(resistances[0].toFixed(2)) : Number((currentPrice + 3.5).toFixed(2)));
+
+    const targetSL = isBullish
+      ? Number((targetEntry - 4.5).toFixed(2))
+      : Number((targetEntry + 4.5).toFixed(2));
+
+    const targetTP = isBullish
+      ? Number((targetEntry + 12.0).toFixed(2))
+      : Number((targetEntry - 12.0).toFixed(2));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
@@ -143,12 +152,12 @@ export async function POST(request: Request) {
       rsi14: 52,
       atr14,
       ema20_m15: m15Candles[0]?.close || currentPrice,
-      nearestSupport: supports.length > 0 ? supports : [currentPrice - slBuffer],
-      nearestResistance: resistances.length > 0 ? resistances : [currentPrice + tpBuffer],
+      nearestSupport: supports.length > 0 ? supports : [currentPrice - 4.5],
+      nearestResistance: resistances.length > 0 ? resistances : [currentPrice + 4.5],
       proposedType: isBullish ? 'BUY_LIMIT' : 'SELL_LIMIT',
-      proposedEntry: Number((isBullish ? currentPrice - 1.5 : currentPrice + 1.5).toFixed(2)),
-      proposedSL: Number((isBullish ? currentPrice - 1.5 - slBuffer : currentPrice + 1.5 + slBuffer).toFixed(2)),
-      proposedTP: Number((isBullish ? currentPrice - 1.5 + tpBuffer : currentPrice + 1.5 - tpBuffer).toFixed(2)),
+      proposedEntry: targetEntry,
+      proposedSL: targetSL,
+      proposedTP: targetTP,
       m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
       m15Candles: m15Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
       recentLosses: recentLosses.map((l) => ({ direction: l.direction, entry: l.entry, stopLoss: l.stopLoss, notes: l.notes, closedAt: l.closedAt })),

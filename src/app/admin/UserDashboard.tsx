@@ -342,12 +342,17 @@ export default function UserDashboard() {
           </button>
           <button
             type="button"
-            onClick={() => load(true)}
+            onClick={async () => {
+              try {
+                await fetch('/api/system/status', { cache: 'no-store' });
+              } catch {}
+              await load(true);
+            }}
             disabled={refreshing}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900 px-3 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-3.5 text-sm font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            อัปเดตข้อมูล
+            <RefreshCw className={`h-4 w-4 text-amber-400 ${refreshing ? 'animate-spin' : ''}`} />
+            ⚡️ กระตุ้นซิงค์ด่วน (Force Sync)
           </button>
         </div>
       </header>
