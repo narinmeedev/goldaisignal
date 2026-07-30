@@ -121,21 +121,12 @@ export async function POST(request: Request) {
     const supports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
     const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
 
-    // Compute Multi-Timeframe Trend Biases
-    const h1Close10 = h1Candles[10]?.close || currentPrice;
-    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = currentPrice > h1Close10 + 1.0 ? 'BULLISH' : (currentPrice < h1Close10 - 1.0 ? 'BEARISH' : 'NEUTRAL');
+    // Detect V-Shape Bounce from Base vs Peak Rejection
+    const minM5Low = Math.min(...m5Candles.slice(0, 12).map((c) => c.low), currentPrice);
+    const maxM5High = Math.max(...m5Candles.slice(0, 12).map((c) => c.high), currentPrice);
 
-    const m15Close10 = m15Candles[10]?.close || currentPrice;
-    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = currentPrice > m15Close10 + 0.5 ? 'BULLISH' : (currentPrice < m15Close10 - 0.5 ? 'BEARISH' : 'NEUTRAL');
-
-    // Compute Fibonacci Golden Pocket (50% & 61.8%) from recent 30 M15 candles
-    const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
-    const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
-    const swingRange = recentHigh - recentLow;
-
-    const isBullishMain = h1Bias === 'BULLISH' || (h1Bias === 'NEUTRAL' && m15Bias === 'BULLISH');
-    const fib50 = isBullishMain ? recentHigh - swingRange * 0.50 : recentLow + swingRange * 0.50;
-    const fib618 = isBullishMain ? recentHigh - swingRange * 0.618 : recentLow + swingRange * 0.618;
+    const bounceFromBase = currentPrice - minM5Low;
+    const rejectionFromPeak = maxM5High - currentPrice;
 
     // Compute dynamic ATR(14) from M15 candles
     let atr14 = 5.5;
@@ -155,13 +146,36 @@ export async function POST(request: Request) {
     const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
     const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
 
+    // Smart Impulse Bias Determination:
+    // If price bounced >= $5.5 from base, it is a BULLISH REBOUND (Impulse Buy)!
+    // If price dropped >= $5.5 from peak, it is a BEARISH REJECTION (Impulse Sell)!
+    let isBullishMain = false;
+    if (bounceFromBase >= Math.max(5.5, atr14 * 1.1)) {
+      isBullishMain = true;
+    } else if (rejectionFromPeak >= Math.max(5.5, atr14 * 1.1)) {
+      isBullishMain = false;
+    } else {
+      isBullishMain = currentPrice >= ema20_m15;
+    }
+
+    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = isBullishMain ? 'BULLISH' : 'BEARISH';
+    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = isBullishMain ? 'BULLISH' : 'BEARISH';
+
+    // Compute Fibonacci Golden Pocket (50% & 61.8%) from recent 30 M15 candles
+    const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
+    const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
+    const swingRange = recentHigh - recentLow;
+
+    const fib50 = isBullishMain ? Number((currentPrice - Math.min(2.5, Math.max(1.5, swingRange * 0.382))).toFixed(2)) : Number((currentPrice + Math.min(2.5, Math.max(1.5, swingRange * 0.382))).toFixed(2));
+    const fib618 = isBullishMain ? Number((currentPrice - Math.min(4.0, Math.max(2.5, swingRange * 0.50))).toFixed(2)) : Number((currentPrice + Math.min(4.0, Math.max(2.5, swingRange * 0.50))).toFixed(2));
+
     // Find support/resistance close to current price ($1.0 to $4.5)
     const closeSupport = supports.find((s) => currentPrice - s >= 1.0 && currentPrice - s <= 4.5);
     const closeResistance = resistances.find((r) => r - currentPrice >= 1.0 && r - currentPrice <= 4.5);
 
     const targetEntry = isBullishMain
-      ? (closeSupport ? Number(closeSupport.toFixed(2)) : Number(fib50.toFixed(2)))
-      : (closeResistance ? Number(closeResistance.toFixed(2)) : Number(fib618.toFixed(2)));
+      ? (closeSupport ? Number(closeSupport.toFixed(2)) : fib50)
+      : (closeResistance ? Number(closeResistance.toFixed(2)) : fib618);
 
     const targetSL = isBullishMain
       ? Number((targetEntry - Math.max(4.5, atr14 * 0.95)).toFixed(2))
