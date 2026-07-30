@@ -264,6 +264,8 @@ export async function POST(request: Request) {
         },
       });
 
+      const isLimitPlan = planToApply.type.includes('LIMIT') || planToApply.type.includes('STOP');
+
       await prisma.paperTrade.create({
         data: {
           signalId: signal.id,
@@ -273,9 +275,9 @@ export async function POST(request: Request) {
           stopLoss: planToApply.stopLoss,
           takeProfit1: planToApply.takeProfit,
           takeProfit2: Number((planToApply.takeProfit + (planToApply.type.includes('BUY') ? 2.0 : -2.0)).toFixed(2)),
-          result: 'OPEN',
+          result: isLimitPlan ? 'PLAN' : 'OPEN',
           rrResult: 0.0,
-          openedAt: new Date(),
+          openedAt: isLimitPlan ? undefined : new Date(),
           notes: `🤖 [Qwen 3.5-9B AI Quant]: ${planToApply.reason}`,
         },
       });
