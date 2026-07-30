@@ -177,16 +177,19 @@ export async function POST(request: Request) {
       ? (closeSupportDeep ? Number(closeSupportDeep.toFixed(2)) : deepFib618)
       : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : deepFib618);
 
-    // Keep targetEntry between $2.5 and $6.0 from current price for realistic limit execution
+    // Strict Pending Limit Distance Rule:
+    // For BUY_LIMIT: targetEntry MUST be strictly BELOW currentPrice by $2.2 - $6.5 so users have ample time to place MT5 Pending Orders!
+    // For SELL_LIMIT: targetEntry MUST be strictly ABOVE currentPrice by $2.2 - $6.5 so users have ample time to place MT5 Pending Orders!
     if (isBullishMain) {
-      if (currentPrice - targetEntry < 2.2 || currentPrice - targetEntry > 7.5) {
-        targetEntry = Number((currentPrice - 4.5).toFixed(2));
+      if (targetEntry >= currentPrice - 1.8 || currentPrice - targetEntry > 7.5) {
+        targetEntry = Number((currentPrice - 3.2).toFixed(2));
       }
     } else {
-      if (targetEntry - currentPrice < 2.2 || targetEntry - currentPrice > 7.5) {
-        targetEntry = Number((currentPrice + 4.5).toFixed(2));
+      if (targetEntry <= currentPrice + 1.8 || targetEntry - currentPrice > 7.5) {
+        targetEntry = Number((currentPrice + 3.2).toFixed(2));
       }
     }
+
     // Anti-Peak Chase Guard:
     // For BUY: Do NOT enter near the highest high of the day (Buying the Top!). Require a deep retracement ($4.5-$8.0 below peak).
     // For SELL: Do NOT enter near the lowest low of the day (Selling the Bottom!). Require a deep rebound ($4.5-$8.0 above bottom).

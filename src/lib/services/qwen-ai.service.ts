@@ -71,14 +71,14 @@ export class QwenLocalAiService {
     const atrBuffer = Math.max(7.8, Math.min(11.0, input.atr14 * 1.5));
     let smartEntry = isProposedBuy ? input.fib50 : input.fib618;
 
-    // Keep entry close to current price ($1.2 to $3.5 distance) for fast execution
+    // Keep entry at a pending pullback/rebound distance ($2.2 to $5.5) below/above current price
     if (isProposedBuy) {
-      if (input.currentPrice - smartEntry < 1.0 || input.currentPrice - smartEntry > 4.5) {
-        smartEntry = Number((input.currentPrice - 2.2).toFixed(2));
+      if (input.currentPrice - smartEntry < 1.8 || input.currentPrice - smartEntry > 6.5) {
+        smartEntry = Number((input.currentPrice - 2.8).toFixed(2));
       }
     } else {
-      if (smartEntry - input.currentPrice < 1.0 || smartEntry - input.currentPrice > 4.5) {
-        smartEntry = Number((input.currentPrice + 2.2).toFixed(2));
+      if (smartEntry - input.currentPrice < 1.8 || smartEntry - input.currentPrice > 6.5) {
+        smartEntry = Number((input.currentPrice + 2.8).toFixed(2));
       }
     }
     smartEntry = Number(smartEntry.toFixed(2));
