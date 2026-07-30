@@ -3,7 +3,7 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient | undefined };
 
-function createPrismaClient() {
+export function createPrismaClient() {
   const isProd = process.env.NODE_ENV === 'production';
   const defaultPort = isProd ? '3306' : '3307';
 
@@ -18,11 +18,20 @@ function createPrismaClient() {
     connectionString += connectionString.includes('?') ? '&allowPublicKeyRetrieval=true' : '?allowPublicKeyRetrieval=true';
   }
   if (!connectionString.includes('connectTimeout')) {
-    connectionString += '&connectTimeout=3000&connectionLimit=15&idleTimeout=10000';
+    connectionString += '&connectTimeout=3000&poolTimeout=2000&idleTimeout=2000&connectionLimit=10';
   }
 
   const adapter = new PrismaMariaDb(connectionString);
   return new PrismaClient({ adapter });
+}
+
+export function resetPrismaClient() {
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[Prisma Auto-Healer] Resetting dead database connection pool...');
+    globalForPrisma.prisma = createPrismaClient();
+    return globalForPrisma.prisma;
+  }
+  return prisma;
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

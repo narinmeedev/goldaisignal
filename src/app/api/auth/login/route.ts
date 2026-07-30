@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, resetPrismaClient } from '@/lib/prisma';
 import { verifyPassword, signToken } from '@/lib/auth';
 import { minisaas } from '@/lib/minisaas';
 
@@ -54,14 +54,16 @@ export async function POST(req: Request) {
     let user = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        user = await prisma.user.findFirst({
+        const client = attempt === 0 ? prisma : resetPrismaClient();
+        user = await client.user.findFirst({
           where: { email: normalizedEmail },
         });
         break;
       } catch (err: any) {
         console.warn(`[Login DB Retry] Attempt ${attempt + 1} failed:`, err?.message || err);
+        resetPrismaClient();
         if (attempt === 2) throw err;
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
