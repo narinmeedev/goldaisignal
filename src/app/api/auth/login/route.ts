@@ -51,9 +51,19 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const user = await prisma.user.findFirst({
-      where: { email: normalizedEmail },
-    });
+    let user = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        user = await prisma.user.findFirst({
+          where: { email: normalizedEmail },
+        });
+        break;
+      } catch (err: any) {
+        console.warn(`[Login DB Retry] Attempt ${attempt + 1} failed:`, err?.message || err);
+        if (attempt === 2) throw err;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
 
     if (!user) {
       return NextResponse.json(
