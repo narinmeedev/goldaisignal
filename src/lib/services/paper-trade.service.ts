@@ -20,11 +20,26 @@ export class PaperTradeService {
     return { in: [normalizedSymbol, 'XAUUSD', 'GOLD', symbol] };
   }
 
-  private static async clearActivePlanSetting(symbol: string) {
+  private static async clearActivePlanSetting(symbol: string, reason?: string) {
     const normalizedSymbol = symbol.toUpperCase().includes('XAU') ? 'XAUUSD' : symbol.toUpperCase();
-    await prisma.systemSetting.deleteMany({
-      where: { key: `ACTIVE_ORDER_PLAN_${normalizedSymbol}` },
-    });
+    try {
+      const key = `ACTIVE_ORDER_PLAN_${normalizedSymbol}`;
+      const existing = await prisma.systemSetting.findUnique({ where: { key } });
+      if (existing?.value) {
+        const plan = JSON.parse(existing.value);
+        plan.isClosed = true;
+        plan.closedReason = reason || 'SL/TP Hit';
+        plan.closedAt = new Date().toISOString();
+        await prisma.systemSetting.update({
+          where: { key },
+          data: { value: JSON.stringify(plan) },
+        });
+      }
+    } catch {
+      await prisma.systemSetting.deleteMany({
+        where: { key: `ACTIVE_ORDER_PLAN_${normalizedSymbol}` },
+      });
+    }
   }
 
   /**

@@ -845,6 +845,21 @@ const getStableOrderPlan = async (
   allowM5DependentPlans = true,
   allowStoredPlans = true,
 ) => {
+  const now = new Date();
+  const key = stablePlanSettingKey(symbol);
+  const storedSetting = await prisma.systemSetting.findUnique({ where: { key } });
+  const storedPlan = parseStoredOrderPlan(storedSetting?.value);
+
+  const isQwenPlan = storedPlan && (
+    storedPlan.id?.toLowerCase().includes('qwen') ||
+    storedPlan.title?.toLowerCase().includes('qwen') ||
+    storedPlan.strategyLabel?.toLowerCase().includes('qwen')
+  );
+
+  if (isQwenPlan) {
+    return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
+  }
+
   // Once Entry is reached, that plan remains authoritative until TP/SL closes it.
   // Research may pause the strategy for future plans, but must not hide an open plan from customers.
   const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
@@ -888,20 +903,11 @@ const getStableOrderPlan = async (
     (allowM5DependentPlans || !isM5DependentPlan(plan)),
   );
 
-  const now = new Date();
-  const key = stablePlanSettingKey(symbol);
-  const storedSetting = await prisma.systemSetting.findUnique({ where: { key } });
-  const storedPlan = parseStoredOrderPlan(storedSetting?.value);
   const storedPlanAllowed = allowStoredPlans && (!storedPlan || allowM5DependentPlans || !isM5DependentPlan(storedPlan));
   const storedPlanResearchRejected = !!storedPlan &&
     (storedPlan.researchSampleSize || 0) >= 15 &&
     typeof storedPlan.researchWinRate === 'number' &&
     storedPlan.researchWinRate < 35;
-
-  const isQwenPlan = storedPlan && (storedPlan.id?.toLowerCase().includes('qwen') || storedPlan.title?.toLowerCase().includes('qwen') || storedPlan.strategyLabel?.toLowerCase().includes('qwen'));
-  if (isQwenPlan && !isPlanStale(storedPlan, currentPrice, now)) {
-    return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
-  }
 
   if (!candidate) {
     // Keep a valid locked plan, but retire stale plans and strategies with poor measured results.

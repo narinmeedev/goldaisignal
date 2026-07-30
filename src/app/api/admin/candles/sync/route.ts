@@ -34,21 +34,36 @@ const maxStoredCandlesByTimeframe: Record<string, number> = {
 };
 
 const runPlanAutomation = async (request: Request, symbol: string, timeframe: string, latestChanged: boolean) => {
-  if (!isMarketOpen() || !symbol.toUpperCase().includes('XAU') || timeframe !== 'M15' || !latestChanged) {
+  if (!isMarketOpen() || !symbol.toUpperCase().includes('XAU')) {
     return 'skipped';
   }
 
-  // 1. Trigger Qwen 3.5-9B AI re-analysis automatically on every M15 candle close
-  try {
-    const qwenUrl = new URL('/api/admin/qwen-analyze', request.url);
-    await fetch(qwenUrl, {
-      method: 'POST',
-      cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    console.info('[Plan Automation] M15 candle close triggered automatic Qwen 3.5-9B AI re-analysis.');
-  } catch (qwenErr) {
-    console.warn('[Plan Automation] Automatic Qwen re-analysis skipped:', qwenErr);
+  let shouldRunQwen = timeframe === 'M15' && latestChanged;
+
+  if (!shouldRunQwen) {
+    try {
+      const lastSetting = await prisma.systemSetting.findUnique({
+        where: { key: 'LAST_QWEN_ANALYSIS_TIME' },
+      });
+      const lastTime = lastSetting ? parseInt(lastSetting.value) : 0;
+      if (Date.now() - lastTime >= 15 * 60 * 1000) {
+        shouldRunQwen = true;
+      }
+    } catch {}
+  }
+
+  if (shouldRunQwen) {
+    try {
+      const qwenUrl = new URL('/api/admin/qwen-analyze', request.url);
+      fetch(qwenUrl, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => {});
+      console.info('[Plan Automation] 15-minute interval / M15 candle close triggered automatic Qwen AI re-analysis.');
+    } catch (qwenErr) {
+      console.warn('[Plan Automation] Automatic Qwen re-analysis skipped:', qwenErr);
+    }
   }
 
   const automationUrl = new URL('/api/admin/dashboard-stats', request.url);
@@ -367,7 +382,10 @@ export async function POST(request: Request) {
             stopLoss: parsed.stopLoss,
             takeProfit: parsed.takeProfit,
             confidence: parsed.confidence,
-            timeframe: parsed.timeframe
+            timeframe: parsed.timeframe,
+            isClosed: Boolean(parsed.isClosed),
+            closedReason: parsed.closedReason || null,
+            lockedAt: parsed.lockedAt || null,
           };
         }
       }

@@ -49,6 +49,11 @@ export async function POST(request: Request) {
             update: { value: JSON.stringify(planToApply) },
             create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
           });
+          await prisma.systemSetting.upsert({
+            where: { key: 'LAST_QWEN_ANALYSIS_TIME' },
+            update: { value: Date.now().toString() },
+            create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
+          });
           break;
         } catch (dbErr) {
           if (attempt === 2) throw dbErr;
@@ -183,6 +188,12 @@ export async function POST(request: Request) {
       where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
       update: { value: JSON.stringify(planToApply) },
       create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(planToApply) },
+    });
+
+    await prisma.systemSetting.upsert({
+      where: { key: 'LAST_QWEN_ANALYSIS_TIME' },
+      update: { value: Date.now().toString() },
+      create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
     });
 
     // Create a measurable signal and paper trade record for Qwen AI

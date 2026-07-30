@@ -350,9 +350,38 @@ export default function UserDashboard() {
       if (document.visibilityState === 'visible') load();
     };
     document.addEventListener('visibilitychange', onVisibility);
+
+    // 15-minute automatic Qwen AI re-analysis
+    const qwenInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetch('/api/admin/qwen-analyze', { method: 'POST' })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.appliedPlan) {
+              setStats((prev) => {
+                if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
+                return {
+                  ...prev,
+                  marketIntelligence: {
+                    ...prev.marketIntelligence,
+                    XAUUSD: {
+                      ...prev.marketIntelligence.XAUUSD,
+                      activeOrderPlan: data.appliedPlan,
+                      hasActivePlan: true,
+                    },
+                  },
+                };
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }, 15 * 60 * 1000);
+
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
+      window.clearInterval(qwenInterval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [load]);
