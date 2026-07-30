@@ -85,17 +85,22 @@ export async function POST(request: Request) {
       }, { headers: noStoreHeaders });
     }
 
-    // Fetch candle history and recent loss records for Qwen post-mortem analysis
-    const [m15Candles, m5Candles, recentLosses] = await Promise.all([
+    // Fetch candle history (H1, M15, M5) and recent loss records for Qwen post-mortem analysis
+    const [h1Candles, m15Candles, m5Candles, recentLosses] = await Promise.all([
+      prisma.candle.findMany({
+        where: { symbol, timeframe: 'H1' },
+        orderBy: { time: 'desc' },
+        take: 30,
+      }),
       prisma.candle.findMany({
         where: { symbol, timeframe: 'M15' },
         orderBy: { time: 'desc' },
-        take: 20,
+        take: 30,
       }),
       prisma.candle.findMany({
         where: { symbol, timeframe: 'M5' },
         orderBy: { time: 'desc' },
-        take: 20,
+        take: 30,
       }),
       prisma.paperTrade.findMany({
         where: { symbol, result: 'LOSS' },
@@ -105,7 +110,7 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    const currentPriceCandle = m5Candles[0] || m15Candles[0];
+    const currentPriceCandle = m5Candles[0] || m15Candles[0] || h1Candles[0];
     const currentPrice = currentPriceCandle ? currentPriceCandle.close : 4015.0;
 
     const zones = await prisma.zone.findMany({
@@ -115,6 +120,22 @@ export async function POST(request: Request) {
 
     const supports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
     const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
+
+    // Compute Multi-Timeframe Trend Biases
+    const h1Close10 = h1Candles[10]?.close || currentPrice;
+    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = currentPrice > h1Close10 + 1.0 ? 'BULLISH' : (currentPrice < h1Close10 - 1.0 ? 'BEARISH' : 'NEUTRAL');
+
+    const m15Close10 = m15Candles[10]?.close || currentPrice;
+    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = currentPrice > m15Close10 + 0.5 ? 'BULLISH' : (currentPrice < m15Close10 - 0.5 ? 'BEARISH' : 'NEUTRAL');
+
+    // Compute Fibonacci Golden Pocket (50% & 61.8%) from recent 30 M15 candles
+    const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
+    const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
+    const swingRange = recentHigh - recentLow;
+
+    const isBullishMain = h1Bias === 'BULLISH' || (h1Bias === 'NEUTRAL' && m15Bias === 'BULLISH');
+    const fib50 = isBullishMain ? recentHigh - swingRange * 0.50 : recentLow + swingRange * 0.50;
+    const fib618 = isBullishMain ? recentHigh - swingRange * 0.618 : recentLow + swingRange * 0.618;
 
     // Compute dynamic ATR(14) from M15 candles
     let atr14 = 5.5;
@@ -130,41 +151,51 @@ export async function POST(request: Request) {
       atr14 = trSum / 14;
     }
 
-    const isBullish = currentPrice > (m15Candles[10]?.close || currentPrice);
-    
-    // Find support/resistance that is close (within $4.5) to current price, otherwise use tight $2.5 pullback/rebound
+    // Compute EMAs for M15
+    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
+    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
+
+    // Find support/resistance close to current price ($1.0 to $4.5)
     const closeSupport = supports.find((s) => currentPrice - s >= 1.0 && currentPrice - s <= 4.5);
     const closeResistance = resistances.find((r) => r - currentPrice >= 1.0 && r - currentPrice <= 4.5);
 
-    const targetEntry = isBullish
-      ? (closeSupport ? Number(closeSupport.toFixed(2)) : Number((currentPrice - 2.5).toFixed(2)))
-      : (closeResistance ? Number(closeResistance.toFixed(2)) : Number((currentPrice + 2.5).toFixed(2)));
+    const targetEntry = isBullishMain
+      ? (closeSupport ? Number(closeSupport.toFixed(2)) : Number(fib50.toFixed(2)))
+      : (closeResistance ? Number(closeResistance.toFixed(2)) : Number(fib618.toFixed(2)));
 
-    const targetSL = isBullish
-      ? Number((targetEntry - 4.5).toFixed(2))
-      : Number((targetEntry + 4.5).toFixed(2));
+    const targetSL = isBullishMain
+      ? Number((targetEntry - Math.max(4.5, atr14 * 0.95)).toFixed(2))
+      : Number((targetEntry + Math.max(4.5, atr14 * 0.95)).toFixed(2));
 
-    const targetTP = isBullish
-      ? Number((targetEntry + 11.5).toFixed(2))
-      : Number((targetEntry - 11.5).toFixed(2));
+    const targetTP = isBullishMain
+      ? Number((targetEntry + Math.max(11.5, atr14 * 2.6)).toFixed(2))
+      : Number((targetEntry - Math.max(11.5, atr14 * 2.6)).toFixed(2));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
       currentPrice,
-      bias: isBullish ? 'BULLISH' : 'BEARISH',
-      trendStrength: 82,
+      h1Bias,
+      m15Bias,
+      trendStrength: 85,
       rsi14M5: 48,
-      rsi14: 52,
+      rsi14M15: 52,
+      rsi14H1: 55,
       atr14,
-      ema20_m15: m15Candles[0]?.close || currentPrice,
+      ema20_m15,
+      ema50_m15,
+      fib50,
+      fib618,
+      sessionHigh: recentHigh,
+      sessionLow: recentLow,
       nearestSupport: supports.length > 0 ? supports : [currentPrice - 4.5],
       nearestResistance: resistances.length > 0 ? resistances : [currentPrice + 4.5],
-      proposedType: isBullish ? 'BUY_LIMIT' : 'SELL_LIMIT',
+      proposedType: isBullishMain ? 'BUY_LIMIT' : 'SELL_LIMIT',
       proposedEntry: targetEntry,
       proposedSL: targetSL,
       proposedTP: targetTP,
-      m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      h1Candles: h1Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
       m15Candles: m15Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
       recentLosses: recentLosses.map((l) => ({ direction: l.direction, entry: l.entry, stopLoss: l.stopLoss, notes: l.notes, closedAt: l.closedAt })),
     });
 

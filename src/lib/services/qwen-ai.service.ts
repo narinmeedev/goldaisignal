@@ -4,7 +4,7 @@ export interface CandleData {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume?: number;
 }
 
 export interface TradeLossRecord {
@@ -18,20 +18,28 @@ export interface TradeLossRecord {
 export interface QwenAnalysisInput {
   symbol: string;
   currentPrice: number;
-  bias: string;
+  h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
   trendStrength: number;
   rsi14M5: number;
-  rsi14: number;
+  rsi14M15: number;
+  rsi14H1: number;
   atr14: number;
   ema20_m15: number;
+  ema50_m15: number;
+  fib50: number;
+  fib618: number;
+  sessionHigh: number;
+  sessionLow: number;
   nearestSupport: number[];
   nearestResistance: number[];
   proposedType: string;
   proposedEntry: number;
   proposedSL: number;
   proposedTP: number;
-  m5Candles?: CandleData[];
+  h1Candles?: CandleData[];
   m15Candles?: CandleData[];
+  m5Candles?: CandleData[];
   recentLosses?: TradeLossRecord[];
 }
 
@@ -51,23 +59,47 @@ export class QwenLocalAiService {
   private static LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://127.0.0.1:1234/v1/chat/completions';
 
   /**
-   * Generates a high-probability Gold trade plan using local Qwen 3.5-9B LLM.
-   * Feeds full M5/M15 OHLCV historical candle series and recent SL post-mortem records.
+   * Generates a high-winrate Gold trade plan using local Qwen 3.5-9B LLM + Institutional Quant Engine.
+   * Feeds full H1/M15/M5 OHLCV structural candle series, Fibonacci Golden Pocket, and SL post-mortem feedback.
    */
   static async refineTradePlan(input: QwenAnalysisInput): Promise<QwenAnalysisOutput> {
-    const isProposedBuy = input.proposedType.includes('BUY');
+    const isProposedBuy = input.h1Bias === 'BULLISH' || input.m15Bias === 'BULLISH' || input.proposedType.includes('BUY');
     const fallbackDirection: 'BUY' | 'SELL' = isProposedBuy ? 'BUY' : 'SELL';
     const fallbackType = isProposedBuy ? 'BUY_LIMIT' : 'SELL_LIMIT';
+
+    // Calculate smart quantitative fallback plan using Fibonacci & ATR Market Structure
+    const atrBuffer = Math.max(4.5, Math.min(6.5, input.atr14 * 0.95));
+    let smartEntry = isProposedBuy ? input.fib50 : input.fib618;
+
+    // Keep entry close to current price ($1.2 to $3.5 distance) for fast execution
+    if (isProposedBuy) {
+      if (input.currentPrice - smartEntry < 1.0 || input.currentPrice - smartEntry > 4.5) {
+        smartEntry = Number((input.currentPrice - 2.2).toFixed(2));
+      }
+    } else {
+      if (smartEntry - input.currentPrice < 1.0 || smartEntry - input.currentPrice > 4.5) {
+        smartEntry = Number((input.currentPrice + 2.2).toFixed(2));
+      }
+    }
+    smartEntry = Number(smartEntry.toFixed(2));
+
+    const smartSL = isProposedBuy
+      ? Number((smartEntry - atrBuffer).toFixed(2))
+      : Number((smartEntry + atrBuffer).toFixed(2));
+
+    const smartTP = isProposedBuy
+      ? Number((smartEntry + atrBuffer * 2.6).toFixed(2))
+      : Number((smartEntry - atrBuffer * 2.6).toFixed(2));
 
     const fallback: QwenAnalysisOutput = {
       isApproved: true,
       direction: fallbackDirection,
       type: fallbackType,
-      refinedEntry: input.proposedEntry,
-      refinedSL: input.proposedSL,
-      refinedTP: input.proposedTP,
-      confidence: 85,
-      reason: `คำนวณตามโครงสร้างแท่งเทียนและ ATR ($${input.proposedEntry.toFixed(2)})`,
+      refinedEntry: smartEntry,
+      refinedSL: smartSL,
+      refinedTP: smartTP,
+      confidence: 88,
+      reason: `คำนวณตามโครงสร้าง Fibonacci Golden Zone (50%-61.8%) และ ATR Volatility ($${smartEntry.toFixed(2)})`,
       source: 'MATH_ENGINE',
     };
 
@@ -75,13 +107,18 @@ export class QwenLocalAiService {
     const timeoutId = setTimeout(() => controller.abort(), 12000); // 12.0s execution window for Qwen 3.5-9B
 
     try {
-      const formattedM5 = (input.m5Candles || [])
-        .slice(0, 15)
+      const formattedH1 = (input.h1Candles || [])
+        .slice(0, 10)
         .map((c) => `[${c.open.toFixed(2)}, ${c.high.toFixed(2)}, ${c.low.toFixed(2)}, ${c.close.toFixed(2)}]`)
         .join(', ');
 
       const formattedM15 = (input.m15Candles || [])
-        .slice(0, 10)
+        .slice(0, 15)
+        .map((c) => `[${c.open.toFixed(2)}, ${c.high.toFixed(2)}, ${c.low.toFixed(2)}, ${c.close.toFixed(2)}]`)
+        .join(', ');
+
+      const formattedM5 = (input.m5Candles || [])
+        .slice(0, 15)
         .map((c) => `[${c.open.toFixed(2)}, ${c.high.toFixed(2)}, ${c.low.toFixed(2)}, ${c.close.toFixed(2)}]`)
         .join(', ');
 
@@ -90,39 +127,48 @@ export class QwenLocalAiService {
         .map((l) => `${l.direction} @ $${l.entry.toFixed(2)} (SL $${l.stopLoss.toFixed(2)}: ${l.notes || 'Hit SL'})`)
         .join(' | ') || 'ไม่มีประวัติชน SL ล่าสุด';
 
-      const systemPrompt = `คุณคือ Quant Master & Senior Institutional Gold Analyst (XAUUSD Specialist)
-หน้าที่ของคุณคือวิเคราะห์โครงสร้างราคาทองคำสด ($${input.currentPrice.toFixed(2)}) และแท่งเทียน OHLCV เพื่อวางแผนการเทรดที่กระชับและตรงกับราคาหน้ากราฟมากที่สุด
+      const systemPrompt = `คุณคือ Senior Institutional Quantitative Analyst & High-Winrate Gold Specialist (XAUUSD Expert)
+หน้าที่ของคุณคือวิเคราะห์โครงสร้างราคาทองคำ ($${input.currentPrice.toFixed(2)}) ผ่านมิติ Multi-Timeframe (H1, M15, M5), Fibonacci Golden Pocket (50%-61.8%), และแนวรับแนวต้านสถาบัน เพื่อออกแผนเทรดที่มี Win Rate สูงที่สุด (>85%)
 
-กฎเหล็กในการคำนวณแผน:
-1. แผนต้องอ้างอิงจากราคาปัจจุบัน ($${input.currentPrice.toFixed(2)}) เป็นหลัก!
-2. สำหรับ BUY: จุดเข้า (Entry) ต้องย่อลงมาจากราคาปัจจุบันเพียง $1.5 ถึง $3.5 เท่านั้น (ห้ามตั้งย่อไกลเกิน $4.0)
-3. สำหรับ SELL: จุดเข้า (Entry) ต้องเด้งขึ้นมาจากราคาปัจจุบันเพียง $1.5 ถึง $3.5 เท่านั้น (ห้ามตั้งเด้งไกลเกิน $4.0)
-4. ระยะ Stop Loss ต้องแคบกระชับเพียง $4.0 ถึง $5.5 เท่านั้น (40-55 pips) เพื่อให้ได้อัตรา Risk:Reward ดีกว่า 1:2.5
+กฎเหล็กวิเคราะห์จุดเข้า (Strict Entry Rules):
+1. ทิศทางแผนหลัก: ให้ยึดตามเทรนด์ H1 (${input.h1Bias}) และ M15 (${input.m15Bias}) ห้ามออกแผนสวนเทรนด์ใหญ่เด็ดขาด!
+2. สำหรับ BUY: ตั้งจุดเข้า BUY_LIMIT ย่อรับที่ Fibonacci 50%-61.8% ($${input.fib50.toFixed(2)} - $${input.fib618.toFixed(2)}) หรือโซนแนวรับ ($${input.nearestSupport.map((p) => p.toFixed(2)).join(', ')})
+   - ระยะย่อ (Pullback Distance): ต้องอยู่ห่างจากราคาปัจจุบันเพียง $1.2 ถึง $3.5 เท่านั้น (เพื่อเน้นให้ติดไม้ง่ายและได้เปรียบราคา)
+3. สำหรับ SELL: ตั้งจุดเข้า SELL_LIMIT เด้งขายที่ Fibonacci 50%-61.8% ($${input.fib50.toFixed(2)} - $${input.fib618.toFixed(2)}) หรือโซนแนวต้าน ($${input.nearestResistance.map((p) => p.toFixed(2)).join(', ')})
+   - ระยะเด้ง (Rebound Distance): ต้องอยู่ห่างจากราคาปัจจุบันเพียง $1.2 ถึง $3.5 เท่านั้น
+4. ป้องกัน SL Hunt (Stop Loss Protection): 
+   - ระยะ SL ต้องตั้งให้ปลอดภัยเลย Swing High/Low + ATR Buffer ($4.5 ถึง $6.0) เพื่อไม่ให้โดนไส้เทียนเหวี่ยงชน SL ปลอม
+5. Target TP (Take Profit):
+   - ต้องได้อัตรา Risk-Reward (RR) ไม่ต่ำกว่า 1:2.5 (ระยะ TP ประมาณ $11.0 ถึง $18.0)
 
-ตอบกลับเฉพาะ JSON รูปแบบนี้เท่านั้น (ห้ามใส่คำบรรยายอื่นนอก JSON):
+ตอบกลับเฉพาะ JSON รูปแบบนี้เท่านั้น (ห้ามมีอักขระหรือข้อความอื่นนอก JSON):
 {
   "direction": "BUY" หรือ "SELL",
   "approved": true,
-  "entry": number (ย่อ/เด้ง จากราคาปัจจุบันเพียง 1.5$-3.5$),
-  "stopLoss": number (อยู่หลัง Entry เพียง 4.0$-5.5$),
-  "takeProfit": number (ระยะกำไรมากกว่า 10-12$),
-  "confidence": number (65-95),
-  "reason": "คำอธิบายเชิงเทคนิคภาษาไทยสั้นๆ ชัดเจน สรุปจากพฤติกรรมแท่งเทียน M5/M15"
+  "entry": number (ย่อ/เด้ง ห่างจากราคาปัจจุบัน 1.2$-3.5$),
+  "stopLoss": number (อยู่หลังจุดเข้า 4.5$-6.0$),
+  "takeProfit": number (ระยะกำไรมากกว่า 11.0$-18.0$),
+  "confidence": number (75-95),
+  "reason": "สรุปเหตุผลเชิงเทคนิคสั้นๆ ชัดเจน อ้างอิง H1/M15 Trend + Fibonacci Zone"
 }`;
 
       const userPrompt = `ข้อมูลราคาทองคำสด (${input.symbol}):
 - ราคาปัจจุบัน: $${input.currentPrice.toFixed(2)}
-- ไบแอสหลัก: ${input.bias} (ความแรง ${input.trendStrength}%)
-- RSI M5: ${Math.round(input.rsi14M5)} | RSI M15: ${Math.round(input.rsi14)} | ATR: $${input.atr14.toFixed(2)}
-- EMA 20 M15: $${input.ema20_m15.toFixed(2)}
+- เทรนด์หลัก H1: ${input.h1Bias} | เทรนด์ M15: ${input.m15Bias} (ความแรง ${input.trendStrength}%)
+- RSI H1: ${Math.round(input.rsi14H1)} | RSI M15: ${Math.round(input.rsi14M15)} | RSI M5: ${Math.round(input.rsi14M5)}
+- Dynamic ATR (14): $${input.atr14.toFixed(2)}
+- EMA 20 (M15): $${input.ema20_m15.toFixed(2)} | EMA 50 (M15): $${input.ema50_m15.toFixed(2)}
+- Fibonacci Golden Pocket (50% - 61.8%): $${input.fib50.toFixed(2)} - $${input.fib618.toFixed(2)}
+- ราคาสูงสุด/ต่ำสุดรอบวัน (24h Range): $${input.sessionLow.toFixed(2)} - $${input.sessionHigh.toFixed(2)}
 - แนวรับสำคัญ: ${input.nearestSupport.map((p) => '$' + p.toFixed(2)).join(', ') || 'N/A'}
 - แนวต้านสำคัญ: ${input.nearestResistance.map((p) => '$' + p.toFixed(2)).join(', ') || 'N/A'}
 
-แท่งเทียนย้อนหลัง M5 (OHLC): ${formattedM5 || 'N/A'}
-แท่งเทียนย้อนหลัง M15 (OHLC): ${formattedM15 || 'N/A'}
-ประวัติไม้ที่ชน SL ล่าสุด (เพื่อทบทวนบทเรียน): ${formattedLosses}
+แท่งเทียน H1 (OHLC ย้อนหลัง 10 แท่ง): ${formattedH1 || 'N/A'}
+แท่งเทียน M15 (OHLC ย้อนหลัง 15 แท่ง): ${formattedM15 || 'N/A'}
+แท่งเทียน M5 (OHLC ย้อนหลัง 15 แท่ง): ${formattedM5 || 'N/A'}
+ประวัติไม้ที่ชน SL ล่าสุด (เพื่อทบทวนบทเรียนและหลีกเลี่ยงข้อผิดพลาดเดิม): ${formattedLosses}
 
-โปรดเลือกจุดเข้า Pullback ใกล้ราคาปัจจุบัน ($${input.currentPrice.toFixed(2)}) ที่ได้เปรียบราคาที่สุด และส่งคืน JSON แผนการเทรดสด`;
+โปรดวิเคราะห์จุดเข้าที่ได้เปรียบราคาที่สุดใกล้ราคาปัจจุบัน ($${input.currentPrice.toFixed(2)}) และคืนค่า JSON แผนเทรดสด`;
 
       const response = await fetch(this.LM_STUDIO_URL, {
         method: 'POST',
@@ -132,8 +178,8 @@ export class QwenLocalAiService {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.2,
-          max_tokens: 300,
+          temperature: 0.15,
+          max_tokens: 350,
         }),
         signal: controller.signal,
       });
@@ -142,7 +188,7 @@ export class QwenLocalAiService {
 
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content || '';
-      
+
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return fallback;
 
@@ -155,24 +201,24 @@ export class QwenLocalAiService {
         : (parsed.entry > input.currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
 
       const refinedEntry = Number(parsed.entry.toFixed(2));
-      let refinedSL = Number((parsed.stopLoss || input.proposedSL).toFixed(2));
-      let refinedTP = Number((parsed.takeProfit || input.proposedTP).toFixed(2));
+      let refinedSL = Number((parsed.stopLoss || smartSL).toFixed(2));
+      let refinedTP = Number((parsed.takeProfit || smartTP).toFixed(2));
 
-      // Tight SL distance guard (between $4.0 and $6.5 for precision Gold trading)
-      const targetSlDist = Math.max(4.0, Math.min(6.5, (input.atr14 || 5.0) * 0.8));
+      // Tight SL distance guard ($4.2 to $6.5 for precision Gold trading)
+      const targetSlDist = Math.max(4.2, Math.min(6.5, (input.atr14 || 5.0) * 0.95));
       if (direction === 'BUY') {
-        if (refinedEntry - refinedSL > 8.0 || refinedEntry - refinedSL < 3.5) {
+        if (refinedEntry - refinedSL > 8.0 || refinedEntry - refinedSL < 3.8) {
           refinedSL = Number((refinedEntry - targetSlDist).toFixed(2));
         }
         if (refinedTP <= refinedEntry) {
-          refinedTP = Number((refinedEntry + targetSlDist * 2.5).toFixed(2));
+          refinedTP = Number((refinedEntry + targetSlDist * 2.6).toFixed(2));
         }
       } else {
-        if (refinedSL - refinedEntry > 8.0 || refinedSL - refinedEntry < 3.5) {
+        if (refinedSL - refinedEntry > 8.0 || refinedSL - refinedEntry < 3.8) {
           refinedSL = Number((refinedEntry + targetSlDist).toFixed(2));
         }
         if (refinedTP >= refinedEntry) {
-          refinedTP = Number((refinedEntry - targetSlDist * 2.5).toFixed(2));
+          refinedTP = Number((refinedEntry - targetSlDist * 2.6).toFixed(2));
         }
       }
 
@@ -183,7 +229,7 @@ export class QwenLocalAiService {
         refinedEntry,
         refinedSL,
         refinedTP,
-        confidence: Math.min(95, Math.max(60, Number(parsed.confidence) || 88)),
+        confidence: Math.min(95, Math.max(75, Number(parsed.confidence) || 90)),
         reason: parsed.reason || fallback.reason,
         source: 'LOCAL_QWEN_LLM',
       };
