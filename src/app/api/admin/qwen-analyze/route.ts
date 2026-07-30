@@ -166,20 +166,33 @@ export async function POST(request: Request) {
     const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
     const swingRange = recentHigh - recentLow;
 
-    const fib50 = isBullishMain ? Number((currentPrice - Math.min(2.5, Math.max(1.5, swingRange * 0.382))).toFixed(2)) : Number((currentPrice + Math.min(2.5, Math.max(1.5, swingRange * 0.382))).toFixed(2));
-    const fib618 = isBullishMain ? Number((currentPrice - Math.min(4.0, Math.max(2.5, swingRange * 0.50))).toFixed(2)) : Number((currentPrice + Math.min(4.0, Math.max(2.5, swingRange * 0.50))).toFixed(2));
+    const fib50 = isBullishMain ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
+    const fib618 = isBullishMain ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
+    const deepFib618 = fib618;
 
-    // Find support/resistance close to current price ($1.0 to $4.5)
-    const closeSupport = supports.find((s) => currentPrice - s >= 1.0 && currentPrice - s <= 4.5);
-    const closeResistance = resistances.find((r) => r - currentPrice >= 1.0 && r - currentPrice <= 4.5);
+    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.0 && currentPrice - s <= 7.0);
+    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.0 && r - currentPrice <= 7.0);
 
-    const targetEntry = isBullishMain
-      ? (closeSupport ? Number(closeSupport.toFixed(2)) : fib50)
-      : (closeResistance ? Number(closeResistance.toFixed(2)) : fib618);
+    let targetEntry = isBullishMain
+      ? (closeSupportDeep ? Number(closeSupportDeep.toFixed(2)) : deepFib618)
+      : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : deepFib618);
 
+    // Keep targetEntry between $2.5 and $6.0 from current price for realistic limit execution
+    if (isBullishMain) {
+      if (currentPrice - targetEntry < 2.2 || currentPrice - targetEntry > 7.5) {
+        targetEntry = Number((currentPrice - 4.5).toFixed(2));
+      }
+    } else {
+      if (targetEntry - currentPrice < 2.2 || targetEntry - currentPrice > 7.5) {
+        targetEntry = Number((currentPrice + 4.5).toFixed(2));
+      }
+    }
+    targetEntry = Number(targetEntry.toFixed(2));
+
+    // Place Stop Loss safely below the entire Structural Low / Support Zone (+ ATR Buffer)
     const targetSL = isBullishMain
-      ? Number((targetEntry - Math.max(8.0, atr14 * 1.5)).toFixed(2))
-      : Number((targetEntry + Math.max(8.0, atr14 * 1.5)).toFixed(2));
+      ? Number((Math.min(recentLow - 1.5, targetEntry - Math.max(7.5, atr14 * 1.4))).toFixed(2))
+      : Number((Math.max(recentHigh + 1.5, targetEntry + Math.max(7.5, atr14 * 1.4))).toFixed(2));
 
     const targetTP = isBullishMain
       ? Number((targetEntry + Math.max(16.5, atr14 * 2.8)).toFixed(2))
