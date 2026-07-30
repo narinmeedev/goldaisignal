@@ -187,6 +187,14 @@ export async function POST(request: Request) {
         targetEntry = Number((currentPrice + 4.5).toFixed(2));
       }
     }
+    // Anti-Peak Chase Guard:
+    // For BUY: Do NOT enter near the highest high of the day (Buying the Top!). Require a deep retracement ($4.5-$8.0 below peak).
+    // For SELL: Do NOT enter near the lowest low of the day (Selling the Bottom!). Require a deep rebound ($4.5-$8.0 above bottom).
+    if (isBullishMain && recentHigh - targetEntry < 3.5) {
+      targetEntry = Number((recentHigh - Math.max(5.5, swingRange * 0.50)).toFixed(2));
+    } else if (!isBullishMain && targetEntry - recentLow < 3.5) {
+      targetEntry = Number((recentLow + Math.max(5.5, swingRange * 0.50)).toFixed(2));
+    }
     targetEntry = Number(targetEntry.toFixed(2));
 
     // Place Stop Loss safely below the entire Structural Low / Support Zone (+ ATR Buffer)
@@ -253,6 +261,27 @@ export async function POST(request: Request) {
       update: { value: Date.now().toString() },
       create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
     });
+
+    // Deduplication Guard: Check if an active or pending paper trade is already running for XAUUSD
+    const existingActiveTrade = await prisma.paperTrade.findFirst({
+      where: {
+        symbol: 'XAUUSD',
+        result: { in: ['PLAN', 'OPEN', 'TESTING'] },
+      },
+    });
+
+    if (existingActiveTrade) {
+      console.log(`[Qwen Analyze] Active trade ${existingActiveTrade.id} (${existingActiveTrade.direction}) already running in status ${existingActiveTrade.result}. Skipping duplicate paper trade creation.`);
+      return NextResponse.json({
+        success: true,
+        model: 'Qwen 3.5-9B (LM Studio)',
+        currentPrice,
+        result: qwenResult,
+        appliedPlan: planToApply,
+        autoApplied: true,
+        skippedDuplicate: true,
+      });
+    }
 
     // Create a measurable signal and paper trade record for Qwen AI
     try {
