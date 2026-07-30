@@ -178,12 +178,12 @@ export async function POST(request: Request) {
       : (closeResistance ? Number(closeResistance.toFixed(2)) : fib618);
 
     const targetSL = isBullishMain
-      ? Number((targetEntry - Math.max(4.5, atr14 * 0.95)).toFixed(2))
-      : Number((targetEntry + Math.max(4.5, atr14 * 0.95)).toFixed(2));
+      ? Number((targetEntry - Math.max(8.0, atr14 * 1.5)).toFixed(2))
+      : Number((targetEntry + Math.max(8.0, atr14 * 1.5)).toFixed(2));
 
     const targetTP = isBullishMain
-      ? Number((targetEntry + Math.max(11.5, atr14 * 2.6)).toFixed(2))
-      : Number((targetEntry - Math.max(11.5, atr14 * 2.6)).toFixed(2));
+      ? Number((targetEntry + Math.max(16.5, atr14 * 2.8)).toFixed(2))
+      : Number((targetEntry - Math.max(16.5, atr14 * 2.8)).toFixed(2));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,

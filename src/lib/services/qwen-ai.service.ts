@@ -67,8 +67,8 @@ export class QwenLocalAiService {
     const fallbackDirection: 'BUY' | 'SELL' = isProposedBuy ? 'BUY' : 'SELL';
     const fallbackType = isProposedBuy ? 'BUY_LIMIT' : 'SELL_LIMIT';
 
-    // Calculate smart quantitative fallback plan using Fibonacci & ATR Market Structure
-    const atrBuffer = Math.max(4.5, Math.min(6.5, input.atr14 * 0.95));
+    // Calculate smart quantitative fallback plan using Anti-Wick Hunt SL Buffer ($7.8 to $11.0)
+    const atrBuffer = Math.max(7.8, Math.min(11.0, input.atr14 * 1.5));
     let smartEntry = isProposedBuy ? input.fib50 : input.fib618;
 
     // Keep entry close to current price ($1.2 to $3.5 distance) for fast execution
@@ -88,8 +88,8 @@ export class QwenLocalAiService {
       : Number((smartEntry + atrBuffer).toFixed(2));
 
     const smartTP = isProposedBuy
-      ? Number((smartEntry + atrBuffer * 2.6).toFixed(2))
-      : Number((smartEntry - atrBuffer * 2.6).toFixed(2));
+      ? Number((smartEntry + atrBuffer * 2.2).toFixed(2))
+      : Number((smartEntry - atrBuffer * 2.2).toFixed(2));
 
     const fallback: QwenAnalysisOutput = {
       isApproved: true,
@@ -204,21 +204,21 @@ export class QwenLocalAiService {
       let refinedSL = Number((parsed.stopLoss || smartSL).toFixed(2));
       let refinedTP = Number((parsed.takeProfit || smartTP).toFixed(2));
 
-      // Tight SL distance guard ($4.2 to $6.5 for precision Gold trading)
-      const targetSlDist = Math.max(4.2, Math.min(6.5, (input.atr14 || 5.0) * 0.95));
+      // Tight SL distance guard (Anti-Wick Hunt: $7.5 to $11.5 for volatile Gold trading)
+      const targetSlDist = Math.max(7.5, Math.min(11.5, (input.atr14 || 5.5) * 1.6));
       if (direction === 'BUY') {
-        if (refinedEntry - refinedSL > 8.0 || refinedEntry - refinedSL < 3.8) {
+        if (refinedEntry - refinedSL > 12.0 || refinedEntry - refinedSL < 7.0) {
           refinedSL = Number((refinedEntry - targetSlDist).toFixed(2));
         }
         if (refinedTP <= refinedEntry) {
-          refinedTP = Number((refinedEntry + targetSlDist * 2.6).toFixed(2));
+          refinedTP = Number((refinedEntry + targetSlDist * 2.2).toFixed(2));
         }
       } else {
-        if (refinedSL - refinedEntry > 8.0 || refinedSL - refinedEntry < 3.8) {
+        if (refinedSL - refinedEntry > 12.0 || refinedSL - refinedEntry < 7.0) {
           refinedSL = Number((refinedEntry + targetSlDist).toFixed(2));
         }
         if (refinedTP >= refinedEntry) {
-          refinedTP = Number((refinedEntry - targetSlDist * 2.6).toFixed(2));
+          refinedTP = Number((refinedEntry - targetSlDist * 2.2).toFixed(2));
         }
       }
 
