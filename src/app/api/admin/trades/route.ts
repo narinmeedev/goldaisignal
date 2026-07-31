@@ -24,9 +24,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Subscription required' }, { status: 403 });
     }
 
+    const GOLD_SYMBOLS = [
+      'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
+      'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+    ];
+
     const trades = await prisma.paperTrade.findMany({
-      where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } },
-      orderBy: { openedAt: 'desc' },
+      where: { symbol: { in: GOLD_SYMBOLS } },
+      orderBy: { createdAt: 'desc' },
       include: {
         signal: true,
       },

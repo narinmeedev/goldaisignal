@@ -265,24 +265,42 @@ export async function POST(request: Request) {
       create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
     });
 
-    // Deduplication Guard: Check if an active or pending paper trade is already running for XAUUSD
+    // Deduplication Guard: Check if an active or pending paper trade is already running for this exact plan
+    const newDir = planToApply.type.includes('BUY') ? 'BUY' : 'SELL';
     const existingActiveTrade = await prisma.paperTrade.findFirst({
       where: {
         symbol: 'XAUUSD',
         result: { in: ['PLAN', 'OPEN', 'TESTING'] },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (existingActiveTrade) {
-      console.log(`[Qwen Analyze] Active trade ${existingActiveTrade.id} (${existingActiveTrade.direction}) already running in status ${existingActiveTrade.result}. Skipping duplicate paper trade creation.`);
-      return NextResponse.json({
-        success: true,
-        model: 'Qwen 3.5-9B (LM Studio)',
-        currentPrice,
-        result: qwenResult,
-        appliedPlan: planToApply,
-        autoApplied: true,
-        skippedDuplicate: true,
+      const isSamePlan = existingActiveTrade.direction === newDir && Math.abs(existingActiveTrade.entry - planToApply.entry) < 0.5;
+      if (isSamePlan) {
+        console.log(`[Qwen Analyze] Active trade ${existingActiveTrade.id} (${existingActiveTrade.direction} @ ${existingActiveTrade.entry}) already matches current plan. Skipping duplicate creation.`);
+        return NextResponse.json({
+          success: true,
+          model: 'Qwen 3.5-9B (LM Studio)',
+          currentPrice,
+          result: qwenResult,
+          appliedPlan: planToApply,
+          autoApplied: true,
+          skippedDuplicate: true,
+        });
+      }
+
+      // If active trade is for a superseded plan, cancel old trades so new plan can be recorded in PaperTrade table
+      console.log(`[Qwen Analyze] Superseding old trade ${existingActiveTrade.id} (${existingActiveTrade.direction} @ ${existingActiveTrade.entry}) with new plan (${newDir} @ ${planToApply.entry}).`);
+      await prisma.paperTrade.updateMany({
+        where: {
+          symbol: 'XAUUSD',
+          result: { in: ['PLAN', 'OPEN', 'TESTING'] },
+        },
+        data: {
+          result: 'CANCELLED',
+          closedAt: new Date(),
+        },
       });
     }
 
