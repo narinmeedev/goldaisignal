@@ -135,7 +135,9 @@ export async function POST(request: Request) {
   }
 
   const { symbol: rawSymbol, timeframe, candles, secret } = body;
-  const symbol = rawSymbol && String(rawSymbol).toUpperCase().includes('XAU') ? 'XAUUSD' : rawSymbol;
+  const upperRaw = rawSymbol ? String(rawSymbol).toUpperCase().trim() : '';
+  const isGoldSymbol = upperRaw.includes('XAU') || upperRaw.includes('GOLD');
+  const symbol = isGoldSymbol ? 'XAUUSD' : (rawSymbol || 'XAUUSD');
 
   try {
     if (!symbol || !timeframe || !Array.isArray(candles)) {
@@ -152,7 +154,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing symbol, timeframe, or candles array.' }, { status: 400, headers: noStoreHeaders });
     }
 
-    if (!String(symbol).toUpperCase().includes('XAU')) {
+    if (!isGoldSymbol) {
       return NextResponse.json(
         {
           status: 'accepted',

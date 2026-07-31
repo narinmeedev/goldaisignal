@@ -11,6 +11,11 @@ import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export const GOLD_SYMBOL_LIST = [
+  'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
+  'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+];
+
 // Global in-memory cache for fallback fetch times to prevent concurrent fetch/write storms
 const globalFetchCache = global as unknown as {
   lastFetchMap: Record<string, number>;
@@ -511,7 +516,7 @@ const getOpenTrackingPlan = async (
 ): Promise<RecommendationPlan | null> => {
   const openTrade = await prisma.paperTrade.findFirst({
     where: {
-      symbol: { in: [symbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+      symbol: { in: [symbol, ...GOLD_SYMBOL_LIST] },
       result: 'OPEN',
     },
     orderBy: { openedAt: 'desc' },
@@ -709,7 +714,7 @@ const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string)
 };
 
 const reconcileOpenPlanLifecycle = async (symbol: string) => {
-  const symbolFilter = { in: [symbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] };
+  const symbolFilter = { in: [symbol, ...GOLD_SYMBOL_LIST] };
   const [openTrades, pendingTrades] = await Promise.all([
     prisma.paperTrade.findMany({
       where: { symbol: symbolFilter, result: 'OPEN' },
@@ -1148,33 +1153,33 @@ export async function GET(request?: Request) {
         recentPlanResults,
         zoneCount,
       ] = await Promise.all([
-        prisma.signal.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
-        prisma.paperTrade.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
+        prisma.signal.count({ where: { symbol: { in: GOLD_SYMBOL_LIST } } }),
+        prisma.paperTrade.count({ where: { symbol: { in: GOLD_SYMBOL_LIST } } }),
         prisma.paperTrade.findMany({
-          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'OPEN' },
+          where: { symbol: { in: GOLD_SYMBOL_LIST }, result: 'OPEN' },
           orderBy: { openedAt: 'desc' },
           include: { signal: true },
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['PLAN', 'TESTING'] } },
+          where: { symbol: { in: GOLD_SYMBOL_LIST }, result: { in: ['PLAN', 'TESTING'] } },
           orderBy: { openedAt: 'desc' },
           include: { signal: true },
         }),
         prisma.signal.findMany({
-          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } },
+          where: { symbol: { in: GOLD_SYMBOL_LIST } },
           orderBy: { createdAt: 'desc' },
           take: 6,
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+          where: { symbol: { in: GOLD_SYMBOL_LIST }, result: { in: ['WIN', 'LOSS', 'BE'] } },
         }),
         prisma.paperTrade.findMany({
-          where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+          where: { symbol: { in: GOLD_SYMBOL_LIST }, result: { in: ['WIN', 'LOSS', 'BE'] } },
           orderBy: { closedAt: 'desc' },
           take: 8,
           include: { signal: true },
         }),
-        prisma.zone.count({ where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] } } }),
+        prisma.zone.count({ where: { symbol: { in: GOLD_SYMBOL_LIST } } }),
       ]);
     }
 

@@ -16,12 +16,23 @@ export interface OpenTradeParams {
 
 export class PaperTradeService {
   private static getSymbolFilter(symbol: string) {
-    const normalizedSymbol = symbol.toUpperCase().includes('XAU') ? 'XAUUSD' : symbol;
-    return { in: [normalizedSymbol, 'XAUUSD', 'GOLD', symbol] };
+    const clean = (symbol || '').toUpperCase();
+    const isGold = clean.includes('XAU') || clean.includes('GOLD');
+    const normalizedSymbol = isGold ? 'XAUUSD' : symbol;
+    return {
+      in: [
+        normalizedSymbol,
+        'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
+        'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn',
+        symbol,
+      ],
+    };
   }
 
   private static async clearActivePlanSetting(symbol: string, reason?: string) {
-    const normalizedSymbol = symbol.toUpperCase().includes('XAU') ? 'XAUUSD' : symbol.toUpperCase();
+    const clean = (symbol || '').toUpperCase();
+    const isGold = clean.includes('XAU') || clean.includes('GOLD');
+    const normalizedSymbol = isGold ? 'XAUUSD' : clean;
     try {
       const key = `ACTIVE_ORDER_PLAN_${normalizedSymbol}`;
       const existing = await prisma.systemSetting.findUnique({ where: { key } });
