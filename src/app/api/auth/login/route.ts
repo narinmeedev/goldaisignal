@@ -56,7 +56,12 @@ export async function POST(req: Request) {
       try {
         const client = attempt === 0 ? prisma : resetPrismaClient();
         user = await client.user.findFirst({
-          where: { email: normalizedEmail },
+          where: {
+            OR: [
+              { email: normalizedEmail },
+              { email: email.trim() },
+            ],
+          },
         });
         break;
       } catch (err: any) {
