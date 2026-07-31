@@ -284,7 +284,7 @@ export class PaperTradeService {
             result,
             rrResult: Number(rrResult.toFixed(2)),
             closedAt: new Date(),
-            notes: `Auto-executed: ${reason}`,
+            notes: trade.notes ? `${trade.notes} | Auto-executed: ${reason}` : `Auto-executed: ${reason}`,
           },
         });
         if (closedTrade.count === 0) continue;
@@ -363,7 +363,7 @@ export class PaperTradeService {
           data: {
             result: 'OPEN',
             openedAt: new Date(),
-            notes: `Auto-triggered: Price reached entry level at $${currentPrice.toFixed(2)}`,
+            notes: plan.notes ? `${plan.notes} | Auto-triggered: Entry reached at $${currentPrice.toFixed(2)}` : `Auto-triggered: Price reached entry level at $${currentPrice.toFixed(2)}`,
           },
         });
         if (triggeredPlan.count === 0) continue;

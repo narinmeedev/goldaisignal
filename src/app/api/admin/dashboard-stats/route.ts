@@ -2799,10 +2799,7 @@ export async function GET(request?: Request) {
       },
     });
 
-    const qwenTrades = allRecentPaperTrades.filter((t) =>
-      (t.notes && t.notes.includes('Qwen')) ||
-      (t.signal?.reason && t.signal.reason.toLowerCase().includes('qwen'))
-    ).slice(0, 20);
+    const qwenTrades = allRecentPaperTrades.filter((t) => t.result !== 'CANCELLED').slice(0, 20);
 
     const qwenWins = qwenTrades.filter((t) => t.result === 'WIN').length;
     const qwenLosses = qwenTrades.filter((t) => t.result === 'LOSS').length;

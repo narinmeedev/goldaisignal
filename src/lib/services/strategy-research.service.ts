@@ -262,7 +262,12 @@ export class StrategyResearchService {
     const searchSymbol = 'XAU';
     const testedTrades = await prisma.paperTrade.findMany({
       where: {
-        symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+        symbol: {
+          in: [
+            'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
+            'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+          ]
+        },
         result: { in: ['WIN', 'LOSS', 'BE'] },
         signal: { isNot: null },
       },

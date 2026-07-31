@@ -56,7 +56,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Subscription required' }, { status: 403 });
     }
 
-    const xauSymbolsFilter = { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] };
+    const xauSymbolsFilter = {
+      in: [
+        'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
+        'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+      ]
+    };
 
     const [totalSignalsCount, closedTrades] = await Promise.all([
       prisma.signal.count({ where: { symbol: xauSymbolsFilter } }),
