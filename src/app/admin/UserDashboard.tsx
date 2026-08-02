@@ -22,6 +22,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
+import TradePlanChart from './components/TradePlanChart';
 import { fetchDashboardStats } from '@/lib/dashboard-fetch';
 
 type Direction = 'BUY' | 'SELL';
@@ -631,107 +632,44 @@ export default function UserDashboard() {
         </section>
       )}
 
-      {(() => {
-        const isBuy = direction === 'BUY';
-        const isSell = direction === 'SELL';
-        const cardBgClass = plan 
-          ? isBuy 
-            ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-emerald-950/10 shadow-[0_4px_30px_rgba(16,185,129,0.03)]'
-            : 'border-rose-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-rose-950/10 shadow-[0_4px_30px_rgba(244,63,94,0.03)]'
-          : 'border-neutral-800 bg-neutral-900/40 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]';
+      {/* Interactive Candlestick Chart & AI Gauges Section */}
+      <section id="active-plan-chart" className="space-y-4">
+        <TradePlanChart
+          plan={plan}
+          currentPrice={market?.currentPrice ?? null}
+          timeframe="M15"
+          marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
+          bias={market?.bias ?? 'NEUTRAL'}
+        />
 
-        return (
-          <section id="active-plan" className={`rounded-xl border p-5 sm:p-6 transition-all duration-300 ${cardBgClass}`}>
-            <div className="flex flex-col gap-3 border-b border-neutral-800/80 pb-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-all ${
-                  isBuy 
-                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
-                    : isSell 
-                      ? 'border-rose-500/20 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.1)]' 
-                      : 'border-neutral-800 bg-neutral-800/60 text-neutral-400'
-                }`}>
-                  {isBuy ? <ArrowUp className="h-6 w-6" /> : isSell ? <ArrowDown className="h-6 w-6" /> : <Clock3 className="h-6 w-6" />}
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">แผนหลักปัจจุบัน</span>
-                    {plan && (
-                      <span className={`inline-flex items-center rounded-full px-1.5 py-0.2 text-[8px] font-extrabold uppercase tracking-wide animate-pulse ${
-                        isBuy ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      }`}>
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="mt-1 text-xl font-bold text-neutral-50">
-                    {plan ? `${direction ?? ''} · ${plan.title}` : 'ยังไม่มีแผนที่ผ่านเกณฑ์'}
-                  </h2>
-                  <p className="mt-1 text-sm text-neutral-400">
-                    {plan ? (isOpen ? 'เปิดวัดผลแล้ว' : 'รอราคาเข้าเงื่อนไข') : 'ระบบจะเงียบจนกว่าข้อมูลสด โครงสร้าง และความเสี่ยงจะผ่านเกณฑ์พร้อมกัน'}
-                  </p>
-                </div>
+        {plan && (
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 backdrop-blur-md p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                <Target className="h-4 w-4 text-amber-400" /> วิธีใช้แผนนี้
               </div>
-              {plan && (
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-[0_2px_8px_rgba(245,158,11,0.02)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                    คะแนน AI: {Math.round(plan.confidence)}/100
-                  </span>
-                  <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold shadow-[0_2px_8px_rgba(0,0,0,0.2)] ${riskStyles[riskLevel]}`}>
-                    <ShieldAlert className="h-3.5 w-3.5" />
-                    ความเสี่ยง: {riskScore ?? '-'}/100 · {riskLevel}
-                  </span>
-                </div>
-              )}
+              <p className="mt-2 text-sm leading-6 text-neutral-300">{getEntryInstruction(plan, isOpen)}</p>
+              <p className="mt-3 border-t border-neutral-800 pt-3 text-sm leading-6 text-neutral-400">{plan.reason}</p>
             </div>
 
-            {plan ? (
-              <div className="mt-5 space-y-5">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <PriceLevel label="Entry" value={plan.entry} tone="entry" />
-                  <PriceLevel label="Stop Loss" value={plan.stopLoss} tone="sl" />
-                  <PriceLevel label="Take Profit" value={plan.takeProfit} tone="tp" />
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 backdrop-blur-md p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                  <Gauge className="h-4 w-4 text-amber-400" /> ความเสี่ยงที่ต้องรู้
                 </div>
-
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                      <Target className="h-4 w-4 text-amber-400" /> วิธีใช้แผนนี้
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-neutral-300">{getEntryInstruction(plan, isOpen)}</p>
-                    <p className="mt-3 border-t border-neutral-800 pt-3 text-sm leading-6 text-neutral-400">{plan.reason}</p>
-                  </div>
-
-                  <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                        <Gauge className="h-4 w-4 text-amber-400" /> ความเสี่ยงที่ต้องรู้
-                      </div>
-                      <span className="text-sm font-semibold text-neutral-300">RR 1:{(plan.riskReward ?? 0).toFixed(2)}</span>
-                    </div>
-                    <ul className="mt-3 space-y-2">
-                      {(plan.riskReasons?.length ? plan.riskReasons : ['ทุกแผนมีโอกาสชน Stop Loss และอาจเกิด slippage ในช่วงราคาผันผวน']).map((reason) => (
-                        <li key={reason} className="flex gap-2 text-sm leading-5 text-neutral-400">
-                          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> {reason}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                <span className="text-sm font-semibold text-neutral-300">RR 1:{(plan.riskReward ?? 0).toFixed(2)}</span>
               </div>
-            ) : (
-              <div className="py-12 text-center">
-                <Clock3 className="mx-auto h-9 w-9 text-neutral-600 animate-pulse" />
-                <p className="mt-3 font-semibold text-neutral-200">รอแผนใหม่อย่างมีวินัย</p>
-                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-neutral-500">
-                  การไม่มีแผนคือสถานะปกติเมื่อคะแนนเงื่อนไขต่ำกว่า 70, ความเสี่ยงสูงกว่า 55, RR ต่ำกว่า 1:2 หรือข้อมูล MT5 ไม่สด
-                </p>
-              </div>
-            )}
-          </section>
-        );
-      })()}
+              <ul className="mt-3 space-y-2">
+                {(plan.riskReasons?.length ? plan.riskReasons : ['ทุกแผนมีโอกาสชน Stop Loss และอาจเกิด slippage ในช่วงราคาผันผวน']).map((reason) => (
+                  <li key={reason} className="flex gap-2 text-sm leading-5 text-neutral-400">
+                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
