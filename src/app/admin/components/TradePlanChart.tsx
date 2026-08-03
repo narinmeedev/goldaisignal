@@ -60,15 +60,17 @@ export default function TradePlanChart({
 }: TradePlanChartProps) {
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
-  // Generate realistic candles if none provided
+  // Process real candles from database
   const chartCandles = useMemo(() => {
-    if (candles && candles.length >= 10) {
-      return candles.slice(-30);
+    if (candles && candles.length > 0) {
+      // Sort chronologically ascending
+      const sorted = [...candles].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+      return sorted.slice(-30);
     }
-    // Fallback baseline candle generator around currentPrice or plan entry
+
+    // Fallback baseline when database candles are loading or empty
     const base = currentPrice || plan?.entry || 4040.0;
     const generated: Candle[] = [];
-    let price = base - 6.0;
     const now = Date.now();
 
     for (let i = 29; i >= 0; i--) {
@@ -77,16 +79,16 @@ export default function TradePlanChart({
         minute: '2-digit',
         hour12: false
       });
-      const delta = (Math.random() - 0.48) * 3.5;
-      const open = price;
-      const close = price + delta;
-      const high = Math.max(open, close) + Math.random() * 2.2;
-      const low = Math.min(open, close) - Math.random() * 2.2;
-      price = close;
-      generated.push({ time: timeStr, open, high, low, close, volume: Math.floor(Math.random() * 150) + 40 });
+      generated.push({
+        time: timeStr,
+        open: base,
+        high: base + 0.5,
+        low: base - 0.5,
+        close: base,
+        volume: 100
+      });
     }
 
-    // Force last candle close to currentPrice if available
     if (currentPrice && generated.length > 0) {
       generated[generated.length - 1].close = currentPrice;
       generated[generated.length - 1].high = Math.max(generated[generated.length - 1].high, currentPrice);

@@ -2493,6 +2493,14 @@ export async function GET(request?: Request) {
         marketSession,
         fundamentalBias,
         fundamentalWarning,
+        candles: (m15Candles || []).slice(0, 30).reverse().map((c) => ({
+          time: new Date(c.time).toISOString(),
+          open: roundPrice(c.open),
+          high: roundPrice(c.high),
+          low: roundPrice(c.low),
+          close: roundPrice(c.close),
+          volume: c.volume || 100,
+        })),
         timeframeBiases: {
           D1: d1Bias,
           H1: h1Bias,
