@@ -162,52 +162,74 @@ export async function POST(request: Request) {
     const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = isBullishMain ? 'BULLISH' : 'BEARISH';
 
     // Compute Fibonacci Golden Pocket (50% & 61.8%) from recent 30 M15 candles
+    // Compute Structural Swing Range (24h / M15 Range)
     const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
     const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
-    const swingRange = recentHigh - recentLow;
+    const swingRange = Math.max(recentHigh - recentLow, 8.0);
+    const rangeMid = (recentHigh + recentLow) / 2;
 
-    const fib50 = isBullishMain ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
-    const fib618 = isBullishMain ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
-    const deepFib618 = fib618;
+    // Detect Sideway / Ranging Market Structure vs Strong Trend
+    const isSideway = swingRange >= 10.0 && swingRange <= 45.0;
+    const isPriceInUpperHalf = currentPrice >= rangeMid;
 
-    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.0 && currentPrice - s <= 7.0);
-    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.0 && r - currentPrice <= 7.0);
+    let targetDirection: 'BUY' | 'SELL' = isBullishMain ? 'BUY' : 'SELL';
 
-    let targetEntry = isBullishMain
-      ? (closeSupportDeep ? Number(closeSupportDeep.toFixed(2)) : deepFib618)
-      : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : deepFib618);
-
-    // Strict Pending Limit Distance Rule:
-    // For BUY_LIMIT: targetEntry MUST be strictly BELOW currentPrice by $2.2 - $6.5 so users have ample time to place MT5 Pending Orders!
-    // For SELL_LIMIT: targetEntry MUST be strictly ABOVE currentPrice by $2.2 - $6.5 so users have ample time to place MT5 Pending Orders!
-    if (isBullishMain) {
-      if (targetEntry >= currentPrice - 1.8 || currentPrice - targetEntry > 7.5) {
-        targetEntry = Number((currentPrice - 3.2).toFixed(2));
-      }
-    } else {
-      if (targetEntry <= currentPrice + 1.8 || targetEntry - currentPrice > 7.5) {
-        targetEntry = Number((currentPrice + 3.2).toFixed(2));
-      }
+    // In a Sideway market, force mean-reversion at structural extremes:
+    // If price is in the upper half of range, favor SELL LIMIT near Range High.
+    // If price is in the lower half of range, favor BUY LIMIT near Range Base.
+    if (isSideway) {
+      targetDirection = isPriceInUpperHalf ? 'SELL' : 'BUY';
     }
 
-    // Anti-Peak Chase Guard:
-    // For BUY: Do NOT enter near the highest high of the day (Buying the Top!). Require a deep retracement ($4.5-$8.0 below peak).
-    // For SELL: Do NOT enter near the lowest low of the day (Selling the Bottom!). Require a deep rebound ($4.5-$8.0 above bottom).
-    if (isBullishMain && recentHigh - targetEntry < 3.5) {
-      targetEntry = Number((recentHigh - Math.max(5.5, swingRange * 0.50)).toFixed(2));
-    } else if (!isBullishMain && targetEntry - recentLow < 3.5) {
-      targetEntry = Number((recentLow + Math.max(5.5, swingRange * 0.50)).toFixed(2));
+    const fib50 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
+    const fib618 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
+
+    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.0 && currentPrice - s <= 8.0);
+    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.0 && r - currentPrice <= 8.0);
+
+    let targetEntry = 0;
+
+    if (isSideway) {
+      if (targetDirection === 'SELL') {
+        // Position SELL LIMIT near Structural Resistance High (at top of sideway range)
+        targetEntry = Number((recentHigh - Math.min(2.5, swingRange * 0.12)).toFixed(2));
+        if (targetEntry <= currentPrice + 2.2) {
+          targetEntry = Number((currentPrice + 3.2).toFixed(2));
+        }
+      } else {
+        // Position BUY LIMIT near Structural Support Base (at bottom of sideway range)
+        targetEntry = Number((recentLow + Math.min(2.5, swingRange * 0.12)).toFixed(2));
+        if (targetEntry >= currentPrice - 2.2) {
+          targetEntry = Number((currentPrice - 3.2).toFixed(2));
+        }
+      }
+    } else {
+      // Trending Market Entry
+      targetEntry = targetDirection === 'BUY'
+        ? (closeSupportDeep ? Number(closeSupportDeep.toFixed(2)) : fib618)
+        : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : fib618);
+
+      if (targetDirection === 'BUY') {
+        if (targetEntry >= currentPrice - 2.0) {
+          targetEntry = Number((currentPrice - 3.2).toFixed(2));
+        }
+      } else {
+        if (targetEntry <= currentPrice + 2.0) {
+          targetEntry = Number((currentPrice + 3.2).toFixed(2));
+        }
+      }
     }
     targetEntry = Number(targetEntry.toFixed(2));
 
-    // Place Stop Loss safely below the entire Structural Low / Support Zone (+ ATR Buffer)
-    const targetSL = isBullishMain
+    // Place Stop Loss safely behind structural extreme + ATR buffer
+    const targetSL = targetDirection === 'BUY'
       ? Number((Math.min(recentLow - 1.5, targetEntry - Math.max(7.5, atr14 * 1.4))).toFixed(2))
       : Number((Math.max(recentHigh + 1.5, targetEntry + Math.max(7.5, atr14 * 1.4))).toFixed(2));
 
-    const targetTP = isBullishMain
-      ? Number((targetEntry + Math.max(16.5, atr14 * 2.8)).toFixed(2))
-      : Number((targetEntry - Math.max(16.5, atr14 * 2.8)).toFixed(2));
+    // Target TP towards opposite boundary of range for maximum Risk/Reward
+    const targetTP = targetDirection === 'BUY'
+      ? Number((Math.max(targetEntry + 15.0, recentHigh - 2.0)).toFixed(2))
+      : Number((Math.min(targetEntry - 15.0, recentLow + 2.0)).toFixed(2));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
