@@ -146,61 +146,82 @@ export async function POST(request: Request) {
     const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
     const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
 
-    // Smart Impulse Bias Determination:
-    // If price bounced >= $5.5 from base, it is a BULLISH REBOUND (Impulse Buy)!
-    // If price dropped >= $5.5 from peak, it is a BEARISH REJECTION (Impulse Sell)!
-    let isBullishMain = false;
-    if (bounceFromBase >= Math.max(5.5, atr14 * 1.1)) {
-      isBullishMain = true;
-    } else if (rejectionFromPeak >= Math.max(5.5, atr14 * 1.1)) {
-      isBullishMain = false;
-    } else {
-      isBullishMain = currentPrice >= ema20_m15;
+    // Fetch active order plan to enforce Directional Hysteresis Lock (prevent flip-flopping within 60 mins)
+    const existingPlanSetting = await prisma.systemSetting.findUnique({
+      where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
+    });
+    let activeDirectionLock: 'BUY' | 'SELL' | null = null;
+    let activeLockAgeMinutes = 999;
+    if (existingPlanSetting?.value) {
+      try {
+        const parsed = JSON.parse(existingPlanSetting.value);
+        if (parsed?.type?.includes('BUY')) activeDirectionLock = 'BUY';
+        if (parsed?.type?.includes('SELL')) activeDirectionLock = 'SELL';
+        if (parsed?.lockedAt) {
+          activeLockAgeMinutes = (Date.now() - new Date(parsed.lockedAt).getTime()) / (60 * 1000);
+        }
+      } catch {}
     }
 
-    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = isBullishMain ? 'BULLISH' : 'BEARISH';
-    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = isBullishMain ? 'BULLISH' : 'BEARISH';
-
-    // Compute Fibonacci Golden Pocket (50% & 61.8%) from recent 30 M15 candles
     // Compute Structural Swing Range (24h / M15 Range)
     const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
     const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
     const swingRange = Math.max(recentHigh - recentLow, 8.0);
     const rangeMid = (recentHigh + recentLow) / 2;
 
-    // Detect Sideway / Ranging Market Structure vs Strong Trend
+    // 3-Zone Range Boundaries
+    const lowerZoneBoundary = recentLow + swingRange * 0.30; // Lower 30% Zone (Support Base)
+    const upperZoneBoundary = recentHigh - swingRange * 0.30; // Upper 30% Zone (Resistance High)
+    const isPriceInMiddleZone = currentPrice > lowerZoneBoundary && currentPrice < upperZoneBoundary;
     const isSideway = swingRange >= 10.0 && swingRange <= 45.0;
-    const isPriceInUpperHalf = currentPrice >= rangeMid;
 
-    let targetDirection: 'BUY' | 'SELL' = isBullishMain ? 'BUY' : 'SELL';
+    // Direction Determination with Hysteresis Guard
+    let targetDirection: 'BUY' | 'SELL' = 'BUY';
 
-    // In a Sideway market, force mean-reversion at structural extremes:
-    // If price is in the upper half of range, favor SELL LIMIT near Range High.
-    // If price is in the lower half of range, favor BUY LIMIT near Range Base.
     if (isSideway) {
-      targetDirection = isPriceInUpperHalf ? 'SELL' : 'BUY';
+      if (activeDirectionLock && activeLockAgeMinutes < 60) {
+        // Maintain locked direction to prevent whip-sawing
+        targetDirection = activeDirectionLock;
+      } else {
+        // Higher Timeframe Trend Alignment: H1 EMA20 vs EMA50
+        const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
+        const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
+        if (currentPrice >= upperZoneBoundary) {
+          targetDirection = 'SELL';
+        } else if (currentPrice <= lowerZoneBoundary) {
+          targetDirection = 'BUY';
+        } else {
+          targetDirection = ema20_h1 >= ema50_h1 ? 'BUY' : 'SELL';
+        }
+      }
+    } else {
+      // Trending Market Direction
+      targetDirection = currentPrice >= ema20_m15 ? 'BUY' : 'SELL';
     }
+
+    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
+    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
 
     const fib50 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
     const fib618 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
 
-    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.0 && currentPrice - s <= 8.0);
-    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.0 && r - currentPrice <= 8.0);
+    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.5 && currentPrice - s <= 8.0);
+    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.5 && r - currentPrice <= 8.0);
 
     let targetEntry = 0;
 
     if (isSideway) {
       if (targetDirection === 'SELL') {
-        // Position SELL LIMIT near Structural Resistance High (at top of sideway range)
-        targetEntry = Number((recentHigh - Math.min(2.5, swingRange * 0.12)).toFixed(2));
-        if (targetEntry <= currentPrice + 2.2) {
-          targetEntry = Number((currentPrice + 3.2).toFixed(2));
+        // Place SELL LIMIT strictly near Resistance High ($4069-$4072)
+        targetEntry = Number((recentHigh - Math.min(2.0, swingRange * 0.08)).toFixed(2));
+        if (targetEntry <= currentPrice + 2.5) {
+          targetEntry = Number((currentPrice + 3.5).toFixed(2));
         }
       } else {
-        // Position BUY LIMIT near Structural Support Base (at bottom of sideway range)
-        targetEntry = Number((recentLow + Math.min(2.5, swingRange * 0.12)).toFixed(2));
-        if (targetEntry >= currentPrice - 2.2) {
-          targetEntry = Number((currentPrice - 3.2).toFixed(2));
+        // Place BUY LIMIT strictly near Support Base ($4046-$4048)
+        targetEntry = Number((recentLow + Math.min(2.0, swingRange * 0.08)).toFixed(2));
+        if (targetEntry >= currentPrice - 2.5) {
+          targetEntry = Number((currentPrice - 3.5).toFixed(2));
         }
       }
     } else {
@@ -210,12 +231,12 @@ export async function POST(request: Request) {
         : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : fib618);
 
       if (targetDirection === 'BUY') {
-        if (targetEntry >= currentPrice - 2.0) {
-          targetEntry = Number((currentPrice - 3.2).toFixed(2));
+        if (targetEntry >= currentPrice - 2.2) {
+          targetEntry = Number((currentPrice - 3.5).toFixed(2));
         }
       } else {
-        if (targetEntry <= currentPrice + 2.0) {
-          targetEntry = Number((currentPrice + 3.2).toFixed(2));
+        if (targetEntry <= currentPrice + 2.2) {
+          targetEntry = Number((currentPrice + 3.5).toFixed(2));
         }
       }
     }
@@ -249,7 +270,7 @@ export async function POST(request: Request) {
       sessionLow: recentLow,
       nearestSupport: supports.length > 0 ? supports : [currentPrice - 4.5],
       nearestResistance: resistances.length > 0 ? resistances : [currentPrice + 4.5],
-      proposedType: isBullishMain ? 'BUY_LIMIT' : 'SELL_LIMIT',
+      proposedType: targetDirection === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
       proposedEntry: targetEntry,
       proposedSL: targetSL,
       proposedTP: targetTP,
