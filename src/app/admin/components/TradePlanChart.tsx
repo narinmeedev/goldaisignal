@@ -109,14 +109,13 @@ export default function TradePlanChart({
     const max = Math.max(...allPrices) + 3.0;
     const min = Math.min(...allPrices) - 3.0;
     const range = max - min || 1;
-
     return { min, max, range };
   }, [chartCandles, currentPrice, plan]);
 
   const getY = (price: number) => {
-    const height = 240; // SVG canvas inner height
-    const topPadding = 15;
-    const availableHeight = height - 30;
+    const height = 450; // SVG canvas inner height (doubled for desktop clarity)
+    const topPadding = 20;
+    const availableHeight = height - 40;
     const ratio = (priceMetrics.max - price) / priceMetrics.range;
     return topPadding + ratio * availableHeight;
   };
@@ -160,13 +159,13 @@ export default function TradePlanChart({
           </div>
         </div>
 
-        {/* Chart Viewport Container */}
-        <div className="relative mt-4 h-[280px] w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/90 p-2">
+        {/* Chart Viewport Container - Doubled Height on Desktop */}
+        <div className="relative mt-4 h-[320px] sm:h-[460px] lg:h-[520px] w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/90 p-2">
           {/* Grid Background */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293715_1px,transparent_1px),linear-gradient(to_bottom,#1f293715_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 
           {/* SVG Canvas for Candles & Level Overlays */}
-          <svg className="h-full w-full overflow-visible" viewBox="0 0 700 240" preserveAspectRatio="none">
+          <svg className="h-full w-full overflow-visible" viewBox="0 0 700 450" preserveAspectRatio="none">
             <defs>
               <linearGradient id="entryGlow" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
