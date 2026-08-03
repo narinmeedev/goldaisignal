@@ -670,8 +670,20 @@ export default function UserDashboard() {
                   <h2 className="mt-1 text-xl font-bold text-neutral-50">
                     {plan ? `${direction ?? ''} · ${plan.title}` : 'ยังไม่มีแผนที่ผ่านเกณฑ์'}
                   </h2>
-                  <p className="mt-1 text-sm text-neutral-400">
-                    {plan ? (isOpen ? 'เปิดวัดผลแล้ว' : 'รอราคาเข้าเงื่อนไข') : 'ระบบจะเงียบจนกว่าข้อมูลสด โครงสร้าง และความเสี่ยงจะผ่านเกณฑ์พร้อมกัน'}
+                  <p className="mt-1 text-sm text-neutral-400 flex items-center gap-2">
+                    {plan ? (
+                      isOpen ? (
+                        'เปิดวัดผลแล้ว'
+                      ) : (isBuy && (market?.currentPrice ?? 0) < plan.entry - 0.5) || (isSell && (market?.currentPrice ?? 0) > plan.entry + 0.5) ? (
+                        <span className="text-amber-400 font-semibold flex items-center gap-1">
+                          <AlertTriangle className="h-3.5 w-3.5 animate-pulse text-amber-400" /> ราคาขยับเลยจุดเข้าเดิมแล้ว (กำลังรอราคากลับเข้าโซนใหม่)
+                        </span>
+                      ) : (
+                        'รอราคาเข้าเงื่อนไข'
+                      )
+                    ) : (
+                      'ระบบจะเงียบจนกว่าข้อมูลสด โครงสร้าง และความเสี่ยงจะผ่านเกณฑ์พร้อมกัน'
+                    )}
                   </p>
                 </div>
               </div>

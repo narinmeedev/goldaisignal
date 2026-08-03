@@ -590,8 +590,12 @@ const getOpenTrackingPlan = async (
 
 const hasPlanFinishedOrFailed = (plan: RecommendationPlan, currentPrice: number) => {
   const direction = getPlanDirection(plan);
-  if (direction === 'BUY') return currentPrice <= plan.stopLoss || currentPrice >= plan.takeProfit;
-  if (direction === 'SELL') return currentPrice >= plan.stopLoss || currentPrice <= plan.takeProfit;
+  if (direction === 'BUY') {
+    return currentPrice <= plan.stopLoss || currentPrice >= plan.takeProfit || currentPrice <= plan.entry - 1.8;
+  }
+  if (direction === 'SELL') {
+    return currentPrice >= plan.stopLoss || currentPrice <= plan.takeProfit || currentPrice >= plan.entry + 1.8;
+  }
   return true;
 };
 
@@ -600,10 +604,12 @@ const getPlanFinishReason = (plan: RecommendationPlan, currentPrice: number) => 
   if (direction === 'BUY') {
     if (currentPrice >= plan.takeProfit) return 'TP_HIT';
     if (currentPrice <= plan.stopLoss) return 'SL_HIT';
+    if (currentPrice <= plan.entry - 1.8) return 'PASSED_ENTRY';
   }
   if (direction === 'SELL') {
     if (currentPrice <= plan.takeProfit) return 'TP_HIT';
     if (currentPrice >= plan.stopLoss) return 'SL_HIT';
+    if (currentPrice >= plan.entry + 1.8) return 'PASSED_ENTRY';
   }
   return null;
 };
@@ -611,7 +617,7 @@ const getPlanFinishReason = (plan: RecommendationPlan, currentPrice: number) => 
 const getPlanMaxDistance = (plan: RecommendationPlan) => {
   if (plan.timeframe === 'M5' || plan.strategyMode === 'SCALP') return 4.0; // Max $4.00 deviation for M5 Scalp
   if (plan.timeframe === 'M15') return 6.5; // Max $6.50 deviation for M15 Intraday
-  return 12.0; // Max $12.00 deviation for H1/H4 Swing
+  return 10.0; // Max $10.00 deviation for H1/H4 Swing
 };
 
 const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) => {
@@ -620,14 +626,14 @@ const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) 
   const isQwenPlan = !!plan.id?.toLowerCase().includes('qwen') || !!plan.title?.toLowerCase().includes('qwen') || !!plan.strategyLabel?.toLowerCase().includes('qwen');
 
   // Price deviation stale check: if current price is too far away from entry zone, cancel/expire the recommendation
-  const maxDist = isQwenPlan ? 45.0 : getPlanMaxDistance(plan);
+  const maxDist = isQwenPlan ? 10.0 : getPlanMaxDistance(plan);
   if (Math.abs(currentPrice - plan.entry) > maxDist) return true;
 
-  // Lifetime safety stale check (max 6 hours for Qwen plan, or 3x lock duration for normal plans)
+  // Lifetime safety stale check (max 90 mins for Qwen plan)
   const lockedAt = plan.lockedAt ? new Date(plan.lockedAt) : null;
   if (lockedAt && Number.isFinite(lockedAt.getTime())) {
-    const lockMinutes = isQwenPlan ? 360 : getPlanLockMinutes(plan);
-    const maxLifetimeMs = lockMinutes * (isQwenPlan ? 1 : 3) * 60 * 1000;
+    const lockMinutes = isQwenPlan ? 90 : getPlanLockMinutes(plan);
+    const maxLifetimeMs = lockMinutes * 60 * 1000;
     if (now.getTime() - lockedAt.getTime() > maxLifetimeMs) return true;
   }
 
