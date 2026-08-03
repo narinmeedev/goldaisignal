@@ -108,6 +108,7 @@ interface DashboardStats {
     timeframeBiases?: { D1?: string; H1?: string; M15?: string; M5?: string };
     marketSession?: string;
     candles?: any[];
+    proactivePlans?: any[];
   }>;
   mt5Connection?: {
     isLive: boolean;
@@ -749,10 +750,42 @@ export default function UserDashboard() {
         );
       })()}
 
-      {/* List of Candidate / Proactive Trade Plans */}
+      {/* List of Candidate / Proactive Trade Plans (ALWAYS VISIBLE RIGHT BELOW ACTIVE PLAN) */}
       {(() => {
-        const candidatePlans = (stats?.suggestedPlans || []).filter((p) => p.result === 'PLAN');
-        if (candidatePlans.length === 0) return null;
+        const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
+          id: p.id || `proactive-${p.entry}`,
+          type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
+          title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
+          entry: Number(p.entry),
+          stopLoss: Number(p.stopLoss),
+          takeProfit: Number(p.takeProfit || p.takeProfit1),
+          confidence: Number(p.confidence || 88),
+          reason: p.reason || p.notes,
+          direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
+        }));
+
+        const suggestedList = (stats?.suggestedPlans || [])
+          .filter((p: any) => p.result === 'PLAN')
+          .map((p: any) => ({
+            id: p.id,
+            type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
+            title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
+            entry: Number(p.entry),
+            stopLoss: Number(p.stopLoss),
+            takeProfit: Number(p.takeProfit1 || p.takeProfit),
+            confidence: Number(p.confidence || 88),
+            reason: p.notes,
+            direction: p.direction,
+          }));
+
+        // Deduplicate plans by entry price
+        const planMap = new Map<string, any>();
+        [...proactiveList, ...suggestedList].forEach((item) => {
+          const key = `${item.direction}_${item.entry.toFixed(2)}`;
+          if (!planMap.has(key)) planMap.set(key, item);
+        });
+
+        const candidatePlans = Array.from(planMap.values());
 
         return (
           <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
@@ -760,69 +793,81 @@ export default function UserDashboard() {
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-amber-400" />
                 <h3 className="text-base font-bold text-neutral-100">
-                  รายการแผนเทรดสำรอง / แผนรอเข้าทั้งหมด ({candidatePlans.length} แผน)
+                  📋 รายการแผนเทรดสำรอง / แผนรอเข้าทั้งหมด ({candidatePlans.length} แผน)
                 </h3>
               </div>
               <span className="text-xs text-neutral-400">
-                สามารถดูระดับราคาและวางแผนออเดอร์ล่วงหน้า (Pending Orders) บน MT5 ได้ล่วงหน้า
+                ระดับราคาสำหรับตั้งออเดอร์ล่วงหน้า (Pending Orders) บน MT5
               </span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {candidatePlans.map((item, idx) => {
-                const isBuyPlan = item.direction === 'BUY';
-                const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+            {candidatePlans.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {candidatePlans.map((item, idx) => {
+                  const isBuyPlan = item.direction === 'BUY';
+                  const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
 
-                return (
-                  <div
-                    key={item.id || idx}
-                    className={`rounded-xl border p-4 transition-all duration-200 hover:border-neutral-700 ${
-                      isBuyPlan
-                        ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
-                        : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
-                            isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          }`}
-                        >
-                          {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
-                          {item.direction}_LIMIT
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className={`rounded-xl border p-4 transition-all duration-200 hover:border-neutral-700 ${
+                        isBuyPlan
+                          ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
+                          : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
+                              isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            }`}
+                          >
+                            {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
+                            {item.type || `${item.direction}_LIMIT`}
+                          </span>
+                          <span className="text-xs text-neutral-400">ห่าง ${distToEntry}</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
+                          คะแนน AI: {Math.round(item.confidence || 88)}
                         </span>
-                        <span className="text-xs text-neutral-400">ห่าง ${distToEntry}</span>
                       </div>
-                      <span className="text-[10px] font-bold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
-                        คะแนน AI: {Math.round(item.confidence || 88)}
-                      </span>
-                    </div>
 
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                      <div className="rounded bg-neutral-950/70 p-2 border border-sky-500/20">
-                        <div className="text-[10px] font-semibold text-sky-400">Entry Target</div>
-                        <div className="mt-0.5 font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="rounded bg-neutral-950/70 p-2 border border-sky-500/20">
+                          <div className="text-[10px] font-semibold text-sky-400">Entry Target</div>
+                          <div className="mt-0.5 font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                        </div>
+                        <div className="rounded bg-neutral-950/70 p-2 border border-rose-500/20">
+                          <div className="text-[10px] font-semibold text-rose-400">Stop Loss</div>
+                          <div className="mt-0.5 font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
+                        </div>
+                        <div className="rounded bg-neutral-950/70 p-2 border border-emerald-500/20">
+                          <div className="text-[10px] font-semibold text-emerald-400">Take Profit</div>
+                          <div className="mt-0.5 font-bold text-emerald-300">${item.takeProfit.toFixed(2)}</div>
+                        </div>
                       </div>
-                      <div className="rounded bg-neutral-950/70 p-2 border border-rose-500/20">
-                        <div className="text-[10px] font-semibold text-rose-400">Stop Loss</div>
-                        <div className="mt-0.5 font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
-                      </div>
-                      <div className="rounded bg-neutral-950/70 p-2 border border-emerald-500/20">
-                        <div className="text-[10px] font-semibold text-emerald-400">Take Profit</div>
-                        <div className="mt-0.5 font-bold text-emerald-300">${(item.takeProfit1 || item.takeProfit).toFixed(2)}</div>
-                      </div>
-                    </div>
 
-                    {item.notes && (
-                      <p className="mt-2 text-[11px] leading-4 text-neutral-400 line-clamp-2 border-t border-neutral-800/60 pt-2">
-                        {item.notes}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      {(item.reason || item.title) && (
+                        <p className="mt-2 text-[11px] leading-4 text-neutral-400 line-clamp-2 border-t border-neutral-800/60 pt-2">
+                          {item.reason || item.title}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-6 text-center rounded-xl border border-neutral-800/60 bg-neutral-950/40 p-4">
+                <Clock3 className="mx-auto h-7 w-7 text-amber-400/80 animate-pulse" />
+                <p className="mt-2 text-sm font-semibold text-neutral-200">
+                  ระบบกำลังโฟกัสติดตามเฉพาะแผนหลักปัจจุบัน
+                </p>
+                <p className="mt-1 text-xs text-neutral-500 max-w-lg mx-auto">
+                  หากราคาตลาดขยับเข้าสู่โซนโครงสร้างใหม่ AI จะคำนวณและแสดงแผนเทรดสำรองล่วงหน้าที่นี่ให้อัตโนมัติ
+                </p>
+              </div>
+            )}
           </section>
         );
       })()}
