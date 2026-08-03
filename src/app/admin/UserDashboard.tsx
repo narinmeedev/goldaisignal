@@ -97,6 +97,7 @@ interface DashboardStats {
     totalRR: number;
     trades: any[];
   };
+  suggestedPlans?: any[];
   marketIntelligence?: Record<string, {
     currentPrice: number;
     bias: string;
@@ -744,6 +745,84 @@ export default function UserDashboard() {
                 </p>
               </div>
             )}
+          </section>
+        );
+      })()}
+
+      {/* List of Candidate / Proactive Trade Plans */}
+      {(() => {
+        const candidatePlans = (stats?.suggestedPlans || []).filter((p) => p.result === 'PLAN');
+        if (candidatePlans.length === 0) return null;
+
+        return (
+          <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-amber-400" />
+                <h3 className="text-base font-bold text-neutral-100">
+                  รายการแผนเทรดสำรอง / แผนรอเข้าทั้งหมด ({candidatePlans.length} แผน)
+                </h3>
+              </div>
+              <span className="text-xs text-neutral-400">
+                สามารถดูระดับราคาและวางแผนออเดอร์ล่วงหน้า (Pending Orders) บน MT5 ได้ล่วงหน้า
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {candidatePlans.map((item, idx) => {
+                const isBuyPlan = item.direction === 'BUY';
+                const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+
+                return (
+                  <div
+                    key={item.id || idx}
+                    className={`rounded-xl border p-4 transition-all duration-200 hover:border-neutral-700 ${
+                      isBuyPlan
+                        ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
+                        : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
+                            isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
+                          {item.direction}_LIMIT
+                        </span>
+                        <span className="text-xs text-neutral-400">ห่าง ${distToEntry}</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
+                        คะแนน AI: {Math.round(item.confidence || 88)}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="rounded bg-neutral-950/70 p-2 border border-sky-500/20">
+                        <div className="text-[10px] font-semibold text-sky-400">Entry Target</div>
+                        <div className="mt-0.5 font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                      </div>
+                      <div className="rounded bg-neutral-950/70 p-2 border border-rose-500/20">
+                        <div className="text-[10px] font-semibold text-rose-400">Stop Loss</div>
+                        <div className="mt-0.5 font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
+                      </div>
+                      <div className="rounded bg-neutral-950/70 p-2 border border-emerald-500/20">
+                        <div className="text-[10px] font-semibold text-emerald-400">Take Profit</div>
+                        <div className="mt-0.5 font-bold text-emerald-300">${(item.takeProfit1 || item.takeProfit).toFixed(2)}</div>
+                      </div>
+                    </div>
+
+                    {item.notes && (
+                      <p className="mt-2 text-[11px] leading-4 text-neutral-400 line-clamp-2 border-t border-neutral-800/60 pt-2">
+                        {item.notes}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </section>
         );
       })()}

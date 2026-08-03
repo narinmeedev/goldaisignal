@@ -319,7 +319,21 @@ export async function POST(request: Request) {
     });
 
     if (existingActiveTrade) {
-      const isSamePlan = existingActiveTrade.direction === newDir && Math.abs(existingActiveTrade.entry - planToApply.entry) < 0.5;
+      // If trade is OPEN or TESTING, preserve it! Let it run until it hits TP or SL naturally!
+      if (existingActiveTrade.result === 'OPEN' || existingActiveTrade.result === 'TESTING') {
+        console.log(`[Qwen Analyze] Active trade ${existingActiveTrade.id} is currently OPEN/TESTING. Preserving execution tracking to TP/SL.`);
+        return NextResponse.json({
+          success: true,
+          model: 'Qwen 3.5-9B (LM Studio)',
+          currentPrice,
+          result: qwenResult,
+          appliedPlan: planToApply,
+          autoApplied: false,
+          trackingActiveTrade: true,
+        });
+      }
+
+      const isSamePlan = existingActiveTrade.direction === newDir && Math.abs(existingActiveTrade.entry - planToApply.entry) < 1.5;
       if (isSamePlan) {
         console.log(`[Qwen Analyze] Active trade ${existingActiveTrade.id} (${existingActiveTrade.direction} @ ${existingActiveTrade.entry}) already matches current plan. Skipping duplicate creation.`);
         return NextResponse.json({
@@ -333,12 +347,12 @@ export async function POST(request: Request) {
         });
       }
 
-      // If active trade is for a superseded plan, cancel old trades so new plan can be recorded in PaperTrade table
-      console.log(`[Qwen Analyze] Superseding old trade ${existingActiveTrade.id} (${existingActiveTrade.direction} @ ${existingActiveTrade.entry}) with new plan (${newDir} @ ${planToApply.entry}).`);
+      // If existing trade is a stale pending plan (result: 'PLAN'), cancel old plan so new plan can take precedence
+      console.log(`[Qwen Analyze] Replacing stale pending plan ${existingActiveTrade.id} (${existingActiveTrade.direction} @ ${existingActiveTrade.entry}) with fresh plan (${newDir} @ ${planToApply.entry}).`);
       await prisma.paperTrade.updateMany({
         where: {
           symbol: 'XAUUSD',
-          result: { in: ['PLAN', 'OPEN', 'TESTING'] },
+          result: 'PLAN',
         },
         data: {
           result: 'CANCELLED',
