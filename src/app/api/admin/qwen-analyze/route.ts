@@ -175,28 +175,49 @@ export async function POST(request: Request) {
     const isPriceInMiddleZone = currentPrice > lowerZoneBoundary && currentPrice < upperZoneBoundary;
     const isSideway = swingRange >= 10.0 && swingRange <= 45.0;
 
-    // Direction Determination with Hysteresis Guard
+    // Compute RSI(14) for M15 candles to detect overbought/oversold extremes
+    let rsi14_m15 = 50;
+    if (m15Candles.length >= 15) {
+      let gains = 0;
+      let losses = 0;
+      for (let i = 0; i < 14; i++) {
+        const change = m15Candles[i].close - (m15Candles[i + 1]?.close || m15Candles[i].close);
+        if (change >= 0) gains += change;
+        else losses += Math.abs(change);
+      }
+      const avgGain = gains / 14;
+      const avgLoss = losses / 14;
+      rsi14_m15 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    // Direction Determination with Hysteresis & RSI Safeguards
     let targetDirection: 'BUY' | 'SELL' = 'BUY';
+
+    // H1 Trend Alignment
+    const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
+    const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
+    const isH1Bullish = ema20_h1 >= ema50_h1;
 
     if (isSideway) {
       if (activeDirectionLock && activeLockAgeMinutes < 60) {
         // Maintain locked direction to prevent whip-sawing
         targetDirection = activeDirectionLock;
+      } else if (rsi14_m15 <= 42) {
+        // RSI is Oversold near Support Base -> FORCE BUY ONLY! (Forbid SELL at dip bottom)
+        targetDirection = 'BUY';
+      } else if (rsi14_m15 >= 58) {
+        // RSI is Overbought near Resistance High -> FORCE SELL ONLY! (Forbid BUY at peak top)
+        targetDirection = 'SELL';
+      } else if (currentPrice >= upperZoneBoundary) {
+        targetDirection = 'SELL';
+      } else if (currentPrice <= lowerZoneBoundary) {
+        targetDirection = 'BUY';
       } else {
-        // Higher Timeframe Trend Alignment: H1 EMA20 vs EMA50
-        const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
-        const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
-        if (currentPrice >= upperZoneBoundary) {
-          targetDirection = 'SELL';
-        } else if (currentPrice <= lowerZoneBoundary) {
-          targetDirection = 'BUY';
-        } else {
-          targetDirection = ema20_h1 >= ema50_h1 ? 'BUY' : 'SELL';
-        }
+        targetDirection = isH1Bullish ? 'BUY' : 'SELL';
       }
     } else {
-      // Trending Market Direction
-      targetDirection = currentPrice >= ema20_m15 ? 'BUY' : 'SELL';
+      // Trending Market Direction aligned with H1 Trend and M15 EMA
+      targetDirection = isH1Bullish ? 'BUY' : 'SELL';
     }
 
     const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
