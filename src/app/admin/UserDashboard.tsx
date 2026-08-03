@@ -785,7 +785,13 @@ export default function UserDashboard() {
           if (!planMap.has(key)) planMap.set(key, item);
         });
 
-        const candidatePlans = Array.from(planMap.values());
+        // Sort candidate plans by distance to current price ascending (closest entry first)
+        const currentPx = market?.currentPrice ?? 0;
+        const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
+          const distA = Math.abs(a.entry - currentPx);
+          const distB = Math.abs(b.entry - currentPx);
+          return distA - distB;
+        });
 
         return (
           <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
