@@ -190,34 +190,29 @@ export async function POST(request: Request) {
       rsi14_m15 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
     }
 
-    // Direction Determination with Hysteresis & RSI Safeguards
-    let targetDirection: 'BUY' | 'SELL' = 'BUY';
+    // Compute M5 Wave Position & Retracement Ratio
+    const posRatio = (currentPrice - recentLow) / (swingRange || 1);
+    
+    // M5 Short-Term Rejection Check
+    const isM5BearishRejection = m5Candles.slice(0, 3).some((c) => c.high >= recentHigh - 2.0 && c.close < c.open);
+    const isM5BullishBounce = m5Candles.slice(0, 3).some((c) => c.low <= recentLow + 2.0 && c.close > c.open);
 
     // H1 Trend Alignment
     const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
     const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
     const isH1Bullish = ema20_h1 >= ema50_h1;
 
-    if (isSideway) {
-      if (activeDirectionLock && activeLockAgeMinutes < 60) {
-        // Maintain locked direction to prevent whip-sawing
-        targetDirection = activeDirectionLock;
-      } else if (rsi14_m15 <= 42) {
-        // RSI is Oversold near Support Base -> FORCE BUY ONLY! (Forbid SELL at dip bottom)
-        targetDirection = 'BUY';
-      } else if (rsi14_m15 >= 58) {
-        // RSI is Overbought near Resistance High -> FORCE SELL ONLY! (Forbid BUY at peak top)
-        targetDirection = 'SELL';
-      } else if (currentPrice >= upperZoneBoundary) {
-        targetDirection = 'SELL';
-      } else if (currentPrice <= lowerZoneBoundary) {
-        targetDirection = 'BUY';
-      } else {
-        targetDirection = isH1Bullish ? 'BUY' : 'SELL';
-      }
+    // Direction Determination: Look at M5 Pullback Highs & Lows
+    let targetDirection: 'BUY' | 'SELL' = 'BUY';
+
+    if (posRatio >= 0.55 || isM5BearishRejection || rsi14_m15 >= 58) {
+      // Price is in Upper Range Half ($4060+) or rejecting off M5 Peak -> ISSUE SELL_LIMIT FOR M5 RETRACEMENT!
+      targetDirection = 'SELL';
+    } else if (posRatio <= 0.45 || isM5BullishBounce || rsi14_m15 <= 42) {
+      // Price is in Lower Range Half ($4046-) or bouncing off M5 Base -> ISSUE BUY_LIMIT FOR M5 DIP!
+      targetDirection = 'BUY';
     } else {
-      // Trending Market Direction aligned with H1 Trend and M15 EMA
-      targetDirection = isH1Bullish ? 'BUY' : 'SELL';
+      targetDirection = activeDirectionLock || (isH1Bullish ? 'BUY' : 'SELL');
     }
 
     const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
@@ -231,52 +226,25 @@ export async function POST(request: Request) {
 
     let targetEntry = 0;
 
-    if (isSideway) {
-      if (targetDirection === 'SELL') {
-        // Place SELL LIMIT strictly near Resistance High ($4069-$4072)
-        targetEntry = Number((recentHigh - Math.min(2.0, swingRange * 0.08)).toFixed(2));
-        if (targetEntry <= currentPrice + 2.5) {
-          targetEntry = Number((currentPrice + 3.5).toFixed(2));
-        }
-        // Strict Premium Cap: SELL entry must be in upper 40% of range (NEVER sell below $4058)
-        const minAllowedSellEntry = Number((recentHigh - swingRange * 0.40).toFixed(2));
-        if (targetEntry < minAllowedSellEntry) {
-          targetEntry = minAllowedSellEntry;
-        }
-      } else {
-        // Place BUY LIMIT strictly near Support Base ($4046-$4048)
-        targetEntry = Number((recentLow + Math.min(2.0, swingRange * 0.08)).toFixed(2));
-        if (targetEntry >= currentPrice - 2.5) {
-          targetEntry = Number((currentPrice - 3.5).toFixed(2));
-        }
-        // Strict Discount Cap: BUY entry must be in lower 40% of range (NEVER buy above $4055)
-        const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.40).toFixed(2));
-        if (targetEntry > maxAllowedBuyEntry) {
-          targetEntry = maxAllowedBuyEntry;
-        }
+    if (targetDirection === 'SELL') {
+      // SELL_LIMIT on M5 Pullback High near Resistance ($4068+)
+      targetEntry = Number((recentHigh - Math.min(1.5, swingRange * 0.05)).toFixed(2));
+      if (targetEntry <= currentPrice + 1.8) {
+        targetEntry = Number((currentPrice + 2.5).toFixed(2));
+      }
+      const minAllowedSellEntry = Number((recentHigh - swingRange * 0.40).toFixed(2));
+      if (targetEntry < minAllowedSellEntry) {
+        targetEntry = minAllowedSellEntry;
       }
     } else {
-      // Trending Market Entry
-      targetEntry = targetDirection === 'BUY'
-        ? (closeSupportDeep ? Number(closeSupportDeep.toFixed(2)) : fib618)
-        : (closeResistanceDeep ? Number(closeResistanceDeep.toFixed(2)) : fib618);
-
-      if (targetDirection === 'BUY') {
-        if (targetEntry >= currentPrice - 2.2) {
-          targetEntry = Number((currentPrice - 3.5).toFixed(2));
-        }
-        const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.45).toFixed(2));
-        if (targetEntry > maxAllowedBuyEntry) {
-          targetEntry = maxAllowedBuyEntry;
-        }
-      } else {
-        if (targetEntry <= currentPrice + 2.2) {
-          targetEntry = Number((currentPrice + 3.5).toFixed(2));
-        }
-        const minAllowedSellEntry = Number((recentHigh - swingRange * 0.45).toFixed(2));
-        if (targetEntry < minAllowedSellEntry) {
-          targetEntry = minAllowedSellEntry;
-        }
+      // BUY_LIMIT on M5 Dip Base near Support ($4046+)
+      targetEntry = Number((recentLow + Math.min(1.5, swingRange * 0.05)).toFixed(2));
+      if (targetEntry >= currentPrice - 1.8) {
+        targetEntry = Number((currentPrice - 2.5).toFixed(2));
+      }
+      const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.40).toFixed(2));
+      if (targetEntry > maxAllowedBuyEntry) {
+        targetEntry = maxAllowedBuyEntry;
       }
     }
     targetEntry = Number(targetEntry.toFixed(2));
