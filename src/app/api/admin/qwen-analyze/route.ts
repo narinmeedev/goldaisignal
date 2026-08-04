@@ -238,11 +238,21 @@ export async function POST(request: Request) {
         if (targetEntry <= currentPrice + 2.5) {
           targetEntry = Number((currentPrice + 3.5).toFixed(2));
         }
+        // Strict Premium Cap: SELL entry must be in upper 40% of range (NEVER sell below $4058)
+        const minAllowedSellEntry = Number((recentHigh - swingRange * 0.40).toFixed(2));
+        if (targetEntry < minAllowedSellEntry) {
+          targetEntry = minAllowedSellEntry;
+        }
       } else {
         // Place BUY LIMIT strictly near Support Base ($4046-$4048)
         targetEntry = Number((recentLow + Math.min(2.0, swingRange * 0.08)).toFixed(2));
         if (targetEntry >= currentPrice - 2.5) {
           targetEntry = Number((currentPrice - 3.5).toFixed(2));
+        }
+        // Strict Discount Cap: BUY entry must be in lower 40% of range (NEVER buy above $4055)
+        const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.40).toFixed(2));
+        if (targetEntry > maxAllowedBuyEntry) {
+          targetEntry = maxAllowedBuyEntry;
         }
       }
     } else {
@@ -255,9 +265,17 @@ export async function POST(request: Request) {
         if (targetEntry >= currentPrice - 2.2) {
           targetEntry = Number((currentPrice - 3.5).toFixed(2));
         }
+        const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.45).toFixed(2));
+        if (targetEntry > maxAllowedBuyEntry) {
+          targetEntry = maxAllowedBuyEntry;
+        }
       } else {
         if (targetEntry <= currentPrice + 2.2) {
           targetEntry = Number((currentPrice + 3.5).toFixed(2));
+        }
+        const minAllowedSellEntry = Number((recentHigh - swingRange * 0.45).toFixed(2));
+        if (targetEntry < minAllowedSellEntry) {
+          targetEntry = minAllowedSellEntry;
         }
       }
     }
