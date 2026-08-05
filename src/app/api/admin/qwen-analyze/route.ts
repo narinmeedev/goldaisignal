@@ -136,6 +136,7 @@ export async function POST(request: Request) {
     const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
     const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
     const isH1Bullish = ema20_h1 >= ema50_h1;
+    const isH1Bearish = ema20_h1 < ema50_h1;
 
     // SMC Market Structure (CHoCH & BOS Detection)
     const prevM15High = Math.max(...m15Candles.slice(1, 10).map((c) => c.high));
@@ -185,35 +186,54 @@ export async function POST(request: Request) {
       rsi14_m15 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
     }
 
-    // SAAS-GRADE 70%+ WIN RATE ENGINE: Strict Multi-Timeframe Trend & SMC Confluence Filter
+    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
+    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
+
+    // SAAS-GRADE STRICT HARD TREND ALIGNMENT FILTER (100% ANTI-COUNTER-TREND)
+    const isM15Bullish = ema20_m15 >= ema50_m15 || currentPrice > ema20_m15;
+    const isM15Bearish = ema20_m15 < ema50_m15 && currentPrice < ema20_m15;
+
+    // Trend Score: Count how many timeframes agree on Bullish vs Bearish
+    let bullishScore = 0;
+    let bearishScore = 0;
+
+    if (isH4Bullish) bullishScore += 2;
+    else if (isH4Bearish) bearishScore += 2;
+
+    if (isH1Bullish) bullishScore += 1.5;
+    else if (isH1Bearish) bearishScore += 1.5;
+
+    if (isM15Bullish) bullishScore += 1;
+    else if (isM15Bearish) bearishScore += 1;
+
+    if (isBullishBOS || isBullishCHoCH) bullishScore += 3;
+    if (isBearishBOS) bearishScore += 3;
+
     let targetDirection: 'BUY' | 'SELL' = 'BUY';
     let smcTag = '';
-    let winRateConfidence = 92;
 
-    if (isBullishBOS || isBullishCHoCH) {
-      // High-Probability Bullish SMC Structure Breakout
+    // HARD RULE: If Bullish Trend Score >= 2.5, FORBID SELL 100%! FORCE BUY DIP!
+    if (bullishScore >= 2.5) {
       targetDirection = 'BUY';
-      smcTag = isBullishBOS ? '⚡ Bullish BOS (เบรคโครงสร้าง M15 ขึ้นสูง - ห้าม SELL สวน)' : '🔄 Bullish CHoCH (ยก Low สร้าง Uptrend)';
-      winRateConfidence = 95;
-    } else if (isBearishBOS) {
-      // High-Probability Bearish SMC Structure Breakdown
+      smcTag = isBullishBOS
+        ? '⚡ Bullish BOS (เบรคโครงสร้าง M15 ขึ้นสูง - ห้าม SELL สวนเด็ดขาด)'
+        : isH4Bullish
+          ? '📈 H4/H1 Major Uptrend (เทรนด์ใหญ่ขาขึ้น - ห้าม SELL สวน ย่อซื้อตามเทรนด์)'
+          : '🟢 M15/H1 Uptrend Alignment (โครงสร้างขาขึ้น - ย่อรับแนวรับ)';
+    } else if (bearishScore >= 2.5) {
+      // HARD RULE: If Bearish Trend Score >= 2.5, FORBID BUY 100%! FORCE SELL REBOUND!
       targetDirection = 'SELL';
-      smcTag = '⚡ Bearish BOS (เบรคโครงสร้าง M15 ลงต่ำ - ห้าม BUY สวน)';
-      winRateConfidence = 95;
-    } else if (isH4Bullish && posRatio < 0.65) {
-      // Major Trend Alignment BUY Dip
-      targetDirection = 'BUY';
-      smcTag = '📈 H4 Major Uptrend (เทรนด์ใหญ่ H4 ขาขึ้น - ย่อซื้อตามเทรนด์)';
-      winRateConfidence = 93;
-    } else if (isH4Bearish && posRatio > 0.35) {
-      // Major Trend Alignment SELL Pullback
-      targetDirection = 'SELL';
-      smcTag = '📉 H4 Major Downtrend (เทรนด์ใหญ่ H4 ขาลง - เด้งขายตามเทรนด์)';
-      winRateConfidence = 93;
+      smcTag = isBearishBOS
+        ? '⚡ Bearish BOS (เบรคโครงสร้าง M15 ลงต่ำ - ห้าม BUY สวนเด็ดขาด)'
+        : isH4Bearish
+          ? '📉 H4/H1 Major Downtrend (เทรนด์ใหญ่ขาลง - ห้าม BUY สวน เด้งขายตามเทรนด์)'
+          : '🔴 M15/H1 Downtrend Alignment (โครงสร้างขาลง - เด้งขายแนวต้าน)';
     } else {
-      targetDirection = posRatio >= 0.55 ? 'SELL' : 'BUY';
-      smcTag = targetDirection === 'BUY' ? '🟢 ย่อรับฐาน Support (SMC Zone)' : '🔴 เด้งขายโซน Resistance (SMC Zone)';
-      winRateConfidence = 91;
+      // Neutral Sideway Market: Only trade at extreme range boundaries
+      targetDirection = posRatio <= 0.40 ? 'BUY' : 'SELL';
+      smcTag = targetDirection === 'BUY'
+        ? '🟢 ย่อรับฐาน Support (SMC Discount Zone)'
+        : '🔴 เด้งขายโซน Resistance (SMC Premium Zone)';
     }
 
     const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
@@ -254,9 +274,6 @@ export async function POST(request: Request) {
     const targetTP = targetDirection === 'BUY'
       ? Number((targetEntry + scalpProfitDist).toFixed(2))
       : Number((targetEntry - scalpProfitDist).toFixed(2));
-
-    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
-    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,
