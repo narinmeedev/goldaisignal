@@ -10,10 +10,12 @@ import {
   Bot,
   CheckCircle2,
   Clock3,
+  Flame,
   Gauge,
   History,
   LifeBuoy,
   Loader2,
+  Pin,
   RefreshCw,
   ShieldAlert,
   Sparkles,
@@ -214,6 +216,23 @@ export default function UserDashboard() {
   const [isApplyingPlan, setIsApplyingPlan] = useState(false);
   const [qwenData, setQwenData] = useState<any>(null);
   const [showQwenModal, setShowQwenModal] = useState(false);
+  const [pinnedPlanId, setPinnedPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedPin = localStorage.getItem('goldai_pinned_plan_id');
+      if (savedPin) setPinnedPlanId(savedPin);
+    }
+  }, []);
+
+  const togglePinPlan = (id: string) => {
+    const newPin = pinnedPlanId === id ? null : id;
+    setPinnedPlanId(newPin);
+    if (typeof window !== 'undefined') {
+      if (newPin) localStorage.setItem('goldai_pinned_plan_id', newPin);
+      else localStorage.removeItem('goldai_pinned_plan_id');
+    }
+  };
 
   const runQwenAnalysis = async () => {
     setIsQwenAnalyzing(true);
@@ -785,9 +804,11 @@ export default function UserDashboard() {
           if (!planMap.has(key)) planMap.set(key, item);
         });
 
-        // Sort candidate plans by distance to current price ascending (closest entry first)
+        // Sort candidate plans: Pinned plan first, then by distance to current price ascending
         const currentPx = market?.currentPrice ?? 0;
         const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
+          if (a.id === pinnedPlanId) return -1;
+          if (b.id === pinnedPlanId) return 1;
           const distA = Math.abs(a.entry - currentPx);
           const distB = Math.abs(b.entry - currentPx);
           return distA - distB;
@@ -803,7 +824,7 @@ export default function UserDashboard() {
                 </h3>
               </div>
               <span className="text-xs text-neutral-400">
-                ระดับราคาสำหรับตั้งออเดอร์ล่วงหน้า (Pending Orders) บน MT5
+                สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการไว้บนสุดได้
               </span>
             </div>
 
@@ -812,20 +833,25 @@ export default function UserDashboard() {
                 {candidatePlans.map((item, idx) => {
                   const isBuyPlan = item.direction === 'BUY';
                   const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+                  const isPinned = item.id === pinnedPlanId;
+                  const isEarlyTrend = item.isEarlyTrend || idx === 0 || item.reason?.includes('CHoCH') || item.reason?.includes('ต้นเทรนด์') || item.title?.includes('H1');
 
                   return (
                     <div
                       key={item.id || idx}
-                      className={`rounded-xl border p-4 transition-all duration-200 hover:border-neutral-700 ${
-                        isBuyPlan
-                          ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
-                          : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
+                      className={`relative rounded-xl border p-4 transition-all duration-300 hover:border-neutral-700 ${
+                        isPinned
+                          ? 'border-amber-400/80 bg-neutral-900 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/50'
+                          : isBuyPlan
+                            ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
+                            : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
                       }`}
                     >
-                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                        <div className="flex items-center gap-2">
+                      {/* Top Action Header: Badges & Pin Button */}
+                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-black text-sky-300 border border-sky-500/30 uppercase">
-                            {item.timeframe || (idx % 2 === 0 ? 'M5 Scalp' : 'M15 Zone')}
+                            {item.timeframe || (idx === 0 ? 'H1 Trend' : idx % 2 === 0 ? 'M5 Scalp' : 'M15 Zone')}
                           </span>
                           <span
                             className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
@@ -835,9 +861,31 @@ export default function UserDashboard() {
                             {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
                             {item.type || `${item.direction}_LIMIT`}
                           </span>
-                          <span className="text-xs text-neutral-400">ห่าง ${distToEntry}</span>
+                          {isEarlyTrend && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse">
+                              <Flame className="h-3 w-3 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์ (ถือยาวได้)
+                            </span>
+                          )}
                         </div>
-                        <span className="text-[10px] font-bold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
+
+                        {/* PIN BUTTON */}
+                        <button
+                          onClick={() => togglePinPlan(item.id)}
+                          title={isPinned ? 'ยกเลิกปักหมุด' : 'ปักหมุดแผนนี้ไว้อันดับแรก'}
+                          className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-extrabold transition-all ${
+                            isPinned
+                              ? 'border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                              : 'border-neutral-800 bg-neutral-955/60 text-neutral-400 hover:border-amber-500/50 hover:text-amber-300'
+                          }`}
+                        >
+                          <Pin className={`h-3 w-3 ${isPinned ? 'fill-amber-400 text-amber-400 rotate-45' : ''}`} />
+                          {isPinned ? 'ปักหมุดแล้ว' : 'ปักหมุด'}
+                        </button>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
+                        <span>ระยะห่าง: <strong className="text-neutral-200 tabular-nums">${distToEntry}</strong></span>
+                        <span className="font-semibold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
                           เป้าส่วนต่าง $10-$20
                         </span>
                       </div>
