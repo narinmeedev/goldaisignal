@@ -207,6 +207,40 @@ function PriceLevel({ label, value, tone }: { label: string; value: number; tone
   );
 }
 
+function renderHighlightedReason(reasonText: string) {
+  if (!reasonText) return null;
+
+  const parts = reasonText.split(/(\(.*?\))/g);
+
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith('(') && part.endsWith(')')) {
+          const content = part.slice(1, -1);
+          const isWarning = part.includes('ห้าม') || part.includes('คัท') || part.includes('เสีย');
+          const isBullish = part.includes('ขึ้น') || part.includes('BOS') || part.includes('CHoCH');
+
+          const bgClass = isWarning
+            ? 'bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.25)]'
+            : isBullish
+              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+              : 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]';
+
+          return (
+            <span
+              key={i}
+              className={`mx-1 inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-black tracking-wide ${bgClass}`}
+            >
+              {content}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 export default function UserDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -742,7 +776,9 @@ export default function UserDashboard() {
                       <Target className="h-4 w-4 text-amber-400" /> วิธีใช้แผนนี้
                     </div>
                     <p className="mt-2 text-sm leading-6 text-neutral-300">{getEntryInstruction(plan, isOpen)}</p>
-                    <p className="mt-3 border-t border-neutral-800 pt-3 text-sm leading-6 text-neutral-400">{plan.reason}</p>
+                    <div className="mt-3 border-t border-neutral-800 pt-3 text-sm leading-6 text-neutral-300 font-medium">
+                      {renderHighlightedReason(plan.reason)}
+                    </div>
                   </div>
 
                   <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-4">
@@ -912,9 +948,9 @@ export default function UserDashboard() {
                       </div>
 
                       {(item.reason || item.title) && (
-                        <p className="mt-2 text-[11px] leading-4 text-neutral-400 line-clamp-2 border-t border-neutral-800/60 pt-2">
-                          {item.reason || item.title}
-                        </p>
+                        <div className="mt-2 text-[11px] leading-5 text-neutral-300 border-t border-neutral-800/60 pt-2 font-medium">
+                          {renderHighlightedReason(item.reason || item.title)}
+                        </div>
                       )}
                     </div>
                   );
