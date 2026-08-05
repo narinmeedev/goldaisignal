@@ -215,40 +215,34 @@ export async function POST(request: Request) {
     const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.5 && currentPrice - s <= 8.0);
     const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.5 && r - currentPrice <= 8.0);
 
-    let targetEntry = 0;
+    // Precision Key Level Support & Resistance Selection
+    const exactSupportKey = supports.length > 0 ? Number(supports[0].toFixed(2)) : Number((recentLow + 0.5).toFixed(2));
+    const exactResistanceKey = resistances.length > 0 ? Number(resistances[0].toFixed(2)) : Number((recentHigh - 0.5).toFixed(2));
 
+    let targetEntry = 0;
     if (targetDirection === 'SELL') {
-      // SELL_LIMIT on M5 Pullback High near Resistance ($4068+)
-      targetEntry = Number((recentHigh - Math.min(1.5, swingRange * 0.05)).toFixed(2));
-      if (targetEntry <= currentPrice + 1.8) {
+      targetEntry = exactResistanceKey;
+      if (targetEntry <= currentPrice + 1.5) {
         targetEntry = Number((currentPrice + 2.5).toFixed(2));
       }
-      const minAllowedSellEntry = Number((recentHigh - swingRange * 0.40).toFixed(2));
-      if (targetEntry < minAllowedSellEntry) {
-        targetEntry = minAllowedSellEntry;
-      }
     } else {
-      // BUY_LIMIT on M5 Dip Base near Support ($4046+)
-      targetEntry = Number((recentLow + Math.min(1.5, swingRange * 0.05)).toFixed(2));
-      if (targetEntry >= currentPrice - 1.8) {
+      targetEntry = exactSupportKey;
+      if (targetEntry >= currentPrice - 1.5) {
         targetEntry = Number((currentPrice - 2.5).toFixed(2));
-      }
-      const maxAllowedBuyEntry = Number((recentLow + swingRange * 0.40).toFixed(2));
-      if (targetEntry > maxAllowedBuyEntry) {
-        targetEntry = maxAllowedBuyEntry;
       }
     }
     targetEntry = Number(targetEntry.toFixed(2));
 
-    // Place Stop Loss safely behind structural extreme + ATR buffer
+    // Place Stop Loss safely behind structural extreme (8.0$ SL distance)
     const targetSL = targetDirection === 'BUY'
-      ? Number((Math.min(recentLow - 1.5, targetEntry - Math.max(7.5, atr14 * 1.4))).toFixed(2))
-      : Number((Math.max(recentHigh + 1.5, targetEntry + Math.max(7.5, atr14 * 1.4))).toFixed(2));
+      ? Number((targetEntry - 8.0).toFixed(2))
+      : Number((targetEntry + 8.0).toFixed(2));
 
-    // Target TP towards opposite boundary of range for maximum Risk/Reward
+    // Lock in Short-Term Scalping Take Profit ($10.0 - $18.0 Gold Difference / 100 - 180 Pips)
+    const scalpProfitDist = Math.min(18.0, Math.max(10.0, swingRange * 0.65));
     const targetTP = targetDirection === 'BUY'
-      ? Number((Math.max(targetEntry + 15.0, recentHigh - 2.0)).toFixed(2))
-      : Number((Math.min(targetEntry - 15.0, recentLow + 2.0)).toFixed(2));
+      ? Number((targetEntry + scalpProfitDist).toFixed(2))
+      : Number((targetEntry - scalpProfitDist).toFixed(2));
 
     const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
     const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
@@ -282,18 +276,19 @@ export async function POST(request: Request) {
     });
 
     // AUTO-APPLY Qwen's plan directly to ACTIVE_ORDER_PLAN_XAUUSD
+    const timeframeTag = 'M15';
     const planToApply = {
       id: `qwen-plan-${Date.now()}`,
       type: qwenResult.type || (qwenResult.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
-      title: `แผนวิเคราะห์โดย Qwen 3.5-9B AI (วิเคราะห์ลำดับแท่งเทียน + ทบทวน SL)`,
+      title: `[${timeframeTag} Scalp] ${targetDirection === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${qwenResult.refinedEntry.toFixed(2)} (เป้าเก็บส่วนต่าง $10-$20)`,
       entry: qwenResult.refinedEntry,
       entry1: qwenResult.refinedEntry,
       stopLoss: qwenResult.refinedSL,
       takeProfit: qwenResult.refinedTP,
+      reason: `[สัญญาณ ${timeframeTag}] ${smcTag} | เข้าตรงแนวสำคัญ $${qwenResult.refinedEntry.toFixed(2)} (เป้าเก็บสั้นส่วนต่าง $10-$20) | ${qwenResult.reason}`,
+      timeframe: timeframeTag,
       confidence: qwenResult.confidence,
-      reason: `🤖 [Qwen 3.5-9B AI]: ${qwenResult.reason}`,
       strategyLabel: `Qwen 3.5-9B Quantitative AI (${qwenResult.source})`,
-      timeframe: 'M15',
       lockedAt: new Date().toISOString(),
     };
 

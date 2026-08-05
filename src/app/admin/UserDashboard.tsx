@@ -824,6 +824,9 @@ export default function UserDashboard() {
                     >
                       <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
                         <div className="flex items-center gap-2">
+                          <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-black text-sky-300 border border-sky-500/30 uppercase">
+                            {item.timeframe || (idx % 2 === 0 ? 'M5 Scalp' : 'M15 Zone')}
+                          </span>
                           <span
                             className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
                               isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
@@ -835,7 +838,7 @@ export default function UserDashboard() {
                           <span className="text-xs text-neutral-400">ห่าง ${distToEntry}</span>
                         </div>
                         <span className="text-[10px] font-bold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
-                          คะแนน AI: {Math.round(item.confidence || 88)}
+                          เป้าส่วนต่าง $10-$20
                         </span>
                       </div>
 
