@@ -233,13 +233,14 @@ export async function POST(request: Request) {
     }
     targetEntry = Number(targetEntry.toFixed(2));
 
-    // Place Stop Loss safely behind structural extreme (8.0$ SL distance)
+    // Tightened Dynamic Stop Loss ($4.5 - $5.5 SL distance to prevent heavy account damage)
+    const tightSLDistance = Math.min(5.5, Math.max(4.5, atr14 * 0.85));
     const targetSL = targetDirection === 'BUY'
-      ? Number((targetEntry - 8.0).toFixed(2))
-      : Number((targetEntry + 8.0).toFixed(2));
+      ? Number((targetEntry - tightSLDistance).toFixed(2))
+      : Number((targetEntry + tightSLDistance).toFixed(2));
 
-    // Lock in Short-Term Scalping Take Profit ($10.0 - $18.0 Gold Difference / 100 - 180 Pips)
-    const scalpProfitDist = Math.min(18.0, Math.max(10.0, swingRange * 0.65));
+    // Lock in Short-Term Scalping Take Profit ($10.0 - $16.0 Gold Difference / 100 - 160 Pips)
+    const scalpProfitDist = Math.min(16.0, Math.max(10.0, swingRange * 0.60));
     const targetTP = targetDirection === 'BUY'
       ? Number((targetEntry + scalpProfitDist).toFixed(2))
       : Number((targetEntry - scalpProfitDist).toFixed(2));

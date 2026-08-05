@@ -678,8 +678,14 @@ export default function UserDashboard() {
                   {isBuy ? <ArrowUp className="h-6 w-6" /> : isSell ? <ArrowDown className="h-6 w-6" /> : <Clock3 className="h-6 w-6" />}
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">แผนหลักปัจจุบัน</span>
+                    <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-black text-sky-300 border border-sky-500/30 uppercase">
+                      {plan?.timeframe ? `สัญญาณ ${plan.timeframe}` : 'สัญญาณ M15'}
+                    </span>
+                    <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                      <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์
+                    </span>
                     {plan && (
                       <span className={`inline-flex items-center rounded-full px-1.5 py-0.2 text-[8px] font-extrabold uppercase tracking-wide animate-pulse ${
                         isBuy ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
