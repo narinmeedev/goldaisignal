@@ -200,27 +200,42 @@ export class QwenLocalAiService {
         ? (parsed.entry < input.currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
         : (parsed.entry > input.currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
 
-      const refinedEntry = Number(parsed.entry.toFixed(2));
-      let refinedSL = Number((parsed.stopLoss || smartSL).toFixed(2));
-      let refinedTP = Number((parsed.takeProfit || smartTP).toFixed(2));
+      let refinedEntry = Number(parsed.entry.toFixed(2));
 
-      // Tight SL distance guard (Anti-Wick Hunt: $7.5 to $11.5 for volatile Gold trading)
-      const targetSlDist = Math.max(7.5, Math.min(11.5, (input.atr14 || 5.5) * 1.6));
+      // STRICT S/R BOUNDARY OVERRIDE: NEVER ALLOW BUY AT RESISTANCE / H1 PEAK!
+      const nearestSupportPx = input.nearestSupport?.[0] || (input.sessionLow + 0.5);
+      const nearestResistancePx = input.nearestResistance?.[0] || (input.sessionHigh - 0.5);
+      const rangeDist = Math.max(8.0, input.sessionHigh - input.sessionLow);
+      const maxAllowedBuyPx = input.sessionLow + rangeDist * 0.35;
+      const minAllowedSellPx = input.sessionHigh - rangeDist * 0.35;
+
       if (direction === 'BUY') {
-        if (refinedEntry - refinedSL > 12.0 || refinedEntry - refinedSL < 7.0) {
-          refinedSL = Number((refinedEntry - targetSlDist).toFixed(2));
-        }
-        if (refinedTP <= refinedEntry) {
-          refinedTP = Number((refinedEntry + targetSlDist * 2.2).toFixed(2));
+        // If Qwen recommended BUY near resistance or above discount base, FORCE ENTRY DOWN TO EXACT SUPPORT!
+        if (refinedEntry > maxAllowedBuyPx || (input.sessionHigh - refinedEntry < 3.0)) {
+          refinedEntry = Number(nearestSupportPx.toFixed(2));
         }
       } else {
-        if (refinedSL - refinedEntry > 12.0 || refinedSL - refinedEntry < 7.0) {
-          refinedSL = Number((refinedEntry + targetSlDist).toFixed(2));
-        }
-        if (refinedTP >= refinedEntry) {
-          refinedTP = Number((refinedEntry - targetSlDist * 2.2).toFixed(2));
+        // If Qwen recommended SELL near support or below premium peak, FORCE ENTRY UP TO EXACT RESISTANCE!
+        if (refinedEntry < minAllowedSellPx || (refinedEntry - input.sessionLow < 3.0)) {
+          refinedEntry = Number(nearestResistancePx.toFixed(2));
         }
       }
+
+      // Tight SL distance ($4.5 - $5.5) and Scalp TP ($12.0 - $16.0)
+      const targetSlDist = Math.max(4.5, Math.min(5.5, (input.atr14 || 5.5) * 0.95));
+      const targetTpDist = 14.0;
+
+      let refinedSL = direction === 'BUY'
+        ? Number((refinedEntry - targetSlDist).toFixed(2))
+        : Number((refinedEntry + targetSlDist).toFixed(2));
+
+      let refinedTP = direction === 'BUY'
+        ? Number((refinedEntry + targetTpDist).toFixed(2))
+        : Number((refinedEntry - targetTpDist).toFixed(2));
+
+      const entryNote = direction === 'BUY'
+        ? `(ย่อตัวลงมาแตะแนวรับสำคัญ $${refinedEntry.toFixed(2)} ก่อนเปิด BUY)`
+        : `(เด้งตัวขึ้นไปแตะแนวต้านสำคัญ $${refinedEntry.toFixed(2)} ก่อนเปิด SELL)`;
 
       return {
         isApproved: parsed.approved !== false,
@@ -230,7 +245,7 @@ export class QwenLocalAiService {
         refinedSL,
         refinedTP,
         confidence: Math.min(95, Math.max(75, Number(parsed.confidence) || 90)),
-        reason: parsed.reason || fallback.reason,
+        reason: `${entryNote} | ${parsed.reason || fallback.reason}`,
         source: 'LOCAL_QWEN_LLM',
       };
     } catch {
