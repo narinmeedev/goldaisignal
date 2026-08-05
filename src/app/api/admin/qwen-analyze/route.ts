@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
+import { NotificationService } from '@/lib/services/notification.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -312,6 +313,13 @@ export async function POST(request: Request) {
       where: { key: 'LAST_QWEN_ANALYSIS_TIME' },
       update: { value: Date.now().toString() },
       create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
+    });
+
+    // Send automatic LINE Push notification to all connected LINE users
+    const lineMessage = `⚡ [ Gold AI Signal สัญญาณใหม่ ] ⚡\n\n📌 แผน: ${planToApply.title}\n📊 ประเภท: ${planToApply.type}\n🎯 จุดเข้า (Entry Target): $${planToApply.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${planToApply.stopLoss.toFixed(2)}\n🟢 Take Profit (TP): $${planToApply.takeProfit.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${planToApply.reason.replace(/\*/g, '')}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
+
+    NotificationService.sendNotification(lineMessage).catch((err) => {
+      console.error('[Qwen Analyze] LINE Push Notification Error:', err);
     });
 
     // Deduplication Guard: Check if an active or pending paper trade is already running for this exact plan

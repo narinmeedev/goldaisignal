@@ -154,12 +154,13 @@ export class NotificationService {
                 result.lineUsers = { success: true, count: 1, failedCount: 0 };
               }
             } else {
-              // Default: send individual push messages to active paid users only.
+              // Default: send individual push messages to all connected LINE users (Admins & Subscribers)
               const activeLineUsers = await prisma.user.findMany({
                 where: {
                   lineId: { not: null },
-                  subscriptionStatus: 'active',
                   OR: [
+                    { role: 'ADMIN' },
+                    { subscriptionStatus: 'active' },
                     { subscriptionEndsAt: null },
                     { subscriptionEndsAt: { gte: new Date() } },
                   ],
