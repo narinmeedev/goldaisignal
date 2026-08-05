@@ -85,8 +85,13 @@ export async function POST(request: Request) {
       }, { headers: noStoreHeaders });
     }
 
-    // Fetch candle history (H1, M15, M5) and recent loss records for Qwen post-mortem analysis
-    const [h1Candles, m15Candles, m5Candles, recentLosses] = await Promise.all([
+    // Fetch candle history (H4, H1, M15, M5) and recent loss records for Qwen post-mortem analysis
+    const [h4Candles, h1Candles, m15Candles, m5Candles, recentLosses] = await Promise.all([
+      prisma.candle.findMany({
+        where: { symbol, timeframe: 'H4' },
+        orderBy: { time: 'desc' },
+        take: 30,
+      }),
       prisma.candle.findMany({
         where: { symbol, timeframe: 'H1' },
         orderBy: { time: 'desc' },
@@ -110,7 +115,7 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    const currentPriceCandle = m5Candles[0] || m15Candles[0] || h1Candles[0];
+    const currentPriceCandle = m5Candles[0] || m15Candles[0] || h1Candles[0] || h4Candles[0];
     const currentPrice = currentPriceCandle ? currentPriceCandle.close : 4015.0;
 
     const zones = await prisma.zone.findMany({
@@ -121,12 +126,34 @@ export async function POST(request: Request) {
     const supports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
     const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
 
-    // Detect V-Shape Bounce from Base vs Peak Rejection
-    const minM5Low = Math.min(...m5Candles.slice(0, 12).map((c) => c.low), currentPrice);
-    const maxM5High = Math.max(...m5Candles.slice(0, 12).map((c) => c.high), currentPrice);
+    // Compute EMAs for H4, H1, M15, M5
+    const ema20_h4 = h4Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h4Candles.length));
+    const ema50_h4 = h4Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h4Candles.length));
+    const isH4Bullish = ema20_h4 >= ema50_h4 || currentPrice > ema20_h4;
+    const isH4Bearish = ema20_h4 < ema50_h4 && currentPrice < ema20_h4;
 
-    const bounceFromBase = currentPrice - minM5Low;
-    const rejectionFromPeak = maxM5High - currentPrice;
+    const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
+    const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
+    const isH1Bullish = ema20_h1 >= ema50_h1;
+
+    // SMC Market Structure (CHoCH & BOS Detection)
+    const prevM15High = Math.max(...m15Candles.slice(1, 10).map((c) => c.high));
+    const prevM15Low = Math.min(...m15Candles.slice(1, 10).map((c) => c.low));
+    const prevM5High = Math.max(...m5Candles.slice(1, 6).map((c) => c.high));
+    const prevM5Low = Math.min(...m5Candles.slice(1, 6).map((c) => c.low));
+
+    const isBullishBOS = currentPrice > prevM15High || (m5Candles[0]?.close > prevM5High && m5Candles[1]?.close <= prevM5High);
+    const isBearishBOS = currentPrice < prevM15Low || (m5Candles[0]?.close < prevM5Low && m5Candles[1]?.close >= prevM5Low);
+
+    const m5Lows = m5Candles.slice(0, 10).map((c) => c.low);
+    const isHigherLows = m5Lows[0] > m5Lows[3] && m5Lows[3] > m5Lows[6];
+    const isBullishCHoCH = isHigherLows && currentPrice > (m5Candles[2]?.high || currentPrice);
+
+    // Compute Structural Swing Range
+    const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
+    const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
+    const swingRange = Math.max(recentHigh - recentLow, 8.0);
+    const posRatio = (currentPrice - recentLow) / (swingRange || 1);
 
     // Compute dynamic ATR(14) from M15 candles
     let atr14 = 5.5;
@@ -142,40 +169,7 @@ export async function POST(request: Request) {
       atr14 = trSum / 14;
     }
 
-    // Compute EMAs for M15
-    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
-    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
-
-    // Fetch active order plan to enforce Directional Hysteresis Lock (prevent flip-flopping within 60 mins)
-    const existingPlanSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
-    });
-    let activeDirectionLock: 'BUY' | 'SELL' | null = null;
-    let activeLockAgeMinutes = 999;
-    if (existingPlanSetting?.value) {
-      try {
-        const parsed = JSON.parse(existingPlanSetting.value);
-        if (parsed?.type?.includes('BUY')) activeDirectionLock = 'BUY';
-        if (parsed?.type?.includes('SELL')) activeDirectionLock = 'SELL';
-        if (parsed?.lockedAt) {
-          activeLockAgeMinutes = (Date.now() - new Date(parsed.lockedAt).getTime()) / (60 * 1000);
-        }
-      } catch {}
-    }
-
-    // Compute Structural Swing Range (24h / M15 Range)
-    const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
-    const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
-    const swingRange = Math.max(recentHigh - recentLow, 8.0);
-    const rangeMid = (recentHigh + recentLow) / 2;
-
-    // 3-Zone Range Boundaries
-    const lowerZoneBoundary = recentLow + swingRange * 0.30; // Lower 30% Zone (Support Base)
-    const upperZoneBoundary = recentHigh - swingRange * 0.30; // Upper 30% Zone (Resistance High)
-    const isPriceInMiddleZone = currentPrice > lowerZoneBoundary && currentPrice < upperZoneBoundary;
-    const isSideway = swingRange >= 10.0 && swingRange <= 45.0;
-
-    // Compute RSI(14) for M15 candles to detect overbought/oversold extremes
+    // Compute RSI(14) for M15 candles
     let rsi14_m15 = 50;
     if (m15Candles.length >= 15) {
       let gains = 0;
@@ -190,29 +184,26 @@ export async function POST(request: Request) {
       rsi14_m15 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
     }
 
-    // Compute M5 Wave Position & Retracement Ratio
-    const posRatio = (currentPrice - recentLow) / (swingRange || 1);
-    
-    // M5 Short-Term Rejection Check
-    const isM5BearishRejection = m5Candles.slice(0, 3).some((c) => c.high >= recentHigh - 2.0 && c.close < c.open);
-    const isM5BullishBounce = m5Candles.slice(0, 3).some((c) => c.low <= recentLow + 2.0 && c.close > c.open);
-
-    // H1 Trend Alignment
-    const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
-    const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
-    const isH1Bullish = ema20_h1 >= ema50_h1;
-
-    // Direction Determination: Look at M5 Pullback Highs & Lows
+    // Direction Determination incorporating SMC CHoCH, BOS & H4 Major Trend
     let targetDirection: 'BUY' | 'SELL' = 'BUY';
+    let smcTag = '';
 
-    if (posRatio >= 0.55 || isM5BearishRejection || rsi14_m15 >= 58) {
-      // Price is in Upper Range Half ($4060+) or rejecting off M5 Peak -> ISSUE SELL_LIMIT FOR M5 RETRACEMENT!
-      targetDirection = 'SELL';
-    } else if (posRatio <= 0.45 || isM5BullishBounce || rsi14_m15 <= 42) {
-      // Price is in Lower Range Half ($4046-) or bouncing off M5 Base -> ISSUE BUY_LIMIT FOR M5 DIP!
+    if (isBullishBOS || isBullishCHoCH) {
+      // CRITICAL SMC RULE: In Bullish BOS / CHoCH (Uptrend Break), DO NOT SELL!
       targetDirection = 'BUY';
+      smcTag = isBullishBOS ? '⚡ Bullish BOS (เบรคโครงสร้าง M15 ขึ้นสูง - ห้าม SELL สวน)' : '🔄 Bullish CHoCH (ยก Low สร้าง Uptrend)';
+    } else if (isBearishBOS) {
+      targetDirection = 'SELL';
+      smcTag = '⚡ Bearish BOS (เบรคโครงสร้าง M15 ลงต่ำ - ห้าม BUY สวน)';
+    } else if (isH4Bullish && posRatio < 0.65) {
+      targetDirection = 'BUY';
+      smcTag = '📈 H4 Major Uptrend (เทรนด์ใหญ่ H4 ขาขึ้น)';
+    } else if (isH4Bearish && posRatio > 0.35) {
+      targetDirection = 'SELL';
+      smcTag = '📉 H4 Major Downtrend (เทรนด์ใหญ่ H4 ขาลง)';
     } else {
-      targetDirection = activeDirectionLock || (isH1Bullish ? 'BUY' : 'SELL');
+      targetDirection = posRatio >= 0.55 ? 'SELL' : 'BUY';
+      smcTag = targetDirection === 'BUY' ? '🟢 ย่อรับฐาน Support' : '🔴 เด้งขายโซน Resistance';
     }
 
     const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
@@ -258,6 +249,9 @@ export async function POST(request: Request) {
     const targetTP = targetDirection === 'BUY'
       ? Number((Math.max(targetEntry + 15.0, recentHigh - 2.0)).toFixed(2))
       : Number((Math.min(targetEntry - 15.0, recentLow + 2.0)).toFixed(2));
+
+    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
+    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
 
     const qwenResult = await QwenLocalAiService.refineTradePlan({
       symbol,

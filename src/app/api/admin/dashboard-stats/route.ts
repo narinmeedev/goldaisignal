@@ -2509,9 +2509,10 @@ export async function GET(request?: Request) {
         })),
         timeframeBiases: {
           D1: d1Bias,
+          H4: h1Bias,
           H1: h1Bias,
+          M15: m15Bias,
           M5: m5Bias,
-          M15: m15Bias
         }
       };
 

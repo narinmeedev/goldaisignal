@@ -902,7 +902,7 @@ export default function UserDashboard() {
             <Activity className="h-5 w-5 text-amber-400" />
             <h2 className="font-bold text-neutral-100">โครงสร้างตลาดที่ระบบเห็น</h2>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
             {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
               <div key={timeframe} className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
                 <p className="text-xs text-neutral-500">{timeframe}</p>
