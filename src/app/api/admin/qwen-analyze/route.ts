@@ -317,6 +317,10 @@ export async function POST(request: Request) {
       recentLosses: recentLosses.map((l) => ({ direction: l.direction, entry: l.entry, stopLoss: l.stopLoss, notes: l.notes, closedAt: l.closedAt })),
     });
 
+    // Format Thailand Local Time (UTC+7)
+    const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const bangkokTimeStr = `${nowBangkok.getUTCHours().toString().padStart(2, '0')}:${nowBangkok.getUTCMinutes().toString().padStart(2, '0')} น.`;
+
     // AUTO-APPLY Qwen's plan directly to ACTIVE_ORDER_PLAN_XAUUSD
     const timeframeTag = 'M15';
     const planToApply = {
@@ -331,6 +335,8 @@ export async function POST(request: Request) {
       timeframe: timeframeTag,
       confidence: qwenResult.confidence,
       strategyLabel: `Qwen 3.5-9B Quantitative AI (${qwenResult.source})`,
+      planTime: bangkokTimeStr,
+      createdAtThailand: `${bangkokTimeStr} (เวลาไทย)`,
       lockedAt: new Date().toISOString(),
     };
 
@@ -346,8 +352,8 @@ export async function POST(request: Request) {
       create: { key: 'LAST_QWEN_ANALYSIS_TIME', value: Date.now().toString() },
     });
 
-    // Send automatic LINE Push notification to all connected LINE users
-    const lineMessage = `⚡ [ Gold AI Signal สัญญาณใหม่ ] ⚡\n\n📌 แผน: ${planToApply.title}\n📊 ประเภท: ${planToApply.type}\n🎯 จุดเข้า (Entry Target): $${planToApply.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${planToApply.stopLoss.toFixed(2)}\n🟢 Take Profit (TP): $${planToApply.takeProfit.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${planToApply.reason.replace(/\*/g, '')}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
+    // Send automatic LINE Push notification to all connected LINE users with Thailand Time
+    const lineMessage = `⚡ [ Gold AI Signal สัญญาณใหม่ ] ⚡\n\n🕒 เวลาที่ให้แผน: ${bangkokTimeStr} (เวลาไทย)\n📌 แผน: ${planToApply.title}\n📊 ประเภท: ${planToApply.type}\n🎯 จุดเข้า (Entry Target): $${planToApply.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${planToApply.stopLoss.toFixed(2)}\n🟢 Take Profit (TP): $${planToApply.takeProfit.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${planToApply.reason.replace(/\*/g, '')}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
 
     NotificationService.sendNotification(lineMessage).catch((err) => {
       console.error('[Qwen Analyze] LINE Push Notification Error:', err);

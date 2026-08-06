@@ -57,6 +57,8 @@ interface TradePlan {
   riskReasons?: string[];
   riskReward?: number;
   lockedAt?: string;
+  planTime?: string;
+  createdAtThailand?: string;
 }
 
 interface TradeResult {
@@ -720,6 +722,9 @@ export default function UserDashboard() {
                     <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30 flex items-center gap-1">
                       <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์
                     </span>
+                    <span className="rounded bg-neutral-800/80 px-2 py-0.2 text-[9px] font-bold text-neutral-300 border border-neutral-700/60 flex items-center gap-1">
+                      <Clock3 className="h-2.5 w-2.5 text-amber-400" /> 🕒 เวลาที่ให้ออเดอร์: {plan?.planTime || plan?.createdAtThailand || 'ล่าสุด (เวลาไทย)'}
+                    </span>
                     {plan && (
                       <span className={`inline-flex items-center rounded-full px-1.5 py-0.2 text-[8px] font-extrabold uppercase tracking-wide animate-pulse ${
                         isBuy ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
@@ -925,8 +930,11 @@ export default function UserDashboard() {
                         </button>
                       </div>
 
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
+                      <div className="mt-2 flex flex-wrap items-center justify-between text-[11px] text-neutral-400 gap-1">
                         <span>ระยะห่าง: <strong className="text-neutral-200 tabular-nums">${distToEntry}</strong></span>
+                        <span className="text-[10px] text-sky-300 font-semibold rounded bg-sky-500/10 px-1.5 py-0.5 border border-sky-500/20">
+                          🕒 ออกแผน: {item.planTime || item.createdAtThailand || 'เวลาไทย'}
+                        </span>
                         <span className="font-semibold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
                           เป้าส่วนต่าง $10-$20
                         </span>
