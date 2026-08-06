@@ -253,6 +253,7 @@ export default function UserDashboard() {
   const [qwenData, setQwenData] = useState<any>(null);
   const [showQwenModal, setShowQwenModal] = useState(false);
   const [pinnedPlanId, setPinnedPlanId] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -260,6 +261,25 @@ export default function UserDashboard() {
       if (savedPin) setPinnedPlanId(savedPin);
     }
   }, []);
+
+  const handleResetStats = async () => {
+    if (!confirm('⚠️ คุณต้องการรีเซ็ตสถิติและประวัติการเทรดทั้งหมดเพื่อเริ่มวัดผลใหม่ใช่หรือไม่?')) return;
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/admin/trades', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ ' + data.message);
+        await load(true);
+      } else {
+        alert('❌ ' + (data.error || 'ไม่สามารถรีเซ็ตสถิติได้'));
+      }
+    } catch {
+      alert('❌ ไม่สามารถเชื่อมต่อระบบรีเซ็ตได้');
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const togglePinPlan = (id: string) => {
     const newPin = pinnedPlanId === id ? null : id;
@@ -516,6 +536,15 @@ export default function UserDashboard() {
             >
               <RefreshCw className={`h-4 w-4 text-amber-400 ${refreshing ? 'animate-spin' : ''}`} />
               ⚡️ กระตุ้นซิงค์ด่วน (Force Sync)
+            </button>
+            <button
+              type="button"
+              onClick={handleResetStats}
+              disabled={isResetting}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/60 to-neutral-900 px-3.5 text-sm font-bold text-rose-200 hover:bg-rose-900/50 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(244,63,94,0.2)]"
+            >
+              {isResetting ? <Loader2 className="h-4 w-4 animate-spin text-rose-400" /> : <History className="h-4 w-4 text-rose-400" />}
+              🔄 รีเซ็ตสถิติวัดผลใหม่
             </button>
           </div>
         )}
