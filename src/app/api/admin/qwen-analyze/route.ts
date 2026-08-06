@@ -212,7 +212,6 @@ export async function POST(request: Request) {
     let targetDirection: 'BUY' | 'SELL' = 'BUY';
     let smcTag = '';
 
-    // HARD RULE: If Bullish Trend Score >= 2.5, FORBID SELL 100%! FORCE BUY DIP!
     if (bullishScore >= 2.5) {
       targetDirection = 'BUY';
       smcTag = isBullishBOS
@@ -221,7 +220,6 @@ export async function POST(request: Request) {
           ? '📈 H4/H1 Major Uptrend (เทรนด์ใหญ่ขาขึ้น - ห้าม SELL สวน ย่อซื้อตามเทรนด์)'
           : '🟢 M15/H1 Uptrend Alignment (โครงสร้างขาขึ้น - ย่อรับแนวรับ)';
     } else if (bearishScore >= 2.5) {
-      // HARD RULE: If Bearish Trend Score >= 2.5, FORBID BUY 100%! FORCE SELL REBOUND!
       targetDirection = 'SELL';
       smcTag = isBearishBOS
         ? '⚡ Bearish BOS (เบรคโครงสร้าง M15 ลงต่ำ - ห้าม BUY สวนเด็ดขาด)'
@@ -229,7 +227,6 @@ export async function POST(request: Request) {
           ? '📉 H4/H1 Major Downtrend (เทรนด์ใหญ่ขาลง - ห้าม BUY สวน เด้งขายตามเทรนด์)'
           : '🔴 M15/H1 Downtrend Alignment (โครงสร้างขาลง - เด้งขายแนวต้าน)';
     } else {
-      // Neutral Sideway Market: Only trade at extreme range boundaries
       targetDirection = posRatio <= 0.40 ? 'BUY' : 'SELL';
       smcTag = targetDirection === 'BUY'
         ? '🟢 ย่อรับฐาน Support (SMC Discount Zone)'
@@ -242,35 +239,52 @@ export async function POST(request: Request) {
     const fib50 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
     const fib618 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
 
-    const closeSupportDeep = supports.find((s) => currentPrice - s >= 2.5 && currentPrice - s <= 8.0);
-    const closeResistanceDeep = resistances.find((r) => r - currentPrice >= 2.5 && r - currentPrice <= 8.0);
-
-    // Precision Key Level Support & Resistance Selection (70%+ Confluence Entry)
     const exactSupportKey = supports.length > 0 ? Number(supports[0].toFixed(2)) : Number((recentLow + 0.5).toFixed(2));
     const exactResistanceKey = resistances.length > 0 ? Number(resistances[0].toFixed(2)) : Number((recentHigh - 0.5).toFixed(2));
 
+    // INSTITUTIONAL ORDER BLOCK (OB) & FAIR VALUE GAP (FVG) CALCULATION
+    let fvgSupportPx = exactSupportKey;
+    let fvgResistancePx = exactResistanceKey;
+
+    if (m15Candles.length >= 3) {
+      // Bullish FVG: Low of candle 0 > High of candle 2
+      for (let i = 0; i < m15Candles.length - 2; i++) {
+        if (m15Candles[i].low > m15Candles[i + 2].high + 0.8) {
+          fvgSupportPx = Number(((m15Candles[i].low + m15Candles[i + 2].high) / 2).toFixed(2));
+          break;
+        }
+        // Bearish FVG: High of candle 0 < Low of candle 2
+        if (m15Candles[i].high < m15Candles[i + 2].low - 0.8) {
+          fvgResistancePx = Number(((m15Candles[i].high + m15Candles[i + 2].low) / 2).toFixed(2));
+          break;
+        }
+      }
+    }
+
     let targetEntry = 0;
     if (targetDirection === 'SELL') {
-      targetEntry = exactResistanceKey;
-      if (targetEntry <= currentPrice + 1.5) {
+      // Use Order Block / FVG Supply Zone
+      targetEntry = fvgResistancePx > currentPrice ? fvgResistancePx : exactResistanceKey;
+      if (targetEntry <= currentPrice + 1.8) {
         targetEntry = Number((currentPrice + 2.5).toFixed(2));
       }
     } else {
-      targetEntry = exactSupportKey;
-      if (targetEntry >= currentPrice - 1.5) {
+      // Use Order Block / FVG Demand Zone
+      targetEntry = fvgSupportPx < currentPrice ? fvgSupportPx : exactSupportKey;
+      if (targetEntry >= currentPrice - 1.8) {
         targetEntry = Number((currentPrice - 2.5).toFixed(2));
       }
     }
     targetEntry = Number(targetEntry.toFixed(2));
 
-    // Tightened Dynamic Stop Loss ($4.5 - $5.5 SL distance to guarantee 1:2.5+ Risk/Reward)
-    const tightSLDistance = Math.min(5.5, Math.max(4.5, atr14 * 0.85));
+    // Volatility-Adaptive Stop Loss ($5.0 - $6.5 depending on session ATR)
+    const tightSLDistance = Math.min(6.5, Math.max(4.8, atr14 * 0.90));
     const targetSL = targetDirection === 'BUY'
       ? Number((targetEntry - tightSLDistance).toFixed(2))
       : Number((targetEntry + tightSLDistance).toFixed(2));
 
-    // High Risk/Reward Scalping Take Profit ($12.0 - $16.0 Gold Difference / 120 - 160 Pips)
-    const scalpProfitDist = Math.min(16.0, Math.max(12.0, swingRange * 0.60));
+    // High Risk/Reward Scalping Take Profit ($12.0 - $18.0 Gold Difference / 120 - 180 Pips)
+    const scalpProfitDist = Math.min(18.0, Math.max(12.0, swingRange * 0.65));
     const targetTP = targetDirection === 'BUY'
       ? Number((targetEntry + scalpProfitDist).toFixed(2))
       : Number((targetEntry - scalpProfitDist).toFixed(2));
