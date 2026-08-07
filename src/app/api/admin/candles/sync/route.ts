@@ -34,7 +34,9 @@ const maxStoredCandlesByTimeframe: Record<string, number> = {
 };
 
 const runPlanAutomation = async (request: Request, symbol: string, timeframe: string, latestChanged: boolean) => {
-  if (!isMarketOpen() || !symbol.toUpperCase().includes('XAU')) {
+  const upperSym = (symbol || '').toUpperCase();
+  const isGoldSymbol = upperSym.includes('XAU') || upperSym.includes('GOLD');
+  if (!isMarketOpen() || !isGoldSymbol) {
     return 'skipped';
   }
 

@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       body = {};
     }
 
-    const symbol = 'XAUUSD';
+    const GOLD_SYMBOLS = ['GOLD#', 'XAUUSD', 'GOLD', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.raw', 'GOLD.ecn'];
+    const symbol = 'GOLD#';
 
     // Handle Action: Apply Qwen Plan to Dashboard & MT5
     if (body.action === 'apply' && body.plan) {
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       try {
         await PaperTradeService.openTrade({
           signalId: '',
-          symbol: 'XAUUSD',
+          symbol: 'GOLD#',
           direction: planToApply.type.includes('BUY') ? 'BUY' : 'SELL',
           entry: planToApply.entry,
           stopLoss: planToApply.stopLoss,
@@ -89,27 +90,27 @@ export async function POST(request: Request) {
     // Fetch candle history (H4, H1, M15, M5) and recent loss records for Qwen post-mortem analysis
     const [h4Candles, h1Candles, m15Candles, m5Candles, recentLosses] = await Promise.all([
       prisma.candle.findMany({
-        where: { symbol, timeframe: 'H4' },
+        where: { symbol: { in: GOLD_SYMBOLS }, timeframe: 'H4' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
       prisma.candle.findMany({
-        where: { symbol, timeframe: 'H1' },
+        where: { symbol: { in: GOLD_SYMBOLS }, timeframe: 'H1' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
       prisma.candle.findMany({
-        where: { symbol, timeframe: 'M15' },
+        where: { symbol: { in: GOLD_SYMBOLS }, timeframe: 'M15' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
       prisma.candle.findMany({
-        where: { symbol, timeframe: 'M5' },
+        where: { symbol: { in: GOLD_SYMBOLS }, timeframe: 'M5' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
       prisma.paperTrade.findMany({
-        where: { symbol, result: 'LOSS' },
+        where: { symbol: { in: GOLD_SYMBOLS }, result: 'LOSS' },
         orderBy: { closedAt: 'desc' },
         take: 5,
         select: { direction: true, entry: true, stopLoss: true, notes: true, closedAt: true },
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
     const currentPrice = currentPriceCandle ? currentPriceCandle.close : 4015.0;
 
     const zones = await prisma.zone.findMany({
-      where: { symbol },
+      where: { symbol: { in: GOLD_SYMBOLS } },
       orderBy: { priceMin: 'asc' },
     });
 

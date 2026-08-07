@@ -45,7 +45,7 @@ const calcEMA = (candles: { close: number }[], period: number) => {
 
 export async function GET() {
   try {
-    const xauSymbolsFilter = { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] };
+    const xauSymbolsFilter = { in: ['GOLD#', 'XAUUSD', 'GOLD', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'GOLD.ecn'] };
 
     const latestPriceEvent = await prisma.webhookEvent.findFirst({
       where: {
