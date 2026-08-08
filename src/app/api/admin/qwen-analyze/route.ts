@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
 import { NotificationService } from '@/lib/services/notification.service';
+import { SmartTrendStructureService } from '@/lib/services/smart-trend-structure.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -120,43 +121,32 @@ export async function POST(request: Request) {
     const currentPriceCandle = m5Candles[0] || m15Candles[0] || h1Candles[0] || h4Candles[0];
     const currentPrice = currentPriceCandle ? currentPriceCandle.close : 4015.0;
 
+    // Run SmartTrendStructure Indicator Engine Calculations (M5/M15/H1 EMA20/50 + RSI + Swing CHoCH/BOS)
+    const stsResult = SmartTrendStructureService.analyze({
+      currentPrice,
+      m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      m15Candles: m15Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+      h1Candles: h1Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+    });
+
     const zones = await prisma.zone.findMany({
       where: { symbol: { in: GOLD_SYMBOLS } },
       orderBy: { priceMin: 'asc' },
     });
 
-    const supports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
-    const resistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
+    const dbSupports = zones.filter((z) => z.type === 'SUPPORT' && z.priceMax < currentPrice).map((z) => z.priceMax).slice(0, 3);
+    const dbResistances = zones.filter((z) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).map((z) => z.priceMin).slice(0, 3);
 
-    // Compute EMAs for H4, H1, M15, M5
-    const ema20_h4 = h4Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h4Candles.length));
-    const ema50_h4 = h4Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h4Candles.length));
-    const isH4Bullish = ema20_h4 >= ema50_h4 || currentPrice > ema20_h4;
-    const isH4Bearish = ema20_h4 < ema50_h4 && currentPrice < ema20_h4;
+    const stsSupports = stsResult.supportLevels.map((s) => s.price);
+    const stsResistances = stsResult.resistanceLevels.map((r) => r.price);
 
-    const ema20_h1 = h1Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, h1Candles.length));
-    const ema50_h1 = h1Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, h1Candles.length));
-    const isH1Bullish = ema20_h1 >= ema50_h1;
-    const isH1Bearish = ema20_h1 < ema50_h1;
-
-    // SMC Market Structure (CHoCH & BOS Detection)
-    const prevM15High = Math.max(...m15Candles.slice(1, 10).map((c) => c.high));
-    const prevM15Low = Math.min(...m15Candles.slice(1, 10).map((c) => c.low));
-    const prevM5High = Math.max(...m5Candles.slice(1, 6).map((c) => c.high));
-    const prevM5Low = Math.min(...m5Candles.slice(1, 6).map((c) => c.low));
-
-    const isBullishBOS = currentPrice > prevM15High || (m5Candles[0]?.close > prevM5High && m5Candles[1]?.close <= prevM5High);
-    const isBearishBOS = currentPrice < prevM15Low || (m5Candles[0]?.close < prevM5Low && m5Candles[1]?.close >= prevM5Low);
-
-    const m5Lows = m5Candles.slice(0, 10).map((c) => c.low);
-    const isHigherLows = m5Lows[0] > m5Lows[3] && m5Lows[3] > m5Lows[6];
-    const isBullishCHoCH = isHigherLows && currentPrice > (m5Candles[2]?.high || currentPrice);
+    const combinedSupports = Array.from(new Set([...dbSupports, ...stsSupports])).slice(0, 3);
+    const combinedResistances = Array.from(new Set([...dbResistances, ...stsResistances])).slice(0, 3);
 
     // Compute Structural Swing Range
     const recentHigh = Math.max(...m15Candles.map((c) => c.high), currentPrice);
     const recentLow = Math.min(...m15Candles.map((c) => c.low), currentPrice);
     const swingRange = Math.max(recentHigh - recentLow, 8.0);
-    const posRatio = (currentPrice - recentLow) / (swingRange || 1);
 
     // Compute dynamic ATR(14) from M15 candles
     let atr14 = 5.5;
@@ -172,76 +162,19 @@ export async function POST(request: Request) {
       atr14 = trSum / 14;
     }
 
-    // Compute RSI(14) for M15 candles
-    let rsi14_m15 = 50;
-    if (m15Candles.length >= 15) {
-      let gains = 0;
-      let losses = 0;
-      for (let i = 0; i < 14; i++) {
-        const change = m15Candles[i].close - (m15Candles[i + 1]?.close || m15Candles[i].close);
-        if (change >= 0) gains += change;
-        else losses += Math.abs(change);
-      }
-      const avgGain = gains / 14;
-      const avgLoss = losses / 14;
-      rsi14_m15 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-    }
+    const targetDirection: 'BUY' | 'SELL' = stsResult.overallSignal === 'SELL' ? 'SELL' : 'BUY';
+    const smcTag = stsResult.lastStructureEvent?.tag
+      ? `⚡ [SmartTrendStructure]: ${stsResult.lastStructureEvent.tag}`
+      : `🟢 [SmartTrendStructure]: M5 (${stsResult.biases.M5.bias}) | M15 (${stsResult.biases.M15.bias}) | H1 (${stsResult.biases.H1.bias})`;
 
-    const ema20_m15 = m15Candles.slice(0, 20).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(20, m15Candles.length));
-    const ema50_m15 = m15Candles.slice(0, 30).reduce((acc, c) => acc + c.close, 0) / Math.max(1, Math.min(30, m15Candles.length));
-
-    // SAAS-GRADE STRICT HARD TREND ALIGNMENT FILTER (100% ANTI-COUNTER-TREND)
-    const isM15Bullish = ema20_m15 >= ema50_m15 || currentPrice > ema20_m15;
-    const isM15Bearish = ema20_m15 < ema50_m15 && currentPrice < ema20_m15;
-
-    // Trend Score: Count how many timeframes agree on Bullish vs Bearish
-    let bullishScore = 0;
-    let bearishScore = 0;
-
-    if (isH4Bullish) bullishScore += 2;
-    else if (isH4Bearish) bearishScore += 2;
-
-    if (isH1Bullish) bullishScore += 1.5;
-    else if (isH1Bearish) bearishScore += 1.5;
-
-    if (isM15Bullish) bullishScore += 1;
-    else if (isM15Bearish) bearishScore += 1;
-
-    if (isBullishBOS || isBullishCHoCH) bullishScore += 3;
-    if (isBearishBOS) bearishScore += 3;
-
-    let targetDirection: 'BUY' | 'SELL' = 'BUY';
-    let smcTag = '';
-
-    if (bullishScore >= 2.5) {
-      targetDirection = 'BUY';
-      smcTag = isBullishBOS
-        ? '⚡ Bullish BOS (เบรคโครงสร้าง M15 ขึ้นสูง - ห้าม SELL สวนเด็ดขาด)'
-        : isH4Bullish
-          ? '📈 H4/H1 Major Uptrend (เทรนด์ใหญ่ขาขึ้น - ห้าม SELL สวน ย่อซื้อตามเทรนด์)'
-          : '🟢 M15/H1 Uptrend Alignment (โครงสร้างขาขึ้น - ย่อรับแนวรับ)';
-    } else if (bearishScore >= 2.5) {
-      targetDirection = 'SELL';
-      smcTag = isBearishBOS
-        ? '⚡ Bearish BOS (เบรคโครงสร้าง M15 ลงต่ำ - ห้าม BUY สวนเด็ดขาด)'
-        : isH4Bearish
-          ? '📉 H4/H1 Major Downtrend (เทรนด์ใหญ่ขาลง - ห้าม BUY สวน เด้งขายตามเทรนด์)'
-          : '🔴 M15/H1 Downtrend Alignment (โครงสร้างขาลง - เด้งขายแนวต้าน)';
-    } else {
-      targetDirection = posRatio <= 0.40 ? 'BUY' : 'SELL';
-      smcTag = targetDirection === 'BUY'
-        ? '🟢 ย่อรับฐาน Support (SMC Discount Zone)'
-        : '🔴 เด้งขายโซน Resistance (SMC Premium Zone)';
-    }
-
-    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
-    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = targetDirection === 'BUY' ? 'BULLISH' : 'BEARISH';
+    const h1Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = stsResult.biases.H1.bias === 'BULLISH' ? 'BULLISH' : stsResult.biases.H1.bias === 'BEARISH' ? 'BEARISH' : 'NEUTRAL';
+    const m15Bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = stsResult.biases.M15.bias === 'BULLISH' ? 'BULLISH' : stsResult.biases.M15.bias === 'BEARISH' ? 'BEARISH' : 'NEUTRAL';
 
     const fib50 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.50).toFixed(2)) : Number((recentLow + swingRange * 0.50).toFixed(2));
     const fib618 = targetDirection === 'BUY' ? Number((recentHigh - swingRange * 0.618).toFixed(2)) : Number((recentLow + swingRange * 0.618).toFixed(2));
 
-    const exactSupportKey = supports.length > 0 ? Number(supports[0].toFixed(2)) : Number((recentLow + 0.5).toFixed(2));
-    const exactResistanceKey = resistances.length > 0 ? Number(resistances[0].toFixed(2)) : Number((recentHigh - 0.5).toFixed(2));
+    const exactSupportKey = combinedSupports.length > 0 ? Number(combinedSupports[0].toFixed(2)) : Number((recentLow + 0.5).toFixed(2));
+    const exactResistanceKey = combinedResistances.length > 0 ? Number(combinedResistances[0].toFixed(2)) : Number((recentHigh - 0.5).toFixed(2));
 
     // INSTITUTIONAL ORDER BLOCK (OB) & FAIR VALUE GAP (FVG) CALCULATION
     let fvgSupportPx = exactSupportKey;
@@ -295,19 +228,19 @@ export async function POST(request: Request) {
       currentPrice,
       h1Bias,
       m15Bias,
-      trendStrength: 85,
-      rsi14M5: 48,
-      rsi14M15: 52,
-      rsi14H1: 55,
+      trendStrength: stsResult.overallSignal !== 'WAIT' ? 90 : 75,
+      rsi14M5: stsResult.biases.M5.rsi,
+      rsi14M15: stsResult.biases.M15.rsi,
+      rsi14H1: stsResult.biases.H1.rsi,
       atr14,
-      ema20_m15,
-      ema50_m15,
+      ema20_m15: stsResult.biases.M15.fastEMA,
+      ema50_m15: stsResult.biases.M15.slowEMA,
       fib50,
       fib618,
       sessionHigh: recentHigh,
       sessionLow: recentLow,
-      nearestSupport: supports.length > 0 ? supports : [currentPrice - 4.5],
-      nearestResistance: resistances.length > 0 ? resistances : [currentPrice + 4.5],
+      nearestSupport: combinedSupports.length > 0 ? combinedSupports : [currentPrice - 4.5],
+      nearestResistance: combinedResistances.length > 0 ? combinedResistances : [currentPrice + 4.5],
       proposedType: targetDirection === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
       proposedEntry: targetEntry,
       proposedSL: targetSL,
