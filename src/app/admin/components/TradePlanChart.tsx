@@ -126,279 +126,282 @@ export default function TradePlanChart({
   const riskLevelText = plan?.riskLevel ?? (riskScore > 65 ? 'HIGH' : riskScore > 40 ? 'MEDIUM' : 'LOW');
 
   return (
-    <div className="grid gap-4 lg:grid-cols-12">
-      {/* LEFT CARD: Interactive Candlestick Chart with Entry/SL/TP Overlay */}
-      <div className="lg:col-span-8 rounded-2xl border border-neutral-800/90 bg-gradient-to-b from-neutral-900/90 via-neutral-950 to-neutral-900/90 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-        {/* Card Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800/80 pb-4">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${
-              isBuy ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-            }`}>
-              {isBuy ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] font-bold text-neutral-300 uppercase tracking-wider">
-                  แผนหลักปัจจุบัน
-                </span>
-                <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 animate-pulse">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> ACTIVE
-                </span>
-              </div>
-              <h3 className="mt-1 text-base font-bold text-neutral-100 sm:text-lg">
-                {plan ? `${plan.type.replace('_LIMIT', '').replace('_STOP', '')} - ${plan.title}` : 'รอการวิเคราะห์แผนใหม่โดย Qwen AI'}
-              </h3>
-            </div>
+    <div className="w-full rounded-2xl border border-neutral-800/90 bg-gradient-to-b from-neutral-900/90 via-neutral-950 to-neutral-900/90 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] space-y-4">
+      {/* Card Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
+        <div className="flex items-center gap-3">
+          <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+            isBuy ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+          }`}>
+            {isBuy ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1 text-xs font-semibold text-neutral-400">
-              {timeframe}
-            </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] font-bold text-neutral-300 uppercase tracking-wider">
+                แผนหลักปัจจุบัน
+              </span>
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 animate-pulse">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> ACTIVE
+              </span>
+            </div>
+            <h3 className="mt-0.5 text-base font-bold text-neutral-100">
+              {plan ? `${plan.type.replace('_LIMIT', '').replace('_STOP', '')} - ${plan.title}` : 'รอการวิเคราะห์แผนใหม่โดย Qwen AI'}
+            </h3>
           </div>
         </div>
 
-        {/* Chart Viewport Container - Doubled Height on Desktop */}
-        <div className="relative mt-4 h-[320px] sm:h-[460px] lg:h-[520px] w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/90 p-2">
-          {/* Grid Background */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293715_1px,transparent_1px),linear-gradient(to_bottom,#1f293715_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-
-          {/* SVG Canvas for Candles & Level Overlays */}
-          <svg className="h-full w-full overflow-visible" viewBox="0 0 700 450" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="entryGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#10b981" stopOpacity="0.2" />
-              </linearGradient>
-              <linearGradient id="slGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.2" />
-              </linearGradient>
-              <linearGradient id="tpGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#34d399" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#34d399" stopOpacity="0.2" />
-              </linearGradient>
-            </defs>
-
-            {/* Horizontal Grid Price Lines */}
-            {[0.2, 0.4, 0.6, 0.8].map((ratio, idx) => {
-              const y = 15 + ratio * 210;
-              return (
-                <line
-                  key={idx}
-                  x1="0"
-                  y1={y}
-                  x2="610"
-                  y2={y}
-                  stroke="#374151"
-                  strokeOpacity="0.25"
-                  strokeDasharray="3 3"
-                />
-              );
-            })}
-
-            {/* Candlestick Bars */}
-            {chartCandles.map((c, i) => {
-              const barWidth = 12;
-              const gap = 6;
-              const x = 20 + i * (barWidth + gap);
-              const isBull = c.close >= c.open;
-              const yOpen = getY(c.open);
-              const yClose = getY(c.close);
-              const yHigh = getY(c.high);
-              const yLow = getY(c.low);
-              const bodyTop = Math.min(yOpen, yClose);
-              const bodyHeight = Math.max(Math.abs(yOpen - yClose), 1.5);
-              const color = isBull ? '#10b981' : '#f43f5e';
-
-              return (
-                <g
-                  key={i}
-                  className="cursor-pointer transition-opacity hover:opacity-80"
-                  onMouseEnter={() => setHoveredCandle(c)}
-                  onMouseLeave={() => setHoveredCandle(null)}
-                >
-                  {/* High-Low Wick */}
-                  <line x1={x + barWidth / 2} y1={yHigh} x2={x + barWidth / 2} y2={yLow} stroke={color} strokeWidth="1.5" />
-                  {/* Candle Body */}
-                  <rect
-                    x={x}
-                    y={bodyTop}
-                    width={barWidth}
-                    height={bodyHeight}
-                    fill={color}
-                    rx="1.5"
-                    stroke={color}
-                    strokeWidth="1"
-                  />
-                </g>
-              );
-            })}
-
-            {/* OVERLAY: ENTRY PRICE LINE & BADGE */}
-            {plan && (
-              <g>
-                <line
-                  x1="0"
-                  y1={getY(plan.entry)}
-                  x2="600"
-                  y2={getY(plan.entry)}
-                  stroke="#38bdf8"
-                  strokeWidth="2"
-                  strokeDasharray="5 3"
-                />
-                <rect
-                  x="480"
-                  y={getY(plan.entry) - 12}
-                  width="130"
-                  height="24"
-                  rx="6"
-                  fill="#0284c7"
-                  className="shadow-lg"
-                />
-                <text
-                  x="545"
-                  y={getY(plan.entry) + 4}
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                >
-                  ENTRY: ${plan.entry.toFixed(2)}
-                </text>
-              </g>
-            )}
-
-            {/* OVERLAY: STOP LOSS (SL) PRICE LINE & BADGE */}
-            {plan && (
-              <g>
-                <line
-                  x1="0"
-                  y1={getY(plan.stopLoss)}
-                  x2="600"
-                  y2={getY(plan.stopLoss)}
-                  stroke="#f43f5e"
-                  strokeWidth="2"
-                  strokeDasharray="5 3"
-                />
-                <rect
-                  x="480"
-                  y={getY(plan.stopLoss) - 12}
-                  width="130"
-                  height="24"
-                  rx="6"
-                  fill="#e11d48"
-                  className="shadow-lg"
-                />
-                <text
-                  x="545"
-                  y={getY(plan.stopLoss) + 4}
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                >
-                  STOP LOSS: ${plan.stopLoss.toFixed(2)}
-                </text>
-              </g>
-            )}
-
-            {/* OVERLAY: TAKE PROFIT (TP) PRICE LINE & BADGE */}
-            {plan && (
-              <g>
-                <line
-                  x1="0"
-                  y1={getY(plan.takeProfit)}
-                  x2="600"
-                  y2={getY(plan.takeProfit)}
-                  stroke="#10b981"
-                  strokeWidth="2"
-                  strokeDasharray="5 3"
-                />
-                <rect
-                  x="480"
-                  y={getY(plan.takeProfit) - 12}
-                  width="130"
-                  height="24"
-                  rx="6"
-                  fill="#059669"
-                  className="shadow-lg"
-                />
-                <text
-                  x="545"
-                  y={getY(plan.takeProfit) + 4}
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                >
-                  TAKE PROFIT: ${plan.takeProfit.toFixed(2)}
-                </text>
-              </g>
-            )}
-
-            {/* OVERLAY: CURRENT MARKET PRICE LINE & PULSE */}
-            {currentPrice && (
-              <g>
-                <line
-                  x1="0"
-                  y1={getY(currentPrice)}
-                  x2="615"
-                  y2={getY(currentPrice)}
-                  stroke="#fbbf24"
-                  strokeWidth="1.5"
-                />
-                <circle cx="615" cy={getY(currentPrice)} r="4" fill="#fbbf24" className="animate-ping" />
-                <rect
-                  x="612"
-                  y={getY(currentPrice) - 11}
-                  width="82"
-                  height="22"
-                  rx="4"
-                  fill="#b45309"
-                />
-                <text
-                  x="653"
-                  y={getY(currentPrice) + 4}
-                  fill="#fef3c7"
-                  fontSize="10"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                >
-                  ${currentPrice.toFixed(2)}
-                </text>
-              </g>
-            )}
-          </svg>
-
-          {/* Time X-Axis Labels */}
-          <div className="absolute bottom-1 left-4 right-24 flex justify-between text-[9px] font-medium text-neutral-500">
-            {chartCandles.filter((_, idx) => idx % 6 === 0).map((c, i) => (
-              <span key={i}>{c.time}</span>
-            ))}
-          </div>
-
-          {/* Hover Tooltip Overlay */}
-          {hoveredCandle && (
-            <div className="absolute top-2 left-4 flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-[11px] text-neutral-200 backdrop-blur-md shadow-xl">
-              <span className="font-bold text-amber-400">{hoveredCandle.time}</span>
-              <span>O: <strong className="text-neutral-100">${hoveredCandle.open.toFixed(2)}</strong></span>
-              <span>H: <strong className="text-emerald-400">${hoveredCandle.high.toFixed(2)}</strong></span>
-              <span>L: <strong className="text-rose-400">${hoveredCandle.low.toFixed(2)}</strong></span>
-              <span>C: <strong className="text-neutral-100">${hoveredCandle.close.toFixed(2)}</strong></span>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <span className="rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1 text-xs font-semibold text-neutral-400">
+            กรอบเวลา {timeframe}
+          </span>
         </div>
       </div>
 
-      {/* RIGHT CARD: AI Quantitative Gauges (Confidence & Risk Meters) */}
-      <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-neutral-800/90 bg-gradient-to-b from-neutral-900/90 via-neutral-950 to-neutral-900/90 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-        <div>
-          {/* Top Bar Chart Visualization */}
-          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
-            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
-              โครงสร้างปริมาณเทรด AI
+      {/* Chart Viewport Container - 100% Full Width Edge-to-Edge */}
+      <div className="relative h-[360px] sm:h-[480px] lg:h-[540px] w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/90 p-2">
+        {/* Grid Background */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293715_1px,transparent_1px),linear-gradient(to_bottom,#1f293715_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+
+        {/* SVG Canvas for Candles & Level Overlays */}
+        <svg className="h-full w-full overflow-visible" viewBox="0 0 700 450" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="entryGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0.2" />
+            </linearGradient>
+            <linearGradient id="slGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.2" />
+            </linearGradient>
+            <linearGradient id="tpGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#34d399" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0.2" />
+            </linearGradient>
+          </defs>
+
+          {/* Horizontal Grid Price Lines */}
+          {[0.2, 0.4, 0.6, 0.8].map((ratio, idx) => {
+            const y = 15 + ratio * 210;
+            return (
+              <line
+                key={idx}
+                x1="0"
+                y1={y}
+                x2="610"
+                y2={y}
+                stroke="#374151"
+                strokeOpacity="0.25"
+                strokeDasharray="3 3"
+              />
+            );
+          })}
+
+          {/* Render 30 Candlesticks */}
+          {chartCandles.map((c, idx) => {
+            const isGreen = c.close >= c.open;
+            const candleWidth = 14;
+            const gap = 19;
+            const x = 20 + idx * gap;
+
+            const highY = getY(c.high);
+            const lowY = getY(c.low);
+            const openY = getY(c.open);
+            const closeY = getY(c.close);
+
+            const bodyTop = Math.min(openY, closeY);
+            const bodyHeight = Math.max(Math.abs(openY - closeY), 2);
+
+            return (
+              <g
+                key={idx}
+                onMouseEnter={() => setHoveredCandle(c)}
+                onMouseLeave={() => setHoveredCandle(null)}
+                className="cursor-pointer transition-opacity hover:opacity-80"
+              >
+                {/* Wick */}
+                <line
+                  x1={x + candleWidth / 2}
+                  y1={highY}
+                  x2={x + candleWidth / 2}
+                  y2={lowY}
+                  stroke={isGreen ? '#10b981' : '#f43f5e'}
+                  strokeWidth="1.5"
+                />
+                {/* Body */}
+                <rect
+                  x={x}
+                  y={bodyTop}
+                  width={candleWidth}
+                  height={bodyHeight}
+                  fill={isGreen ? '#10b981' : '#f43f5e'}
+                  rx="1"
+                />
+              </g>
+            );
+          })}
+
+          {/* OVERLAY: ENTRY LINE */}
+          {plan?.entry && (
+            <g>
+              <line
+                x1="0"
+                y1={getY(plan.entry)}
+                x2="610"
+                y2={getY(plan.entry)}
+                stroke="#10b981"
+                strokeWidth="2"
+                strokeDasharray="6 4"
+              />
+              <rect
+                x="480"
+                y={getY(plan.entry) - 12}
+                width="130"
+                height="24"
+                rx="6"
+                fill="url(#entryGlow)"
+                className="shadow-lg"
+              />
+              <text
+                x="545"
+                y={getY(plan.entry) + 4}
+                fill="#ffffff"
+                fontSize="10"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                ENTRY: ${plan.entry.toFixed(2)}
+              </text>
+            </g>
+          )}
+
+          {/* OVERLAY: STOP LOSS LINE */}
+          {plan?.stopLoss && (
+            <g>
+              <line
+                x1="0"
+                y1={getY(plan.stopLoss)}
+                x2="610"
+                y2={getY(plan.stopLoss)}
+                stroke="#f43f5e"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+              />
+              <rect
+                x="480"
+                y={getY(plan.stopLoss) - 12}
+                width="130"
+                height="24"
+                rx="6"
+                fill="#be123c"
+                className="shadow-lg"
+              />
+              <text
+                x="545"
+                y={getY(plan.stopLoss) + 4}
+                fill="#ffffff"
+                fontSize="10"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                STOP LOSS: ${plan.stopLoss.toFixed(2)}
+              </text>
+            </g>
+          )}
+
+          {/* OVERLAY: TAKE PROFIT LINE */}
+          {plan?.takeProfit && (
+            <g>
+              <line
+                x1="0"
+                y1={getY(plan.takeProfit)}
+                x2="610"
+                y2={getY(plan.takeProfit)}
+                stroke="#059669"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+              />
+              <rect
+                x="480"
+                y={getY(plan.takeProfit) - 12}
+                width="130"
+                height="24"
+                rx="6"
+                fill="#059669"
+                className="shadow-lg"
+              />
+              <text
+                x="545"
+                y={getY(plan.takeProfit) + 4}
+                fill="#ffffff"
+                fontSize="10"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                TAKE PROFIT: ${plan.takeProfit.toFixed(2)}
+              </text>
+            </g>
+          )}
+
+          {/* OVERLAY: CURRENT MARKET PRICE LINE & PULSE */}
+          {currentPrice && (
+            <g>
+              <line
+                x1="0"
+                y1={getY(currentPrice)}
+                x2="615"
+                y2={getY(currentPrice)}
+                stroke="#fbbf24"
+                strokeWidth="1.5"
+              />
+              <circle cx="615" cy={getY(currentPrice)} r="4" fill="#fbbf24" className="animate-ping" />
+              <rect
+                x="612"
+                y={getY(currentPrice) - 11}
+                width="82"
+                height="22"
+                rx="4"
+                fill="#b45309"
+              />
+              <text
+                x="653"
+                y={getY(currentPrice) + 4}
+                fill="#fef3c7"
+                fontSize="10"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                ${currentPrice.toFixed(2)}
+              </text>
+            </g>
+          )}
+        </svg>
+
+        {/* Time X-Axis Labels */}
+        <div className="absolute bottom-1 left-4 right-24 flex justify-between text-[9px] font-medium text-neutral-500">
+          {chartCandles.filter((_, idx) => idx % 6 === 0).map((c, i) => (
+            <span key={i}>{c.time}</span>
+          ))}
+        </div>
+
+        {/* Hover Tooltip Overlay */}
+        {hoveredCandle && (
+          <div className="absolute top-2 left-4 flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-[11px] text-neutral-200 backdrop-blur-md shadow-xl">
+            <span className="font-bold text-amber-400">{hoveredCandle.time}</span>
+            <span>O: <strong className="text-neutral-100">${hoveredCandle.open.toFixed(2)}</strong></span>
+            <span>H: <strong className="text-emerald-400">${hoveredCandle.high.toFixed(2)}</strong></span>
+            <span>L: <strong className="text-rose-400">${hoveredCandle.low.toFixed(2)}</strong></span>
+            <span>C: <strong className="text-neutral-100">${hoveredCandle.close.toFixed(2)}</strong></span>
+          </div>
+        )}
+      </div>
+
+      {/* HORIZONTAL BOTTOM STRIP: AI Quantitative Gauges & Volume Structure (RELOCATED BELOW CHART) */}
+      <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/70 p-3.5 backdrop-blur-md">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+          {/* 1. Volume Structure */}
+          <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+            <span className="text-xs font-bold text-neutral-300">
+              📊 โครงสร้างปริมาณเทรด AI
             </span>
             <div className="flex items-end gap-1 h-5">
               {[40, 65, 30, 85, 95, 50, 70].map((h, i) => (
@@ -410,89 +413,21 @@ export default function TradePlanChart({
             </div>
           </div>
 
-          {/* Gauges Section */}
-          <div className="mt-5 grid grid-cols-2 gap-3 text-center">
-            {/* AI Confidence Gauge */}
-            <div className="flex flex-col items-center rounded-xl border border-neutral-800/80 bg-neutral-950/60 p-3">
-              <div className="relative h-20 w-32 flex items-center justify-center">
-                <svg className="h-full w-full" viewBox="0 0 100 60">
-                  <path
-                    d="M 10 50 A 40 40 0 0 1 90 50"
-                    fill="none"
-                    stroke="#1f2937"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 10 50 A 40 40 0 0 1 90 50"
-                    fill="none"
-                    stroke="url(#confGradient)"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray="126"
-                    strokeDashoffset={126 - (126 * Math.min(confidenceScore, 100)) / 100}
-                  />
-                  <defs>
-                    <linearGradient id="confGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#f59e0b" />
-                      <stop offset="100%" stopColor="#10b981" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute bottom-1 text-center">
-                  <span className="text-lg font-black text-emerald-400">{confidenceScore}</span>
-                  <span className="text-[10px] text-neutral-500">/100</span>
-                </div>
-              </div>
-              <p className="mt-1 text-xs font-bold text-neutral-300">คะแนน AI: {confidenceScore}/100</p>
-            </div>
-
-            {/* Risk Gauge */}
-            <div className="flex flex-col items-center rounded-xl border border-neutral-800/80 bg-neutral-950/60 p-3">
-              <div className="relative h-20 w-32 flex items-center justify-center">
-                <svg className="h-full w-full" viewBox="0 0 100 60">
-                  <path
-                    d="M 10 50 A 40 40 0 0 1 90 50"
-                    fill="none"
-                    stroke="#1f2937"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 10 50 A 40 40 0 0 1 90 50"
-                    fill="none"
-                    stroke="url(#riskGradient)"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray="126"
-                    strokeDashoffset={126 - (126 * Math.min(riskScore, 100)) / 100}
-                  />
-                  <defs>
-                    <linearGradient id="riskGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#10b981" />
-                      <stop offset="50%" stopColor="#f59e0b" />
-                      <stop offset="100%" stopColor="#f43f5e" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute bottom-1 text-center">
-                  <span className={`text-xs font-black uppercase ${
-                    riskLevelText === 'HIGH' ? 'text-rose-400' : riskLevelText === 'MEDIUM' ? 'text-amber-400' : 'text-emerald-400'
-                  }`}>
-                    {riskLevelText}
-                  </span>
-                </div>
-              </div>
-              <p className="mt-1 text-xs font-bold text-neutral-300">ความเสี่ยง: {riskLevelText}</p>
-            </div>
+          {/* 2. AI Confidence */}
+          <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+            <span className="text-xs font-bold text-neutral-300">🎯 คะแนน AI</span>
+            <span className="text-sm font-black text-emerald-400">{confidenceScore}/100</span>
           </div>
-        </div>
 
-        {/* Footer Watermark */}
-        <div className="mt-6 border-t border-neutral-800/80 pt-3 text-center">
-          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-            POWERED BY QWEN AI ALGORITHM | goldaisig.com
-          </p>
+          {/* 3. Risk Level */}
+          <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+            <span className="text-xs font-bold text-neutral-300">🛡️ ความเสี่ยง</span>
+            <span className={`text-xs font-black uppercase rounded px-2 py-0.5 ${
+              riskLevelText === 'HIGH' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : riskLevelText === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+            }`}>
+              {riskLevelText}
+            </span>
+          </div>
         </div>
       </div>
     </div>
