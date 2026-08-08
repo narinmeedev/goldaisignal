@@ -636,47 +636,7 @@ export default function UserDashboard() {
         </div>
       )}
 
-      {/* Summary Metrics Bar */}
-      {(() => {
-        const isLive = Boolean(stats?.mt5Connection?.isLive);
-        const biasVal = market?.bias ?? 'NEUTRAL';
-        const dataStatusValue = isLive ? (
-          <span className="flex items-center gap-1.5 text-emerald-400">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            LIVE
-          </span>
-        ) : (
-          <span className="text-amber-500">DELAYED</span>
-        );
 
-        return (
-          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-800/60 gap-[1px] backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-            <Metric label="ราคาทองล่าสุด" value={formatPrice(market?.currentPrice)} detail="USD / troy ounce" className="col-span-1" />
-            <Metric label="สถานะข้อมูล" value={dataStatusValue} detail={`ราคา ${formatAge(stats?.mt5Connection?.priceFeedAgeMs)}`} className="col-span-1" />
-            <Metric label="ตลาดปัจจุบัน" value={market?.marketSession || 'รอข้อมูล'} detail="ช่วงเวลาเทรดหลัก" className="col-span-1" />
-            <Metric 
-              label="มุมมองตลาด" 
-              value={
-                <span className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-black transition-colors ${
-                  biasVal === 'BULLISH' || biasVal === 'BUY'
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : biasVal === 'BEARISH' || biasVal === 'SELL'
-                      ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                      : 'border-neutral-800 bg-neutral-900/40 text-neutral-400'
-                }`}>
-                  {biasLabel[biasVal] ?? biasVal ?? 'รอข้อมูล'}
-                </span>
-              } 
-              detail={`ความผันผวน ${market?.volatility ?? '-'}`} 
-              className="col-span-1"
-            />
-            <Metric label="อัปเดตล่าสุด" value={formatDateTime(stats?.ownerMetrics?.freshness?.sourceDataAt ?? stats?.mt5Connection?.lastPriceAt)} detail="เวลาไทย" className="col-span-2 sm:col-span-1" />
-          </section>
-        );
-      })()}
 
       {/* MAIN TWO-COLUMN SPLIT SCREEN (LEFT: CHART, RIGHT: TRADE PLANS & TREND) */}
       <div className="grid gap-6 lg:grid-cols-12 items-start">

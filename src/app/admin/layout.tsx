@@ -235,23 +235,75 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             footerMenuOpen ? 'max-h-[85vh] overflow-y-auto p-5' : 'max-h-12 overflow-hidden px-4 py-2'
           }`}
         >
-          {/* Header Toggle Line */}
-          <button
-            type="button"
-            onClick={() => setFooterMenuOpen(!footerMenuOpen)}
-            className="flex h-8 w-full items-center justify-between font-bold text-xs text-neutral-300 hover:text-amber-300 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-              <span>📂 เมนูระบบเพิ่มเติม (คลิกเพื่อ{footerMenuOpen ? 'ปิด' : 'เปิดดูเมนูทั้งหมด'})</span>
-              <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400 font-mono">
-                {navItems.length} เมนู
-              </span>
+          {/* Header Toggle Line with Live Market Metrics */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 font-bold text-xs">
+            {/* Live Metrics Group */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Price Pill */}
+              <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-neutral-900 px-2.5 py-1 text-neutral-100">
+                <span className="text-[10px] text-amber-400 font-extrabold uppercase">GOLD#</span>
+                <span className="font-black tabular-nums text-sm text-amber-300">${formatPrice(price.price)}</span>
+              </div>
+
+              {/* Data Status Pill */}
+              <div className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs">
+                <span className="relative flex h-2 w-2">
+                  {price.isLive ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </>
+                  ) : (
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  )}
+                </span>
+                <span className={price.isLive ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                  {price.isLive ? 'LIVE' : 'DELAYED'}
+                </span>
+              </div>
+
+              {/* Market Bias Pill */}
+              <div className={`hidden sm:flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-black ${
+                price.bias === 'BULLISH' || price.bias === 'BUY'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                  : price.bias === 'BEARISH' || price.bias === 'SELL'
+                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                    : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+              }`}>
+                <span className="text-[10px] text-neutral-400 font-normal">มุมมอง:</span>
+                <span>
+                  {price.bias === 'BULLISH' || price.bias === 'BUY'
+                    ? 'BULLISH ขาขึ้น'
+                    : price.bias === 'BEARISH' || price.bias === 'SELL'
+                      ? 'BEARISH ขาลง'
+                      : 'NEUTRAL'}
+                </span>
+              </div>
+
+              {/* Session Pill */}
+              <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
+                <span className="text-[10px] text-neutral-500">ตลาด:</span>
+                <span className="font-bold text-sky-300">
+                  {(() => {
+                    const h = new Date().getUTCHours();
+                    if (h >= 13 && h <= 21) return 'นิวยอร์ก (US)';
+                    if (h >= 7 && h <= 15) return 'ลอนดอน (UK)';
+                    return 'เอเชีย (Asia)';
+                  })()}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-amber-400 font-extrabold">
-              <span>{footerMenuOpen ? 'ซ่อนเมนู ▲' : 'เปิดเมนู ▼'}</span>
-            </div>
-          </button>
+
+            {/* Menu Drawer Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setFooterMenuOpen(!footerMenuOpen)}
+              className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-300 hover:bg-amber-500/20 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+            >
+              <Menu className="h-3.5 w-3.5" />
+              <span>📂 เมนูระบบเพิ่มเติม {footerMenuOpen ? '▲ (ปิด)' : '▼ (เปิดเมนู)'}</span>
+            </button>
+          </div>
 
           {/* Expanded Drawer Links Grid */}
           {footerMenuOpen && (
