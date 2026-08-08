@@ -120,9 +120,16 @@ export async function PUT(req: Request) {
     if (role !== undefined) updateData.role = role;
     if (subscriptionPlan !== undefined) updateData.subscriptionPlan = subscriptionPlan;
     if (subscriptionStatus !== undefined) updateData.subscriptionStatus = subscriptionStatus;
-    if (subscriptionEndsAt !== undefined) {
+
+    // Unlimited PRO / VIP handling: set active status and null expiry (no expiration date)
+    const isUnlimitedPro = ['vip', 'pro', 'unlimited', 'lifetime'].includes(String(subscriptionPlan).toLowerCase());
+    if (isUnlimitedPro) {
+      updateData.subscriptionStatus = 'active';
+      updateData.subscriptionEndsAt = null;
+    } else if (subscriptionEndsAt !== undefined) {
       updateData.subscriptionEndsAt = subscriptionEndsAt ? new Date(subscriptionEndsAt) : null;
     }
+
     if (isAffiliate !== undefined) updateData.isAffiliate = isAffiliate;
     if (affiliateRate !== undefined) updateData.affiliateRate = affiliateRate;
 

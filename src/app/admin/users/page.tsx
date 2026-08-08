@@ -155,7 +155,7 @@ export default function UsersPage() {
     if (user.subscriptionStatus === 'expired') return <span className="px-2 py-1 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-md text-[10px] font-bold uppercase">หมดอายุ</span>;
     if (user.subscriptionStatus === 'pending') return <span className="px-2 py-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-md text-[10px] font-bold uppercase">รอชำระเงิน</span>;
     if (user.subscriptionStatus === 'active') {
-      if (user.subscriptionPlan === 'vip') return <span className="px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[10px] font-bold uppercase">สมาชิก PRO</span>;
+      if (user.subscriptionPlan === 'vip' || user.subscriptionPlan === 'pro') return <span className="px-2.5 py-1 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-md text-[10px] font-black uppercase tracking-wide">♾️ สมาชิก PRO (ไม่จำกัด)</span>;
       if (user.subscriptionPlan === 'monthly') return <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[10px] font-bold uppercase">สมาชิกรายเดือน</span>;
       return <span className="px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md text-[10px] font-bold uppercase">ทดลองใช้งานฟรี</span>;
     }
@@ -287,8 +287,14 @@ export default function UsersPage() {
                       <span className="text-neutral-500 text-xs">NO</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 font-mono text-[11px] text-neutral-500">
-                    {user.subscriptionEndsAt ? new Date(user.subscriptionEndsAt).toLocaleDateString('th-TH') : '-'}
+                  <td className="px-6 py-4 font-mono text-[11px]">
+                    {user.subscriptionPlan === 'vip' || user.subscriptionPlan === 'pro' || (!user.subscriptionEndsAt && user.subscriptionStatus === 'active') ? (
+                      <span className="text-emerald-400 font-bold">♾️ ไม่มีกำหนด (Unlimited)</span>
+                    ) : user.subscriptionEndsAt ? (
+                      <span className="text-neutral-300">{new Date(user.subscriptionEndsAt).toLocaleDateString('th-TH')}</span>
+                    ) : (
+                      <span className="text-neutral-500">-</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 font-mono text-[11px] text-neutral-500">
                     {new Date(user.createdAt).toLocaleDateString()}
@@ -369,7 +375,16 @@ export default function UsersPage() {
                 <label className="block text-xs text-neutral-400 mb-1">ประเภทแพ็กเกจ (Plan)</label>
                 <select
                   value={editForm.subscriptionPlan}
-                  onChange={e => setEditForm({...editForm, subscriptionPlan: e.target.value})}
+                  onChange={e => {
+                    const newPlan = e.target.value;
+                    const isVip = newPlan === 'vip' || newPlan === 'pro';
+                    setEditForm({
+                      ...editForm,
+                      subscriptionPlan: newPlan,
+                      subscriptionStatus: isVip ? 'active' : editForm.subscriptionStatus,
+                      subscriptionEndsAt: isVip ? '' : editForm.subscriptionEndsAt,
+                    });
+                  }}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50"
                 >
                   <option value="none">ไม่มีแพ็กเกจ (None)</option>
@@ -395,12 +410,19 @@ export default function UsersPage() {
 
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">วันหมดอายุแพ็กเกจ (Ends At)</label>
-                <input
-                  type="date"
-                  value={editForm.subscriptionEndsAt}
-                  onChange={e => setEditForm({...editForm, subscriptionEndsAt: e.target.value})}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50 [color-scheme:dark]"
-                />
+                {editForm.subscriptionPlan === 'vip' || editForm.subscriptionPlan === 'pro' ? (
+                  <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 font-bold font-mono flex items-center justify-between">
+                    <span>♾️ ไม่มีกำหนด (Unlimited PRO)</span>
+                    <span className="text-[10px] text-emerald-300 font-sans font-normal">ใช้งานได้ตลอดชีพ</span>
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    value={editForm.subscriptionEndsAt}
+                    onChange={e => setEditForm({...editForm, subscriptionEndsAt: e.target.value})}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-amber-500/50 [color-scheme:dark]"
+                  />
+                )}
               </div>
 
               <div className="flex items-center justify-between p-3 bg-neutral-950 border border-neutral-800 rounded-xl">
