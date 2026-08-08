@@ -66,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         body: JSON.stringify({ symbol: 'GOLD#' }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.success || data.ok) {
         alert('🤖 สั่ง Qwen วิเคราะห์แผนสดสำเร็จ!');
         window.location.reload();
       } else {

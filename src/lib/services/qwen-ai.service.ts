@@ -104,7 +104,7 @@ export class QwenLocalAiService {
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12.0s execution window for Qwen 3.5-9B
+    const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s fast execution window with instant SmartTrendStructure fallback
 
     try {
       const formattedH1 = (input.h1Candles || [])
