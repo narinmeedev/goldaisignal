@@ -636,7 +636,9 @@ export default function UserDashboard() {
         </div>
       )}
 
+      {/* Summary Metrics Bar */}
       {(() => {
+        const isLive = Boolean(stats?.mt5Connection?.isLive);
         const biasVal = market?.bias ?? 'NEUTRAL';
         const dataStatusValue = isLive ? (
           <span className="flex items-center gap-1.5 text-emerald-400">
@@ -676,429 +678,308 @@ export default function UserDashboard() {
         );
       })()}
 
-      {/* Qwen AI Track Record & Performance Reference Card */}
-      {stats?.qwenPerformance && (
-        <section className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-neutral-900 to-indigo-950/40 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-purple-500/20 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/40 bg-purple-500/20 text-purple-300">
-                <Sparkles className="h-5 w-5 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-purple-200">🏆 สถิติวัดผลแผน Qwen AI (Track Record Reference)</h3>
-                <p className="text-xs text-purple-300/80">ระบบบันทึกและวัดผลการชน TP/SL อัตโนมัติ เพื่อใช้อ้างอิงผลงานประกอบการขายบริการ</p>
-              </div>
+      {/* MAIN TWO-COLUMN SPLIT SCREEN (LEFT: CHART, RIGHT: TRADE PLANS & TREND) */}
+      <div className="grid gap-6 lg:grid-cols-12 items-start">
+        {/* LEFT COLUMN: LIVE CHART & CANDLE VISUALIZER (7 Cols on desktop) */}
+        <div className="lg:col-span-7 space-y-6">
+          <section id="active-plan-chart-supplement" className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <h3 className="text-sm font-bold text-neutral-200 flex items-center gap-2">
+                <Activity className="h-4 w-4 text-amber-400" /> 📈 กราฟแท่งเทียนสด & โซนออเดอร์ (Live Chart & Level Overlays)
+              </h3>
+              <span className="text-xs text-neutral-500">ข้อมูลแท่งเทียนสดจาก MT5 Feed</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
-                Win Rate {stats.qwenPerformance.winRate}%
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black text-amber-300">
-                สะสม +{stats.qwenPerformance.totalRR}R
-              </span>
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            <div className="rounded-lg border border-purple-500/20 bg-neutral-950/50 p-2.5">
-              <div className="text-xs text-neutral-400">แผนที่บันทึกวัดผลทั้งหมด</div>
-              <div className="mt-1 text-base font-bold text-neutral-100">{stats.qwenPerformance.totalRecorded} ไม้</div>
-            </div>
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-2.5">
-              <div className="text-xs text-emerald-400">ชน Take Profit (ชนะ)</div>
-              <div className="mt-1 text-base font-bold text-emerald-300">{stats.qwenPerformance.wins} ไม้</div>
-            </div>
-            <div className="rounded-lg border border-rose-500/20 bg-rose-950/30 p-2.5">
-              <div className="text-xs text-rose-400">ชน Stop Loss (แพ้)</div>
-              <div className="mt-1 text-base font-bold text-rose-300">{stats.qwenPerformance.losses} ไม้</div>
-            </div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-950/30 p-2.5">
-              <div className="text-xs text-amber-400">กำลังติดตามผลสด</div>
-              <div className="mt-1 text-base font-bold text-amber-300">{stats.qwenPerformance.open} ไม้</div>
-            </div>
-          </div>
-        </section>
-      )}
+            <TradePlanChart
+              plan={plan}
+              currentPrice={market?.currentPrice ?? null}
+              candles={market?.candles || []}
+              timeframe="M15"
+              marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
+              bias={market?.bias ?? 'NEUTRAL'}
+            />
+          </section>
+        </div>
 
-      {/* Active Trade Plan Details Card */}
-      {(() => {
-        const isBuy = direction === 'BUY';
-        const isSell = direction === 'SELL';
-        const cardBgClass = plan 
-          ? isBuy 
-            ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-emerald-950/10 shadow-[0_4px_30px_rgba(16,185,129,0.03)]'
-            : 'border-rose-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-rose-950/10 shadow-[0_4px_30px_rgba(244,63,94,0.03)]'
-          : 'border-neutral-800 bg-neutral-900/40 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]';
+        {/* RIGHT COLUMN: ACTIVE PLAN, CANDIDATE PLANS & MARKET TREND (5 Cols on desktop) */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* 1. Active Trade Plan Card */}
+          {(() => {
+            const isBuy = direction === 'BUY';
+            const isSell = direction === 'SELL';
+            const cardBgClass = plan 
+              ? isBuy 
+                ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-emerald-950/10 shadow-[0_4px_30px_rgba(16,185,129,0.03)]'
+                : 'border-rose-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-rose-950/10 shadow-[0_4px_30px_rgba(244,63,94,0.03)]'
+              : 'border-neutral-800 bg-neutral-900/40 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]';
 
-        return (
-          <section id="active-plan" className={`rounded-xl border p-5 sm:p-6 transition-all duration-300 ${cardBgClass}`}>
-            <div className="flex flex-col gap-3 border-b border-neutral-800/80 pb-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-all ${
-                  isBuy 
-                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
-                    : isSell 
-                      ? 'border-rose-500/20 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.1)]' 
-                      : 'border-neutral-800 bg-neutral-800/60 text-neutral-400'
-                }`}>
-                  {isBuy ? <ArrowUp className="h-6 w-6" /> : isSell ? <ArrowDown className="h-6 w-6" /> : <Clock3 className="h-6 w-6" />}
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">แผนหลักปัจจุบัน</span>
-                    <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-black text-sky-300 border border-sky-500/30 uppercase">
-                      {plan?.timeframe ? `สัญญาณ ${plan.timeframe}` : 'สัญญาณ M15'}
-                    </span>
-                    <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                      <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์
-                    </span>
-                    <span className="rounded bg-neutral-800/80 px-2 py-0.2 text-[9px] font-bold text-neutral-300 border border-neutral-700/60 flex items-center gap-1">
-                      <Clock3 className="h-2.5 w-2.5 text-amber-400" /> 🕒 เวลาที่ให้ออเดอร์: {plan?.planTime || plan?.createdAtThailand || 'ล่าสุด (เวลาไทย)'}
-                    </span>
-                    {plan && (
-                      <span className={`inline-flex items-center rounded-full px-1.5 py-0.2 text-[8px] font-extrabold uppercase tracking-wide animate-pulse ${
-                        isBuy ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      }`}>
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="mt-1 text-xl font-bold text-neutral-50">
-                    {plan ? `${direction ?? ''} · ${plan.title}` : 'ยังไม่มีแผนที่ผ่านเกณฑ์'}
-                  </h2>
-                  <p className="mt-1 text-sm text-neutral-400 flex items-center gap-2">
-                    {plan ? (
-                      isOpen ? (
-                        'เปิดวัดผลแล้ว'
-                      ) : (isBuy && (market?.currentPrice ?? 0) < plan.entry - 0.5) || (isSell && (market?.currentPrice ?? 0) > plan.entry + 0.5) ? (
-                        <span className="text-amber-400 font-semibold flex items-center gap-1">
-                          <AlertTriangle className="h-3.5 w-3.5 animate-pulse text-amber-400" /> ราคาขยับเลยจุดเข้าเดิมแล้ว (กำลังรอราคากลับเข้าโซนใหม่)
-                        </span>
-                      ) : (
-                        'รอราคาเข้าเงื่อนไข'
-                      )
-                    ) : (
-                      'ระบบจะเงียบจนกว่าข้อมูลสด โครงสร้าง และความเสี่ยงจะผ่านเกณฑ์พร้อมกัน'
-                    )}
-                  </p>
-                </div>
-              </div>
-              {plan && (
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-[0_2px_8px_rgba(245,158,11,0.02)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                    คะแนน AI: {Math.round(plan.confidence)}/100
-                  </span>
-                  <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold shadow-[0_2px_8px_rgba(0,0,0,0.2)] ${riskStyles[riskLevel]}`}>
-                    <ShieldAlert className="h-3.5 w-3.5" />
-                    ความเสี่ยง: {riskScore ?? '-'}/100 · {riskLevel}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {plan ? (
-              <div className="mt-5 space-y-5">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <PriceLevel label="Entry" value={plan.entry} tone="entry" />
-                  <PriceLevel label="Stop Loss" value={plan.stopLoss} tone="sl" />
-                  <PriceLevel label="Take Profit" value={plan.takeProfit} tone="tp" />
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                      <Target className="h-4 w-4 text-amber-400" /> วิธีใช้แผนนี้
+            return (
+              <section id="active-plan" className={`rounded-xl border p-5 sm:p-6 transition-all duration-300 ${cardBgClass}`}>
+                <div className="flex flex-col gap-3 border-b border-neutral-800/80 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-all ${
+                      isBuy 
+                        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                        : isSell 
+                          ? 'border-rose-500/20 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.1)]' 
+                          : 'border-neutral-800 bg-neutral-800/60 text-neutral-400'
+                    }`}>
+                      {isBuy ? <ArrowUp className="h-5 w-5" /> : isSell ? <ArrowDown className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-neutral-300">{getEntryInstruction(plan, isOpen)}</p>
-                    <div className="mt-3 border-t border-neutral-800 pt-3 text-sm leading-6 text-neutral-300 font-medium">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">แผนหลักปัจจุบัน</span>
+                        <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-black text-sky-300 border border-sky-500/30 uppercase">
+                          {plan?.timeframe ? `สัญญาณ ${plan.timeframe}` : 'สัญญาณ M15'}
+                        </span>
+                        <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์
+                        </span>
+                        <span className="rounded bg-neutral-800/80 px-2 py-0.2 text-[9px] font-bold text-neutral-300 border border-neutral-700/60 flex items-center gap-1">
+                          <Clock3 className="h-2.5 w-2.5 text-amber-400" /> 🕒 {plan?.planTime || plan?.createdAtThailand || 'เวลาไทย'}
+                        </span>
+                      </div>
+                      <h2 className="mt-1 text-lg font-bold text-neutral-50">
+                        {plan ? `${direction ?? ''} · ${plan.title}` : 'ยังไม่มีแผนที่ผ่านเกณฑ์'}
+                      </h2>
+                    </div>
+                  </div>
+                  {plan && (
+                    <div className="flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300">
+                        คะแนน AI: {Math.round(plan.confidence)}/100
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {plan ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="grid gap-2.5 grid-cols-3">
+                      <PriceLevel label="Entry" value={plan.entry} tone="entry" />
+                      <PriceLevel label="Stop Loss" value={plan.stopLoss} tone="sl" />
+                      <PriceLevel label="Take Profit" value={plan.takeProfit} tone="tp" />
+                    </div>
+
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-3.5 text-xs leading-5 text-neutral-300">
                       {renderHighlightedReason(plan.reason)}
                     </div>
                   </div>
-
-                  <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                        <Gauge className="h-4 w-4 text-amber-400" /> ความเสี่ยงที่ต้องรู้
-                      </div>
-                      <span className="text-sm font-semibold text-neutral-300">RR 1:{(plan.riskReward ?? 0).toFixed(2)}</span>
-                    </div>
-                    <ul className="mt-3 space-y-2">
-                      {(plan.riskReasons?.length ? plan.riskReasons : ['ทุกแผนมีโอกาสชน Stop Loss และอาจเกิด slippage ในช่วงราคาผันผวน']).map((reason) => (
-                        <li key={reason} className="flex gap-2 text-sm leading-5 text-neutral-400">
-                          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> {reason}
-                        </li>
-                      ))}
-                    </ul>
+                ) : (
+                  <div className="py-8 text-center">
+                    <Clock3 className="mx-auto h-8 w-8 text-neutral-600 animate-pulse" />
+                    <p className="mt-2 text-sm font-semibold text-neutral-200">รอราคาเข้าเงื่อนไขโซนสวย</p>
                   </div>
+                )}
+              </section>
+            );
+          })()}
+
+          {/* 2. Market Structure & Trend Confluence */}
+          <section className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-3">
+            <div className="flex items-center gap-2 border-b border-neutral-800 pb-2.5">
+              <Activity className="h-4 w-4 text-amber-400" />
+              <h3 className="font-bold text-sm text-neutral-100">🎯 เทรนด์ตลาด & โครงสร้างราคา (MTF Confluence)</h3>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5 text-center">
+              {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
+                <div key={timeframe} className="rounded-lg border border-neutral-800/80 bg-neutral-955/60 p-2">
+                  <p className="text-[10px] text-neutral-500 font-bold">{timeframe}</p>
+                  <p className={`mt-0.5 text-xs font-black ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-400' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-400' : 'text-neutral-400'}`}>
+                    {biasLabel[bias ?? 'NEUTRAL'] ?? bias}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2.5">
+                <p className="flex items-center gap-1 text-xs font-bold text-emerald-400"><TrendingUp className="h-3.5 w-3.5" /> 🟢 แนวรับ (Support)</p>
+                <div className="mt-1.5 space-y-1 text-xs">
+                  {supportZones.length ? supportZones.slice(0, 2).map((zone, index) => (
+                    <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
+                      <span>{zone.timeframe || 'Key'}</span>
+                      <span className="font-bold text-emerald-300">${formatPrice(zone.priceMax)}</span>
+                    </div>
+                  )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
                 </div>
               </div>
-            ) : (
-              <div className="py-12 text-center">
-                <Clock3 className="mx-auto h-9 w-9 text-neutral-600 animate-pulse" />
-                <p className="mt-3 font-semibold text-neutral-200">รอแผนใหม่อย่างมีวินัย</p>
-                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-neutral-500">
-                  การไม่มีแผนคือสถานะปกติเมื่อคะแนนเงื่อนไขต่ำกว่า 70, ความเสี่ยงสูงกว่า 55, RR ต่ำกว่า 1:2 หรือข้อมูล MT5 ไม่สด
-                </p>
+
+              <div className="rounded-lg border border-rose-500/20 bg-rose-950/20 p-2.5">
+                <p className="flex items-center gap-1 text-xs font-bold text-rose-400"><TrendingDown className="h-3.5 w-3.5" /> 🔴 แนวต้าน (Resistance)</p>
+                <div className="mt-1.5 space-y-1 text-xs">
+                  {resistanceZones.length ? resistanceZones.slice(0, 2).map((zone, index) => (
+                    <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
+                      <span>{zone.timeframe || 'Key'}</span>
+                      <span className="font-bold text-rose-300">${formatPrice(zone.priceMin)}</span>
+                    </div>
+                  )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
+                </div>
               </div>
-            )}
-          </section>
-        );
-      })()}
-
-      {/* List of Candidate / Proactive Trade Plans (ALWAYS VISIBLE RIGHT BELOW ACTIVE PLAN) */}
-      {(() => {
-        const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
-          id: p.id || `proactive-${p.entry}`,
-          type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
-          title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
-          entry: Number(p.entry),
-          stopLoss: Number(p.stopLoss),
-          takeProfit: Number(p.takeProfit || p.takeProfit1),
-          confidence: Number(p.confidence || 88),
-          reason: p.reason || p.notes,
-          direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
-        }));
-
-        const suggestedList = (stats?.suggestedPlans || [])
-          .filter((p: any) => p.result === 'PLAN')
-          .map((p: any) => ({
-            id: p.id,
-            type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
-            title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
-            entry: Number(p.entry),
-            stopLoss: Number(p.stopLoss),
-            takeProfit: Number(p.takeProfit1 || p.takeProfit),
-            confidence: Number(p.confidence || 88),
-            reason: p.notes,
-            direction: p.direction,
-          }));
-
-        // Deduplicate plans by entry price
-        const planMap = new Map<string, any>();
-        [...proactiveList, ...suggestedList].forEach((item) => {
-          const key = `${item.direction}_${item.entry.toFixed(2)}`;
-          if (!planMap.has(key)) planMap.set(key, item);
-        });
-
-        // Sort candidate plans: Pinned plan first, then by distance to current price ascending
-        const currentPx = market?.currentPrice ?? 0;
-        const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
-          if (a.id === pinnedPlanId) return -1;
-          if (b.id === pinnedPlanId) return 1;
-          const distA = Math.abs(a.entry - currentPx);
-          const distB = Math.abs(b.entry - currentPx);
-          return distA - distB;
-        });
-
-        return (
-          <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-amber-400" />
-                <h3 className="text-base font-bold text-neutral-100">
-                  📋 รายการแผนเทรดสำรอง / แผนรอเข้าทั้งหมด ({candidatePlans.length} แผน)
-                </h3>
-              </div>
-              <span className="text-xs text-neutral-400">
-                สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการไว้บนสุดได้
-              </span>
             </div>
+          </section>
 
-            {candidatePlans.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {candidatePlans.map((item, idx) => {
-                  const isBuyPlan = item.direction === 'BUY';
-                  const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
-                  const isPinned = item.id === pinnedPlanId;
-                  const isEarlyTrend = item.isEarlyTrend || idx === 0 || item.reason?.includes('CHoCH') || item.reason?.includes('ต้นเทรนด์') || item.title?.includes('H1');
+          {/* 3. List of Candidate Trade Plans */}
+          {(() => {
+            const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
+              id: p.id || `proactive-${p.entry}`,
+              type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
+              title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
+              entry: Number(p.entry),
+              stopLoss: Number(p.stopLoss),
+              takeProfit: Number(p.takeProfit || p.takeProfit1),
+              confidence: Number(p.confidence || 88),
+              reason: p.reason || p.notes,
+              direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
+            }));
 
-                  return (
-                    <div
-                      key={item.id || idx}
-                      className={`relative rounded-xl border p-4 transition-all duration-300 hover:border-neutral-700 ${
-                        isPinned
-                          ? 'border-amber-400/80 bg-neutral-900 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/50'
-                          : isBuyPlan
-                            ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/10'
-                            : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/10'
-                      }`}
-                    >
-                      {/* Top Action Header: Badges & Pin Button */}
-                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-black text-sky-300 border border-sky-500/30 uppercase">
-                            {item.timeframe || (idx === 0 ? 'H1 Trend' : idx % 2 === 0 ? 'M5 Scalp' : 'M15 Zone')}
-                          </span>
-                          <span
-                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black uppercase ${
-                              isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                            }`}
-                          >
-                            {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
-                            {item.type || `${item.direction}_LIMIT`}
-                          </span>
-                          {isEarlyTrend && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse">
-                              <Flame className="h-3 w-3 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์ (ถือยาวได้)
-                            </span>
-                          )}
-                        </div>
+            const suggestedList = (stats?.suggestedPlans || [])
+              .filter((p: any) => p.result === 'PLAN')
+              .map((p: any) => ({
+                id: p.id,
+                type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
+                title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
+                entry: Number(p.entry),
+                stopLoss: Number(p.stopLoss),
+                takeProfit: Number(p.takeProfit1 || p.takeProfit),
+                confidence: Number(p.confidence || 88),
+                reason: p.notes,
+                direction: p.direction,
+              }));
 
-                        {/* PIN BUTTON */}
-                        <button
-                          onClick={() => togglePinPlan(item.id)}
-                          title={isPinned ? 'ยกเลิกปักหมุด' : 'ปักหมุดแผนนี้ไว้อันดับแรก'}
-                          className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-extrabold transition-all ${
+            const planMap = new Map<string, any>();
+            [...proactiveList, ...suggestedList].forEach((item) => {
+              const key = `${item.direction}_${item.entry.toFixed(2)}`;
+              if (!planMap.has(key)) planMap.set(key, item);
+            });
+
+            const currentPx = market?.currentPrice ?? 0;
+            const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
+              if (a.id === pinnedPlanId) return -1;
+              if (b.id === pinnedPlanId) return 1;
+              return Math.abs(a.entry - currentPx) - Math.abs(b.entry - currentPx);
+            });
+
+            return (
+              <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-3">
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-4 w-4 text-amber-400" />
+                    <h3 className="text-sm font-bold text-neutral-100">
+                      📋 แผนเทรดสำรอง ({candidatePlans.length} แผน)
+                    </h3>
+                  </div>
+                </div>
+
+                {candidatePlans.length > 0 ? (
+                  <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+                    {candidatePlans.map((item, idx) => {
+                      const isBuyPlan = item.direction === 'BUY';
+                      const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+                      const isPinned = item.id === pinnedPlanId;
+
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className={`rounded-xl border p-3 transition-all ${
                             isPinned
-                              ? 'border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-                              : 'border-neutral-800 bg-neutral-955/60 text-neutral-400 hover:border-amber-500/50 hover:text-amber-300'
+                              ? 'border-amber-400/80 bg-neutral-900 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/50'
+                              : isBuyPlan
+                                ? 'border-emerald-500/20 bg-neutral-950/80'
+                                : 'border-rose-500/20 bg-neutral-950/80'
                           }`}
                         >
-                          <Pin className={`h-3 w-3 ${isPinned ? 'fill-amber-400 text-amber-400 rotate-45' : ''}`} />
-                          {isPinned ? 'ปักหมุดแล้ว' : 'ปักหมุด'}
-                        </button>
-                      </div>
+                          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-black uppercase ${
+                                isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {item.type || `${item.direction}_LIMIT`}
+                              </span>
+                              <span className="text-[10px] text-neutral-400">ห่าง ${distToEntry}</span>
+                            </div>
 
-                      <div className="mt-2 flex flex-wrap items-center justify-between text-[11px] text-neutral-400 gap-1">
-                        <span>ระยะห่าง: <strong className="text-neutral-200 tabular-nums">${distToEntry}</strong></span>
-                        <span className="text-[10px] text-sky-300 font-semibold rounded bg-sky-500/10 px-1.5 py-0.5 border border-sky-500/20">
-                          🕒 ออกแผน: {item.planTime || item.createdAtThailand || 'เวลาไทย'}
-                        </span>
-                        <span className="font-semibold text-amber-300 rounded bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20">
-                          เป้าส่วนต่าง $10-$20
-                        </span>
-                      </div>
+                            <button
+                              onClick={() => togglePinPlan(item.id)}
+                              className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-extrabold ${
+                                isPinned ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-neutral-800 text-neutral-400'
+                              }`}
+                            >
+                              <Pin className={`h-2.5 w-2.5 ${isPinned ? 'rotate-45 fill-amber-400 text-amber-400' : ''}`} />
+                              {isPinned ? 'ปักแล้ว' : 'ปักหมุด'}
+                            </button>
+                          </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                        <div className="rounded bg-neutral-950/70 p-2 border border-sky-500/20">
-                          <div className="text-[10px] font-semibold text-sky-400">Entry Target</div>
-                          <div className="mt-0.5 font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                          <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[11px]">
+                            <div className="rounded bg-neutral-900 p-1.5 border border-sky-500/20">
+                              <div className="text-[9px] text-sky-400">Entry</div>
+                              <div className="font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                            </div>
+                            <div className="rounded bg-neutral-900 p-1.5 border border-rose-500/20">
+                              <div className="text-[9px] text-rose-400">SL</div>
+                              <div className="font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
+                            </div>
+                            <div className="rounded bg-neutral-900 p-1.5 border border-emerald-500/20">
+                              <div className="text-[9px] text-emerald-400">TP</div>
+                              <div className="font-bold text-emerald-300">${item.takeProfit.toFixed(2)}</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="rounded bg-neutral-950/70 p-2 border border-rose-500/20">
-                          <div className="text-[10px] font-semibold text-rose-400">Stop Loss</div>
-                          <div className="mt-0.5 font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
-                        </div>
-                        <div className="rounded bg-neutral-950/70 p-2 border border-emerald-500/20">
-                          <div className="text-[10px] font-semibold text-emerald-400">Take Profit</div>
-                          <div className="mt-0.5 font-bold text-emerald-300">${item.takeProfit.toFixed(2)}</div>
-                        </div>
-                      </div>
-
-                      {(item.reason || item.title) && (
-                        <div className="mt-2 text-[11px] leading-5 text-neutral-300 border-t border-neutral-800/60 pt-2 font-medium">
-                          {renderHighlightedReason(item.reason || item.title)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="py-6 text-center rounded-xl border border-neutral-800/60 bg-neutral-950/40 p-4">
-                <Clock3 className="mx-auto h-7 w-7 text-amber-400/80 animate-pulse" />
-                <p className="mt-2 text-sm font-semibold text-neutral-200">
-                  ระบบกำลังโฟกัสติดตามเฉพาะแผนหลักปัจจุบัน
-                </p>
-                <p className="mt-1 text-xs text-neutral-500 max-w-lg mx-auto">
-                  หากราคาตลาดขยับเข้าสู่โซนโครงสร้างใหม่ AI จะคำนวณและแสดงแผนเทรดสำรองล่วงหน้าที่นี่ให้อัตโนมัติ
-                </p>
-              </div>
-            )}
-          </section>
-        );
-      })()}
-
-      {/* Interactive Candlestick Chart & AI Gauges Visual Supplement */}
-      <section id="active-plan-chart-supplement" className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
-            <Activity className="h-4 w-4 text-amber-400" /> Visual Candlestick & Level Overlays (แผนผังแท่งเทียนสด)
-          </h3>
-          <span className="text-xs text-neutral-500">ข้อมูลแท่งเทียนจริงจากระบบ</span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-center py-4 text-xs text-neutral-500">ไม่มีแผนสำรองค้างในระบบ</p>
+                )}
+              </section>
+            );
+          })()}
         </div>
-        <TradePlanChart
-          plan={plan}
-          currentPrice={market?.currentPrice ?? null}
-          candles={market?.candles || []}
-          timeframe="M15"
-          marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
-          bias={market?.bias ?? 'NEUTRAL'}
-        />
-      </section>
+      </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-amber-400" />
-            <h2 className="font-bold text-neutral-100">โครงสร้างตลาดที่ระบบเห็น</h2>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-            {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
-              <div key={timeframe} className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
-                <p className="text-xs text-neutral-500">{timeframe}</p>
-                <p className={`mt-1 text-sm font-semibold ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-300' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-300' : 'text-neutral-300'}`}>
-                  {biasLabel[bias ?? 'NEUTRAL'] ?? bias}
-                </p>
+      {/* BOTTOM SECTION: PERFORMANCE STATISTICS & TRACK RECORD */}
+      <div id="stats-overview" className="mt-6 space-y-6">
+        {stats?.qwenPerformance && (
+          <section className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-neutral-900 to-indigo-950/40 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-purple-500/20 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/40 bg-purple-500/20 text-purple-300">
+                  <Sparkles className="h-5 w-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-purple-200">📊 สถิติวัดผลแผน Qwen AI (Performance Track Record)</h3>
+                  <p className="text-xs text-purple-300/80">ระบบบันทึกและวัดผลอัตโนมัติ เพื่อใช้อ้างอิงผลงานสด 100%</p>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300"><TrendingUp className="h-4 w-4" /> แนวรับ</p>
-              <div className="mt-2 space-y-2">
-                {supportZones.length ? supportZones.map((zone, index) => {
-                  const strength = zone.strength ?? 1;
-                  const isStrong = strength >= 4;
-                  const isMedium = strength === 3;
-                  const priceClass = isStrong 
-                    ? 'text-emerald-400 font-bold' 
-                    : isMedium 
-                      ? 'text-amber-400 font-bold' 
-                      : 'text-neutral-200';
-                  return (
-                    <div key={zone.id ?? `${zone.priceMin}-${index}`} className="flex items-center justify-between border-b border-neutral-800 py-2 text-sm">
-                      <span className="flex items-center gap-1.5 text-neutral-500">
-                        {zone.timeframe ?? 'Zone'}
-                        {isStrong && <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-bold text-emerald-300">★ แข็ง</span>}
-                        {isMedium && <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-bold text-amber-300">★ แข็ง</span>}
-                      </span>
-                      <span className={`font-medium tabular-nums ${priceClass}`}>
-                        {formatPrice(zone.priceMin)} - {formatPrice(zone.priceMax)}
-                      </span>
-                    </div>
-                  );
-                }) : <p className="py-3 text-sm text-neutral-500">ยังไม่มีแนวรับที่ยืนยันจากข้อมูลจริง</p>}
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
+                  Win Rate {stats.qwenPerformance.winRate}%
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black text-amber-300">
+                  สะสม +{stats.qwenPerformance.totalRR}R
+                </span>
               </div>
             </div>
-            <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-rose-300"><TrendingDown className="h-4 w-4" /> แนวต้าน</p>
-              <div className="mt-2 space-y-2">
-                {resistanceZones.length ? resistanceZones.map((zone, index) => {
-                  const strength = zone.strength ?? 1;
-                  const isStrong = strength >= 4;
-                  const isMedium = strength === 3;
-                  const priceClass = isStrong 
-                    ? 'text-rose-400 font-bold' 
-                    : isMedium 
-                      ? 'text-amber-400 font-bold' 
-                      : 'text-neutral-200';
-                  return (
-                    <div key={zone.id ?? `${zone.priceMax}-${index}`} className="flex items-center justify-between border-b border-neutral-800 py-2 text-sm">
-                      <span className="flex items-center gap-1.5 text-neutral-500">
-                        {zone.timeframe ?? 'Zone'}
-                        {isStrong && <span className="rounded bg-rose-500/20 px-1 py-0.2 text-[9px] font-bold text-rose-300">★ แข็ง</span>}
-                        {isMedium && <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-bold text-amber-300">★ แข็ง</span>}
-                      </span>
-                      <span className={`font-medium tabular-nums ${priceClass}`}>
-                        {formatPrice(zone.priceMin)} - {formatPrice(zone.priceMax)}
-                      </span>
-                    </div>
-                  );
-                }) : <p className="py-3 text-sm text-neutral-500">ยังไม่มีแนวต้านที่ยืนยันจากข้อมูลจริง</p>}
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="rounded-lg border border-purple-500/20 bg-neutral-950/50 p-2.5">
+                <div className="text-xs text-neutral-400">แผนทั้งหมด</div>
+                <div className="mt-1 text-base font-bold text-neutral-100">{stats.qwenPerformance.totalRecorded} ไม้</div>
+              </div>
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-2.5">
+                <div className="text-xs text-emerald-400">Take Profit (ชนะ)</div>
+                <div className="mt-1 text-base font-bold text-emerald-300">{stats.qwenPerformance.wins} ไม้</div>
+              </div>
+              <div className="rounded-lg border border-rose-500/20 bg-rose-950/30 p-2.5">
+                <div className="text-xs text-rose-400">Stop Loss (แพ้)</div>
+                <div className="mt-1 text-base font-bold text-rose-300">{stats.qwenPerformance.losses} ไม้</div>
+              </div>
+              <div className="rounded-lg border border-amber-500/20 bg-amber-950/30 p-2.5">
+                <div className="text-xs text-amber-400">กำลังติดตามผลสด</div>
+                <div className="mt-1 text-base font-bold text-amber-300">{stats.qwenPerformance.open} ไม้</div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+      </div>
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
           <div className="flex items-center justify-between gap-3">
@@ -1130,7 +1011,6 @@ export default function UserDashboard() {
           </div>
           <p className="mt-4 text-xs leading-5 text-neutral-500">Win rate เป็นผลย้อนหลังจากแผนที่ปิดแล้ว ไม่ใช่การรับประกันผลลัพธ์ของแผนถัดไป และตัวอย่างจำนวนน้อยมีความคลาดเคลื่อนสูง</p>
         </section>
-      </div>
 
       <footer className="flex flex-col gap-3 border-t border-neutral-800 py-4 text-sm text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
         <p>การเทรดทองคำมีความเสี่ยง ใช้ Stop Loss และขนาดสัญญาที่เหมาะกับเงินทุนทุกครั้ง</p>

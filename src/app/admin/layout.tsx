@@ -47,6 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [footerMenuOpen, setFooterMenuOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -176,126 +177,123 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
 
+      {/* Top Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">
         <div className="flex h-16 items-center justify-between px-4 lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => setMobileOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-800 lg:hidden" aria-label="เปิดเมนู">
-              <Menu className="h-5 w-5" />
-            </button>
-            <Link href="/admin" className="min-w-0">
-              <p className="truncate text-sm font-bold text-neutral-100">Gold AI Signal</p>
-              <p className="text-xs text-neutral-500">XAUUSD Service</p>
+            <Link href="/admin" className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 font-black">
+                GA
+              </div>
+              <div>
+                <p className="truncate text-sm font-bold text-neutral-100">Gold AI Signal</p>
+                <p className="text-[10px] text-amber-400/80 font-mono">XAUUSD Live Scalp Engine</p>
+              </div>
             </Link>
           </div>
+
           <div className="flex items-center gap-3 sm:gap-5">
             <div className="text-right">
               <div className="flex items-center justify-end gap-2">
-                <span className={`h-2 w-2 rounded-full ${price.isLive ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className={`h-2 w-2 rounded-full ${price.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
                 <span className="text-sm font-bold tabular-nums text-neutral-100">{formatPrice(price.price)}</span>
               </div>
-              <p className="text-xs text-neutral-500">XAUUSD · {price.isLive ? 'LIVE' : 'DELAYED'}</p>
+              <p className="text-[11px] text-neutral-400">GOLD# · {price.isLive ? 'LIVE' : 'DELAYED'}</p>
             </div>
             <div className="hidden border-l border-neutral-800 pl-5 sm:block">
               <p className="max-w-48 truncate text-sm text-neutral-300">{user?.email}</p>
               <p className="text-xs text-neutral-500">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : daysRemaining === null ? 'สมาชิก' : `เหลือ ${daysRemaining} วัน`}</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setFooterMenuOpen(!footerMenuOpen)}
+              className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+            >
+              <Menu className="h-4 w-4" />
+              <span className="hidden sm:inline">เมนูระบบเพิ่มเติม</span>
+            </button>
           </div>
         </div>
       </header>
 
-      <aside className="fixed bottom-0 left-0 top-16 z-30 hidden w-64 border-r border-neutral-800 bg-neutral-950 lg:flex lg:flex-col">
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navItems.map((item) => {
-            const active = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link key={item.href} href={item.href} className={`flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium ${active ? 'bg-amber-500/10 text-amber-300' : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100'}`}>
-                <Icon className="h-4 w-4 shrink-0" /> {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-neutral-800 p-3">
-          <button type="button" onClick={logout} className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-neutral-400 hover:bg-neutral-900 hover:text-rose-300">
-            <LogOut className="h-4 w-4" /> ออกจากระบบ
-          </button>
-        </div>
-      </aside>
+      {/* Main Full-Width Content (No 64px sidebar offset!) */}
+      <main className="w-full pb-24 p-4 lg:p-6">{children}</main>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-black/70" onClick={() => setMobileOpen(false)} aria-label="ปิดเมนู" />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(86vw,320px)] flex-col border-r border-neutral-800 bg-neutral-950">
-            <div className="flex h-16 items-center justify-between border-b border-neutral-800 px-4">
-              <span className="font-bold">Gold AI Signal</span>
-              <button type="button" onClick={() => setMobileOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-800" aria-label="ปิดเมนู"><X className="h-5 w-5" /></button>
-            </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {navItems.map((item) => {
-                const active = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
-                const Icon = item.icon;
-                return <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${active ? 'bg-amber-500/10 text-amber-300' : 'text-neutral-300'}`}><Icon className="h-5 w-5" />{item.label}</Link>;
-              })}
-            </nav>
-            <div className="border-t border-neutral-800 p-3"><button type="button" onClick={logout} className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-rose-300"><LogOut className="h-5 w-5" />ออกจากระบบ</button></div>
-          </aside>
-        </div>
-      )}
+      {/* Collapsible Footer Drawer Drop Bar (Floating at Bottom) */}
+      <div className="fixed inset-x-0 bottom-0 z-50">
+        {/* Footer Drawer Backdrop when Open */}
+        {footerMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setFooterMenuOpen(false)}
+          />
+        )}
 
-      <div className="pb-20 lg:ml-64 lg:pb-0">{children}</div>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between border-t border-neutral-800/80 bg-neutral-950 px-4 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 lg:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-        <Link href="/admin#active-plan" className={`flex flex-col items-center gap-1 text-[11px] px-3 py-1 rounded-lg transition-colors ${pathname === '/admin' ? 'text-amber-300 bg-amber-500/10 font-bold' : 'text-neutral-500'}`}>
-          <Activity className="h-5 w-5" />
-          <span>แผนเทรด</span>
-        </Link>
-
-        <div className="flex items-center gap-3.5 text-xs pr-1">
-          {/* Connection status circle & Bias */}
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              {price.isLive ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" title="MT5 LIVE"></span>
-                </>
-              ) : (
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" title="MT5 OFFLINE"></span>
-              )}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9.5px] text-neutral-500 font-bold uppercase tracking-wider">มุมมอง:</span>
-              <span className={`font-black text-[17px] leading-none px-2 py-0.5 rounded border transition-colors ${
-                price.bias === 'BULLISH' || price.bias === 'BUY'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                  : price.bias === 'BEARISH' || price.bias === 'SELL'
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                    : 'border-neutral-800 bg-neutral-900/40 text-neutral-400'
-              }`}>
-                {price.bias === 'BULLISH' || price.bias === 'BUY'
-                  ? 'ขาขึ้น'
-                  : price.bias === 'BEARISH' || price.bias === 'SELL'
-                    ? 'ขาลง'
-                    : price.bias === 'WAIT_AND_SEE'
-                      ? 'รอดู'
-                      : 'เป็นกลาง'}
+        {/* Collapsible Content Grid */}
+        <div
+          className={`relative border-t border-neutral-800/90 bg-neutral-950/95 backdrop-blur-md transition-all duration-300 ease-in-out shadow-[0_-8px_30px_rgba(0,0,0,0.8)] ${
+            footerMenuOpen ? 'max-h-[85vh] overflow-y-auto p-5' : 'max-h-12 overflow-hidden px-4 py-2'
+          }`}
+        >
+          {/* Header Toggle Line */}
+          <button
+            type="button"
+            onClick={() => setFooterMenuOpen(!footerMenuOpen)}
+            className="flex h-8 w-full items-center justify-between font-bold text-xs text-neutral-300 hover:text-amber-300 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>📂 เมนูระบบเพิ่มเติม (คลิกเพื่อ{footerMenuOpen ? 'ปิด' : 'เปิดดูเมนูทั้งหมด'})</span>
+              <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400 font-mono">
+                {navItems.length} เมนู
               </span>
             </div>
-          </div>
-
-          <div className="h-6 w-[1px] bg-neutral-800" />
-
-          {/* Refresh Button */}
-          <button 
-            type="button"
-            onClick={() => window.location.reload()} 
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-xs font-semibold text-neutral-200 active:bg-neutral-800 transition-colors"
-          >
-            <RefreshCw className="h-3 w-3" />
-            <span>อัปเดต</span>
+            <div className="flex items-center gap-1.5 text-amber-400 font-extrabold">
+              <span>{footerMenuOpen ? 'ซ่อนเมนู ▲' : 'เปิดเมนู ▼'}</span>
+            </div>
           </button>
+
+          {/* Expanded Drawer Links Grid */}
+          {footerMenuOpen && (
+            <div className="mt-4 border-t border-neutral-800/80 pt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                {navItems.map((item) => {
+                  const active = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setFooterMenuOpen(false)}
+                      className={`flex items-center gap-2.5 rounded-xl border p-3 text-xs font-bold transition-all ${
+                        active
+                          ? 'border-amber-400/60 bg-amber-500/15 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                          : 'border-neutral-800/80 bg-neutral-900/60 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-100'
+                      }`}
+                    >
+                      <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${active ? 'bg-amber-400/20 text-amber-300' : 'bg-neutral-800 text-neutral-400'}`}>
+                        <Icon className="h-4 w-4 shrink-0" />
+                      </div>
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs font-bold text-rose-300 hover:bg-rose-900/40 transition-all"
+                >
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
+                    <LogOut className="h-4 w-4 shrink-0" />
+                  </div>
+                  <span>ออกจากระบบ</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      </nav>
+      </div>
     </div>
   );
 }
