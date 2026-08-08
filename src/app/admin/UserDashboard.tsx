@@ -500,7 +500,7 @@ export default function UserDashboard() {
 
   return (
     <div className="w-full max-w-none space-y-4 sm:space-y-6">
-      <header className="flex flex-col gap-4 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 border-b border-neutral-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">AI Assistant Active</span>
@@ -509,44 +509,19 @@ export default function UserDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
           </div>
-          <h1 className="mt-1.5 text-2xl font-bold bg-gradient-to-r from-neutral-50 via-neutral-100 to-amber-200 bg-clip-text text-transparent">ผู้ช่วยวิเคราะห์เทรดทองคำ AI</h1>
-          <p className="mt-1 text-sm text-neutral-400">ใช้แผนหลักล่าสุดเพียงแผนเดียว และรอ Entry ตามเงื่อนไขก่อนตัดสินใจ</p>
+          <h1 className="mt-1 text-xl font-bold bg-gradient-to-r from-neutral-50 via-neutral-100 to-amber-200 bg-clip-text text-transparent">ผู้ช่วยวิเคราะห์เทรดทองคำ AI</h1>
         </div>
         {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={runQwenAnalysis}
-              disabled={isQwenAnalyzing}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-4 text-sm font-bold text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_20px_rgba(168,85,247,0.25)] hover:shadow-[0_0_25px_rgba(168,85,247,0.4)]"
-            >
-              {isQwenAnalyzing ? <Loader2 className="h-4 w-4 animate-spin text-purple-300" /> : <Sparkles className="h-4 w-4 text-purple-400" />}
-              🤖 สั่ง Qwen 3.5-9B วิเคราะห์กราฟสด
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await fetch('/api/system/status', { cache: 'no-store' });
-                } catch {}
-                await load(true);
-              }}
-              disabled={refreshing}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-3.5 text-sm font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]"
-            >
-              <RefreshCw className={`h-4 w-4 text-amber-400 ${refreshing ? 'animate-spin' : ''}`} />
-              ⚡️ กระตุ้นซิงค์ด่วน (Force Sync)
-            </button>
-            <button
-              type="button"
-              onClick={handleResetStats}
-              disabled={isResetting}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/60 to-neutral-900 px-3.5 text-sm font-bold text-rose-200 hover:bg-rose-900/50 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(244,63,94,0.2)]"
-            >
-              {isResetting ? <Loader2 className="h-4 w-4 animate-spin text-rose-400" /> : <History className="h-4 w-4 text-rose-400" />}
-              🔄 รีเซ็ตสถิติวัดผลใหม่
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleResetStats}
+            disabled={isResetting}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-neutral-900 px-3 text-xs font-bold text-rose-300 hover:bg-rose-950/40 disabled:opacity-50 transition-all"
+            title="รีเซ็ตสถิติทั้งหมดเพื่อเริ่มวัดผลใหม่ 0/0"
+          >
+            {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" /> : <History className="h-3.5 w-3.5 text-rose-400" />}
+            🔄 รีเซ็ตสถิติใหม่
+          </button>
         )}
       </header>
 

@@ -10,11 +10,13 @@ import {
   History,
   Layers3,
   LifeBuoy,
+  Loader2,
   LogOut,
   Menu,
   RefreshCw,
   Settings,
   ShieldAlert,
+  Sparkles,
   User,
   Users,
   WalletCards,
@@ -52,6 +54,43 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authLoading, setAuthLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [price, setPrice] = useState<PriceState>({ price: null, bias: 'NEUTRAL', isLive: false, updatedAt: null });
+  const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleRunQwen = async () => {
+    setIsQwenAnalyzing(true);
+    try {
+      const res = await fetch('/api/admin/qwen-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: 'GOLD#' }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        alert('🤖 สั่ง Qwen วิเคราะห์แผนสดสำเร็จ!');
+        window.location.reload();
+      } else {
+        alert(`⚠️ ไม่สามารถวิเคราะห์ได้: ${data.message || data.error || 'โปรดลองอีกครั้ง'}`);
+      }
+    } catch (err: any) {
+      alert(`⚠️ เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setIsQwenAnalyzing(false);
+    }
+  };
+
+  const handleTriggerSync = async () => {
+    setIsSyncing(true);
+    try {
+      await fetch('/api/admin/candles/sync', { cache: 'no-store' });
+      await fetch('/api/system/status', { cache: 'no-store' });
+      window.location.reload();
+    } catch {
+      alert('⚠️ เกิดข้อผิดพลาดในการซิงค์ราคา');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -192,26 +231,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Link>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-5">
-            <div className="text-right">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Short Action Buttons for Admin */}
+            {user?.role === 'admin' && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRunQwen}
+                  disabled={isQwenAnalyzing}
+                  className="flex items-center gap-1.5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-3 py-1.5 text-xs font-black text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                  title="สั่ง Qwen 3.5-9B วิเคราะห์กราฟสด"
+                >
+                  {isQwenAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-300" /> : <Sparkles className="h-3.5 w-3.5 text-purple-400" />}
+                  <span>🤖 สั่ง Qwen</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTriggerSync}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-3 py-1.5 text-xs font-black text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                  title="กระตุ้นดึงข้อมูลราคาล่าสุดจาก MT5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 text-amber-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>⚡ ซิงค์ราคา</span>
+                </button>
+              </div>
+            )}
+
+            <div className="text-right hidden sm:block">
               <div className="flex items-center justify-end gap-2">
                 <span className={`h-2 w-2 rounded-full ${price.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
                 <span className="text-sm font-bold tabular-nums text-neutral-100">{formatPrice(price.price)}</span>
               </div>
               <p className="text-[11px] text-neutral-400">GOLD# · {price.isLive ? 'LIVE' : 'DELAYED'}</p>
             </div>
-            <div className="hidden border-l border-neutral-800 pl-5 sm:block">
-              <p className="max-w-48 truncate text-sm text-neutral-300">{user?.email}</p>
-              <p className="text-xs text-neutral-500">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : daysRemaining === null ? 'สมาชิก' : `เหลือ ${daysRemaining} วัน`}</p>
+            <div className="hidden border-l border-neutral-800 pl-3 md:block">
+              <p className="max-w-36 truncate text-xs font-bold text-neutral-300">{user?.email}</p>
+              <p className="text-[10px] text-neutral-500">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : daysRemaining === null ? 'สมาชิก' : `เหลือ ${daysRemaining} วัน`}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setFooterMenuOpen(!footerMenuOpen)}
-              className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all shadow-[0_0_15px_rgba(245,158,11,0.15)]"
-            >
-              <Menu className="h-4 w-4" />
-              <span className="hidden sm:inline">เมนูระบบเพิ่มเติม</span>
-            </button>
           </div>
         </div>
       </header>
