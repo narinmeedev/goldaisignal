@@ -729,124 +729,149 @@ export default function UserDashboard() {
               </div>
             </div>
           </section>
-
-          {/* 3. List of Candidate Trade Plans */}
-          {(() => {
-            const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
-              id: p.id || `proactive-${p.entry}`,
-              type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
-              title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
-              entry: Number(p.entry),
-              stopLoss: Number(p.stopLoss),
-              takeProfit: Number(p.takeProfit || p.takeProfit1),
-              confidence: Number(p.confidence || 88),
-              reason: p.reason || p.notes,
-              direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
-            }));
-
-            const suggestedList = (stats?.suggestedPlans || [])
-              .filter((p: any) => p.result === 'PLAN')
-              .map((p: any) => ({
-                id: p.id,
-                type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
-                title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
-                entry: Number(p.entry),
-                stopLoss: Number(p.stopLoss),
-                takeProfit: Number(p.takeProfit1 || p.takeProfit),
-                confidence: Number(p.confidence || 88),
-                reason: p.notes,
-                direction: p.direction,
-              }));
-
-            const planMap = new Map<string, any>();
-            [...proactiveList, ...suggestedList].forEach((item) => {
-              const key = `${item.direction}_${item.entry.toFixed(2)}`;
-              if (!planMap.has(key)) planMap.set(key, item);
-            });
-
-            const currentPx = market?.currentPrice ?? 0;
-            const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
-              if (a.id === pinnedPlanId) return -1;
-              if (b.id === pinnedPlanId) return 1;
-              return Math.abs(a.entry - currentPx) - Math.abs(b.entry - currentPx);
-            });
-
-            return (
-              <section id="candidate-plans-list" className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-3">
-                <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Target className="h-4 w-4 text-amber-400" />
-                    <h3 className="text-sm font-bold text-neutral-100">
-                      📋 แผนเทรดสำรอง ({candidatePlans.length} แผน)
-                    </h3>
-                  </div>
-                </div>
-
-                {candidatePlans.length > 0 ? (
-                  <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
-                    {candidatePlans.map((item, idx) => {
-                      const isBuyPlan = item.direction === 'BUY';
-                      const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
-                      const isPinned = item.id === pinnedPlanId;
-
-                      return (
-                        <div
-                          key={item.id || idx}
-                          className={`rounded-xl border p-3 transition-all ${
-                            isPinned
-                              ? 'border-amber-400/80 bg-neutral-900 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/50'
-                              : isBuyPlan
-                                ? 'border-emerald-500/20 bg-neutral-950/80'
-                                : 'border-rose-500/20 bg-neutral-950/80'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-black uppercase ${
-                                isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                              }`}>
-                                {item.type || `${item.direction}_LIMIT`}
-                              </span>
-                              <span className="text-[10px] text-neutral-400">ห่าง ${distToEntry}</span>
-                            </div>
-
-                            <button
-                              onClick={() => togglePinPlan(item.id)}
-                              className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-extrabold ${
-                                isPinned ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-neutral-800 text-neutral-400'
-                              }`}
-                            >
-                              <Pin className={`h-2.5 w-2.5 ${isPinned ? 'rotate-45 fill-amber-400 text-amber-400' : ''}`} />
-                              {isPinned ? 'ปักแล้ว' : 'ปักหมุด'}
-                            </button>
-                          </div>
-
-                          <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[11px]">
-                            <div className="rounded bg-neutral-900 p-1.5 border border-sky-500/20">
-                              <div className="text-[9px] text-sky-400">Entry</div>
-                              <div className="font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
-                            </div>
-                            <div className="rounded bg-neutral-900 p-1.5 border border-rose-500/20">
-                              <div className="text-[9px] text-rose-400">SL</div>
-                              <div className="font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
-                            </div>
-                            <div className="rounded bg-neutral-900 p-1.5 border border-emerald-500/20">
-                              <div className="text-[9px] text-emerald-400">TP</div>
-                              <div className="font-bold text-emerald-300">${item.takeProfit.toFixed(2)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-center py-4 text-xs text-neutral-500">ไม่มีแผนสำรองค้างในระบบ</p>
-                )}
-              </section>
-            );
-          })()}
         </div>
       </div>
+
+      {/* FULL-WIDTH SECOND ROW: LIST OF CANDIDATE TRADE PLANS (5 PLANS IN HORIZONTAL GRID) */}
+      {(() => {
+        const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
+          id: p.id || `proactive-${p.entry}`,
+          type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
+          title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
+          entry: Number(p.entry),
+          stopLoss: Number(p.stopLoss),
+          takeProfit: Number(p.takeProfit || p.takeProfit1),
+          confidence: Number(p.confidence || 88),
+          reason: p.reason || p.notes,
+          direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
+        }));
+
+        const suggestedList = (stats?.suggestedPlans || [])
+          .filter((p: any) => p.result === 'PLAN')
+          .map((p: any) => ({
+            id: p.id,
+            type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
+            title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
+            entry: Number(p.entry),
+            stopLoss: Number(p.stopLoss),
+            takeProfit: Number(p.takeProfit1 || p.takeProfit),
+            confidence: Number(p.confidence || 88),
+            reason: p.notes,
+            direction: p.direction,
+          }));
+
+        const planMap = new Map<string, any>();
+        [...proactiveList, ...suggestedList].forEach((item) => {
+          const key = `${item.direction}_${item.entry.toFixed(2)}`;
+          if (!planMap.has(key)) planMap.set(key, item);
+        });
+
+        const currentPx = market?.currentPrice ?? 0;
+        const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
+          if (a.id === pinnedPlanId) return -1;
+          if (b.id === pinnedPlanId) return 1;
+          return Math.abs(a.entry - currentPx) - Math.abs(b.entry - currentPx);
+        });
+
+        return (
+          <section id="candidate-plans-list" className="w-full rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-amber-400" />
+                <h3 className="text-base font-bold text-neutral-100">
+                  📋 แผนเทรดสำรอง / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
+                </h3>
+              </div>
+              <span className="text-xs text-neutral-400">
+                เรียงเป็นแถวอิสระ สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการให้อยู่ซ้ายสุดได้
+              </span>
+            </div>
+
+            {candidatePlans.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                {candidatePlans.map((item, idx) => {
+                  const isBuyPlan = item.direction === 'BUY';
+                  const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+                  const isPinned = item.id === pinnedPlanId;
+                  const isEarlyTrend = item.isEarlyTrend || idx === 0 || item.reason?.includes('CHoCH') || item.reason?.includes('ต้นเทรนด์');
+
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className={`relative flex flex-col justify-between rounded-xl border p-3.5 transition-all duration-300 hover:border-neutral-700 ${
+                        isPinned
+                          ? 'border-amber-400/80 bg-neutral-900 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/50'
+                          : isBuyPlan
+                            ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/20'
+                            : 'border-rose-500/20 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/20'
+                      }`}
+                    >
+                      <div>
+                        {/* Card Header: Type Badge & Pin Button */}
+                        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-black uppercase ${
+                              isBuyPlan ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            }`}>
+                              {isBuyPlan ? <ArrowUp className="mr-1 h-3 w-3 inline" /> : <ArrowDown className="mr-1 h-3 w-3 inline" />}
+                              {item.type || `${item.direction}_LIMIT`}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => togglePinPlan(item.id)}
+                            title={isPinned ? 'ยกเลิกปักหมุด' : 'ปักหมุดแผนนี้'}
+                            className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-extrabold transition-all ${
+                              isPinned ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-neutral-800 text-neutral-400 hover:text-amber-300'
+                            }`}
+                          >
+                            <Pin className={`h-2.5 w-2.5 ${isPinned ? 'rotate-45 fill-amber-400 text-amber-400' : ''}`} />
+                            {isPinned ? 'ปักแล้ว' : 'ปักหมุด'}
+                          </button>
+                        </div>
+
+                        {/* Sub Header: Distance & Time */}
+                        <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-400">
+                          <span>ห่างราคาปัจจุบัน: <strong className="text-neutral-200 tabular-nums">${distToEntry}</strong></span>
+                          {isEarlyTrend && (
+                            <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30">
+                              🔥 ต้นเทรนด์
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Price Grid */}
+                        <div className="mt-2.5 grid grid-cols-3 gap-1 text-center text-[11px]">
+                          <div className="rounded bg-neutral-950 p-1.5 border border-sky-500/20">
+                            <div className="text-[9px] text-sky-400 font-bold">Entry</div>
+                            <div className="font-bold text-neutral-100">${item.entry.toFixed(2)}</div>
+                          </div>
+                          <div className="rounded bg-neutral-950 p-1.5 border border-rose-500/20">
+                            <div className="text-[9px] text-rose-400 font-bold">SL</div>
+                            <div className="font-bold text-rose-300">${item.stopLoss.toFixed(2)}</div>
+                          </div>
+                          <div className="rounded bg-neutral-950 p-1.5 border border-emerald-500/20">
+                            <div className="text-[9px] text-emerald-400 font-bold">TP</div>
+                            <div className="font-bold text-emerald-300">${item.takeProfit.toFixed(2)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {(item.reason || item.title) && (
+                        <div className="mt-2.5 text-[10px] leading-4 text-neutral-300 border-t border-neutral-800/60 pt-2 font-medium line-clamp-2">
+                          {renderHighlightedReason(item.reason || item.title)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-center py-4 text-xs text-neutral-500">ไม่มีแผนสำรองค้างในระบบ</p>
+            )}
+          </section>
+        );
+      })()}
 
       {/* BOTTOM SECTION: PERFORMANCE STATISTICS & TRACK RECORD */}
       <div id="stats-overview" className="mt-6 space-y-6">
