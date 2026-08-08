@@ -499,7 +499,7 @@ export default function UserDashboard() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+    <div className="w-full max-w-none space-y-4 sm:space-y-6">
       <header className="flex flex-col gap-4 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -1016,6 +1016,6 @@ export default function UserDashboard() {
         <p>การเทรดทองคำมีความเสี่ยง ใช้ Stop Loss และขนาดสัญญาที่เหมาะกับเงินทุนทุกครั้ง</p>
         <Link href="/admin/support" className="inline-flex items-center gap-2 font-medium text-neutral-300 hover:text-white"><LifeBuoy className="h-4 w-4" /> ติดต่อทีมดูแล</Link>
       </footer>
-    </main>
+    </div>
   );
 }
