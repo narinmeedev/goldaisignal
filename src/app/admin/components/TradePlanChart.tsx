@@ -67,41 +67,59 @@ export default function TradePlanChart({
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const [selectedTF, setSelectedTF] = useState<'M5' | 'M15' | 'H1'>('M15');
 
-  // Select target candle series based on selected timeframe tab
-  const activeSourceCandles = useMemo(() => {
-    if (selectedTF === 'M5' && m5Candles && m5Candles.length > 0) return m5Candles;
-    if (selectedTF === 'H1' && h1Candles && h1Candles.length > 0) return h1Candles;
-    if (m15Candles && m15Candles.length > 0) return m15Candles;
-    return candles;
-  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles]);
-
-  // Process real candles from database
+  // Process real candles or resample for selected timeframe
   const chartCandles = useMemo(() => {
-    if (activeSourceCandles && activeSourceCandles.length > 0) {
-      // Sort chronologically ascending
-      const sorted = [...activeSourceCandles].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-      return sorted.slice(-30);
+    let sourceList: Candle[] = [];
+    if (selectedTF === 'M5' && m5Candles && m5Candles.length > 0) {
+      sourceList = m5Candles;
+    } else if (selectedTF === 'H1' && h1Candles && h1Candles.length > 0) {
+      sourceList = h1Candles;
+    } else if (selectedTF === 'M15' && m15Candles && m15Candles.length > 0) {
+      sourceList = m15Candles;
+    } else if (candles && candles.length > 0) {
+      sourceList = candles;
     }
 
-    // Fallback baseline when database candles are loading or empty
+    if (sourceList.length > 0) {
+      const sorted = [...sourceList].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+      return sorted.slice(-30).map((c) => {
+        let tLabel = c.time;
+        try {
+          const d = new Date(c.time);
+          if (!isNaN(d.getTime())) {
+            tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+          }
+        } catch {}
+        return {
+          ...c,
+          time: tLabel
+        };
+      });
+    }
+
+    // Dynamic MT5-style fallback baseline tailored per timeframe when database is loading
     const base = currentPrice || plan?.entry || 4040.0;
     const generated: Candle[] = [];
     const now = Date.now();
     const intervalMinutes = selectedTF === 'M5' ? 5 : selectedTF === 'H1' ? 60 : 15;
 
     for (let i = 29; i >= 0; i--) {
-      const timeStr = new Date(now - i * intervalMinutes * 60 * 1000).toLocaleTimeString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
+      const d = new Date(now - i * intervalMinutes * 60 * 1000);
+      const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+      
+      const noise = Math.sin(i * 0.5) * (selectedTF === 'H1' ? 4.0 : selectedTF === 'M15' ? 2.2 : 1.1);
+      const openPx = Number((base + noise).toFixed(2));
+      const closePx = Number((base + Math.cos(i * 0.4) * (selectedTF === 'H1' ? 3.2 : selectedTF === 'M15' ? 1.8 : 0.9)).toFixed(2));
+      const highPx = Number((Math.max(openPx, closePx) + (selectedTF === 'H1' ? 2.5 : selectedTF === 'M15' ? 1.4 : 0.7)).toFixed(2));
+      const lowPx = Number((Math.min(openPx, closePx) - (selectedTF === 'H1' ? 2.5 : selectedTF === 'M15' ? 1.4 : 0.7)).toFixed(2));
+
       generated.push({
         time: timeStr,
-        open: base,
-        high: base + 0.5,
-        low: base - 0.5,
-        close: base,
-        volume: 100
+        open: openPx,
+        high: highPx,
+        low: lowPx,
+        close: closePx,
+        volume: Math.floor(80 + Math.random() * 200)
       });
     }
 
@@ -112,7 +130,7 @@ export default function TradePlanChart({
     }
 
     return generated;
-  }, [activeSourceCandles, currentPrice, plan?.entry, selectedTF]);
+  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles, currentPrice, plan?.entry]);
 
   // Price scale calculation
   const priceMetrics = useMemo(() => {
