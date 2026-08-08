@@ -682,60 +682,52 @@ export default function UserDashboard() {
               </section>
             );
           })()}
+
+          {/* 2. Market Structure & Trend Confluence (BACK IN RIGHT COLUMN) */}
+          <section className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-3">
+            <div className="flex items-center gap-2 border-b border-neutral-800 pb-2.5">
+              <Activity className="h-4 w-4 text-amber-400" />
+              <h3 className="font-bold text-sm text-neutral-100">🎯 เทรนด์ตลาด & โครงสร้างราคา (MTF Confluence)</h3>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5 text-center">
+              {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
+                <div key={timeframe} className="rounded-lg border border-neutral-800/80 bg-neutral-955/60 p-2">
+                  <p className="text-[10px] text-neutral-500 font-bold">{timeframe}</p>
+                  <p className={`mt-0.5 text-xs font-black ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-400' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-400' : 'text-neutral-400'}`}>
+                    {biasLabel[bias ?? 'NEUTRAL'] ?? bias}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2.5">
+                <p className="flex items-center gap-1 text-xs font-bold text-emerald-400"><TrendingUp className="h-3.5 w-3.5" /> 🟢 แนวรับ (Support)</p>
+                <div className="mt-1.5 space-y-1 text-xs">
+                  {supportZones.length ? supportZones.slice(0, 2).map((zone, index) => (
+                    <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
+                      <span>{zone.timeframe || 'Key'}</span>
+                      <span className="font-bold text-emerald-300">${formatPrice(zone.priceMax)}</span>
+                    </div>
+                  )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-rose-500/20 bg-rose-950/20 p-2.5">
+                <p className="flex items-center gap-1 text-xs font-bold text-rose-400"><TrendingDown className="h-3.5 w-3.5" /> 🔴 แนวต้าน (Resistance)</p>
+                <div className="mt-1.5 space-y-1 text-xs">
+                  {resistanceZones.length ? resistanceZones.slice(0, 2).map((zone, index) => (
+                    <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
+                      <span>{zone.timeframe || 'Key'}</span>
+                      <span className="font-bold text-rose-300">${formatPrice(zone.priceMin)}</span>
+                    </div>
+                  )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
-
-      {/* FULL-WIDTH MARKET STRUCTURE & TREND CONFLUENCE SECTION */}
-      <section className="w-full rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
-        <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-          <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-amber-400" />
-            <h3 className="font-bold text-base text-neutral-100">🎯 เทรนด์ตลาด & โครงสร้างราคา (MTF Confluence & Key Zones)</h3>
-          </div>
-          <span className="text-xs text-neutral-400">วิเคราะห์ตามลำดับกรอบเวลา H4, H1, M15, M5</span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
-          {/* MTF Biases (5 Cols) */}
-          <div className="lg:col-span-5 grid grid-cols-5 gap-1.5 text-center">
-            {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
-              <div key={timeframe} className="rounded-lg border border-neutral-800/80 bg-neutral-955/60 p-2.5">
-                <p className="text-[10px] text-neutral-500 font-bold">{timeframe}</p>
-                <p className={`mt-0.5 text-xs font-black ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-400' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-400' : 'text-neutral-400'}`}>
-                  {biasLabel[bias ?? 'NEUTRAL'] ?? bias}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Key Support & Resistance (7 Cols) */}
-          <div className="lg:col-span-7 grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-400"><TrendingUp className="h-4 w-4" /> 🟢 แนวรับสำคัญ (Support Zones)</p>
-              <div className="mt-2 space-y-1 text-xs">
-                {supportZones.length ? supportZones.slice(0, 2).map((zone, index) => (
-                  <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
-                    <span>{zone.timeframe || 'Key Zone'}</span>
-                    <span className="font-bold text-emerald-300">${formatPrice(zone.priceMax)}</span>
-                  </div>
-                )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-rose-500/20 bg-rose-950/20 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-bold text-rose-400"><TrendingDown className="h-4 w-4" /> 🔴 แนวต้านสำคัญ (Resistance Zones)</p>
-              <div className="mt-2 space-y-1 text-xs">
-                {resistanceZones.length ? resistanceZones.slice(0, 2).map((zone, index) => (
-                  <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
-                    <span>{zone.timeframe || 'Key Zone'}</span>
-                    <span className="font-bold text-rose-300">${formatPrice(zone.priceMin)}</span>
-                  </div>
-                )) : <span className="text-[11px] text-neutral-500">รอโซนใหม่</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* FULL-WIDTH SECOND ROW: LIST OF CANDIDATE TRADE PLANS (5 PLANS IN HORIZONTAL GRID) */}
       {(() => {
