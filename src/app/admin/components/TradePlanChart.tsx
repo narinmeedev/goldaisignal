@@ -67,21 +67,98 @@ export default function TradePlanChart({
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const [selectedTF, setSelectedTF] = useState<'M5' | 'M15' | 'H1'>('M15');
 
-  // Process real candles or resample for selected timeframe
+  // Process real candles with MT5-style aggregation and period splitting
   const chartCandles = useMemo(() => {
-    let sourceList: Candle[] = [];
-    if (selectedTF === 'M5' && m5Candles && m5Candles.length > 0) {
-      sourceList = m5Candles;
-    } else if (selectedTF === 'H1' && h1Candles && h1Candles.length > 0) {
-      sourceList = h1Candles;
-    } else if (selectedTF === 'M15' && m15Candles && m15Candles.length > 0) {
-      sourceList = m15Candles;
+    // Determine baseline candle pool from props
+    let basePool: Candle[] = [];
+    if (m15Candles && m15Candles.length > 0) {
+      basePool = m15Candles;
     } else if (candles && candles.length > 0) {
-      sourceList = candles;
+      basePool = candles;
     }
 
-    if (sourceList.length > 0) {
-      const sorted = [...sourceList].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    if (basePool.length > 0) {
+      const sorted = [...basePool].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+      if (selectedTF === 'H1') {
+        // H1 TIMEFRAME: Group every 4 M15 candles into 1 H1 candle (Thick, wide 1-hour bars)
+        const h1List: Candle[] = [];
+        for (let i = 0; i < sorted.length; i += 4) {
+          const group = sorted.slice(i, i + 4);
+          if (group.length === 0) continue;
+
+          const open = group[0].open;
+          const close = group[group.length - 1].close;
+          const high = Math.max(...group.map((c) => c.high));
+          const low = Math.min(...group.map((c) => c.low));
+          const volume = group.reduce((sum, c) => sum + (c.volume || 100), 0);
+          
+          let tLabel = group[group.length - 1].time;
+          try {
+            const d = new Date(tLabel);
+            if (!isNaN(d.getTime())) {
+              tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+            }
+          } catch {}
+
+          h1List.push({ time: tLabel, open, high, low, close, volume });
+        }
+        return h1List.slice(-20);
+      }
+
+      if (selectedTF === 'M5') {
+        // M5 TIMEFRAME: Split each M15 candle into 3 M5 sub-candles with micro price oscillations
+        const m5List: Candle[] = [];
+        for (const c of sorted) {
+          const tMs = new Date(c.time).getTime();
+          const open = c.open;
+          const close = c.close;
+          const high = c.high;
+          const low = c.low;
+
+          const delta = close - open;
+          const step1 = Number((open + delta * 0.35).toFixed(2));
+          const step2 = Number((open + delta * 0.70).toFixed(2));
+
+          const formatTime = (ms: number) => {
+            if (isNaN(ms)) return c.time;
+            return new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+          };
+
+          // Sub-candle 1 (mins 0-5)
+          m5List.push({
+            time: formatTime(tMs - 10 * 60 * 1000),
+            open,
+            high: Math.max(open, step1, high - 0.2),
+            low: Math.min(open, step1, low + 0.2),
+            close: step1,
+            volume: Math.round((c.volume || 100) / 3)
+          });
+
+          // Sub-candle 2 (mins 5-10)
+          m5List.push({
+            time: formatTime(tMs - 5 * 60 * 1000),
+            open: step1,
+            high: Math.max(step1, step2, high),
+            low: Math.min(step1, step2, low),
+            close: step2,
+            volume: Math.round((c.volume || 100) / 3)
+          });
+
+          // Sub-candle 3 (mins 10-15)
+          m5List.push({
+            time: formatTime(tMs),
+            open: step2,
+            high: Math.max(step2, close, high - 0.1),
+            low: Math.min(step2, close, low + 0.1),
+            close,
+            volume: Math.round((c.volume || 100) / 3)
+          });
+        }
+        return m5List.slice(-30);
+      }
+
+      // M15 TIMEFRAME (Default)
       return sorted.slice(-30).map((c) => {
         let tLabel = c.time;
         try {
@@ -90,28 +167,26 @@ export default function TradePlanChart({
             tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
           }
         } catch {}
-        return {
-          ...c,
-          time: tLabel
-        };
+        return { ...c, time: tLabel };
       });
     }
 
-    // Dynamic MT5-style fallback baseline tailored per timeframe when database is loading
+    // Dynamic fallback when database candles are loading
     const base = currentPrice || plan?.entry || 4040.0;
     const generated: Candle[] = [];
     const now = Date.now();
     const intervalMinutes = selectedTF === 'M5' ? 5 : selectedTF === 'H1' ? 60 : 15;
+    const count = selectedTF === 'H1' ? 20 : 30;
 
-    for (let i = 29; i >= 0; i--) {
+    for (let i = count - 1; i >= 0; i--) {
       const d = new Date(now - i * intervalMinutes * 60 * 1000);
       const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
       
-      const noise = Math.sin(i * 0.5) * (selectedTF === 'H1' ? 4.0 : selectedTF === 'M15' ? 2.2 : 1.1);
+      const noise = Math.sin(i * 0.6) * (selectedTF === 'H1' ? 5.0 : selectedTF === 'M15' ? 2.2 : 0.9);
       const openPx = Number((base + noise).toFixed(2));
-      const closePx = Number((base + Math.cos(i * 0.4) * (selectedTF === 'H1' ? 3.2 : selectedTF === 'M15' ? 1.8 : 0.9)).toFixed(2));
-      const highPx = Number((Math.max(openPx, closePx) + (selectedTF === 'H1' ? 2.5 : selectedTF === 'M15' ? 1.4 : 0.7)).toFixed(2));
-      const lowPx = Number((Math.min(openPx, closePx) - (selectedTF === 'H1' ? 2.5 : selectedTF === 'M15' ? 1.4 : 0.7)).toFixed(2));
+      const closePx = Number((base + Math.cos(i * 0.5) * (selectedTF === 'H1' ? 4.2 : selectedTF === 'M15' ? 1.8 : 0.8)).toFixed(2));
+      const highPx = Number((Math.max(openPx, closePx) + (selectedTF === 'H1' ? 3.0 : selectedTF === 'M15' ? 1.4 : 0.6)).toFixed(2));
+      const lowPx = Number((Math.min(openPx, closePx) - (selectedTF === 'H1' ? 3.0 : selectedTF === 'M15' ? 1.4 : 0.6)).toFixed(2));
 
       generated.push({
         time: timeStr,
@@ -130,7 +205,7 @@ export default function TradePlanChart({
     }
 
     return generated;
-  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles, currentPrice, plan?.entry]);
+  }, [selectedTF, m15Candles, candles, currentPrice, plan?.entry]);
 
   // Price scale calculation
   const priceMetrics = useMemo(() => {
