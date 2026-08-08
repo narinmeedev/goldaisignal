@@ -500,30 +500,7 @@ export default function UserDashboard() {
 
   return (
     <div className="w-full max-w-none space-y-4 sm:space-y-6">
-      <header className="flex flex-col gap-3 border-b border-neutral-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">AI Assistant Active</span>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-          </div>
-          <h1 className="mt-1 text-xl font-bold bg-gradient-to-r from-neutral-50 via-neutral-100 to-amber-200 bg-clip-text text-transparent">ผู้ช่วยวิเคราะห์เทรดทองคำ AI</h1>
-        </div>
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={handleResetStats}
-            disabled={isResetting}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-neutral-900 px-3 text-xs font-bold text-rose-300 hover:bg-rose-950/40 disabled:opacity-50 transition-all"
-            title="รีเซ็ตสถิติทั้งหมดเพื่อเริ่มวัดผลใหม่ 0/0"
-          >
-            {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" /> : <History className="h-3.5 w-3.5 text-rose-400" />}
-            🔄 รีเซ็ตสถิติใหม่
-          </button>
-        )}
-      </header>
+
 
       {/* Qwen 3.5-9B Analysis Modal */}
       {showQwenModal && (

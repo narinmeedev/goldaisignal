@@ -92,6 +92,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   };
 
+  const [isResetting, setIsResetting] = useState(false);
+  const handleResetStats = async () => {
+    if (!confirm('⚠️ ยืนยันการรีเซ็ตสถิติวัดผลทั้งหมด? (ประวัติการเปิดไม้และสัญญาณที่ผ่านมาจะถูกล้างเพื่อเริ่มนับ 0/0 ใหม่)')) {
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/admin/trades', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        alert('🔄 รีเซ็ตสถิติวัดผลเรียบร้อยแล้ว! หน้าจอจะเริ่มนับ win rate 0/0 ใหม่');
+        window.location.reload();
+      } else {
+        alert(`⚠️ เกิดข้อผิดพลาด: ${data.message || 'ไม่สามารถรีเซ็ตสถิติได้'}`);
+      }
+    } catch (err: any) {
+      alert(`⚠️ เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const loadSession = async () => {
@@ -225,7 +247,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 GA
               </div>
               <div>
-                <p className="truncate text-sm font-bold text-neutral-100">Gold AI Signal</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-bold text-neutral-100">Gold AI Signal</p>
+                  <span className="hidden sm:flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.2 text-[9px] font-black text-emerald-400">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
+                    AI Assistant Active
+                  </span>
+                </div>
                 <p className="text-[10px] text-amber-400/80 font-mono">XAUUSD Live Scalp Engine</p>
               </div>
             </Link>
@@ -234,12 +265,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Short Action Buttons for Admin */}
             {user?.role === 'admin' && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handleRunQwen}
                   disabled={isQwenAnalyzing}
-                  className="flex items-center gap-1.5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-3 py-1.5 text-xs font-black text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                  className="flex items-center gap-1 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-2.5 py-1 text-xs font-black text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(168,85,247,0.2)]"
                   title="สั่ง Qwen 3.5-9B วิเคราะห์กราฟสด"
                 >
                   {isQwenAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-300" /> : <Sparkles className="h-3.5 w-3.5 text-purple-400" />}
@@ -250,11 +281,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   type="button"
                   onClick={handleTriggerSync}
                   disabled={isSyncing}
-                  className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-3 py-1.5 text-xs font-black text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                  className="flex items-center gap-1 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-2.5 py-1 text-xs font-black text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
                   title="กระตุ้นดึงข้อมูลราคาล่าสุดจาก MT5"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 text-amber-400 ${isSyncing ? 'animate-spin' : ''}`} />
                   <span>⚡ ซิงค์ราคา</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetStats}
+                  disabled={isResetting}
+                  className="hidden md:flex items-center gap-1 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/60 to-neutral-900 px-2.5 py-1 text-xs font-black text-rose-200 hover:bg-rose-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(244,63,94,0.15)]"
+                  title="รีเซ็ตสถิติทั้งหมดเพื่อเริ่มวัดผลใหม่ 0/0"
+                >
+                  {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" /> : <History className="h-3.5 w-3.5 text-rose-400" />}
+                  <span>🔄 รีเซ็ตสถิติ</span>
                 </button>
               </div>
             )}
