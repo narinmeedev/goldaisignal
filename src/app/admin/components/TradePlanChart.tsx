@@ -45,6 +45,9 @@ interface TradePlanChartProps {
   plan: ActivePlan | null;
   currentPrice: number | null;
   candles?: Candle[];
+  m5Candles?: Candle[];
+  m15Candles?: Candle[];
+  h1Candles?: Candle[];
   timeframe?: string;
   marketSession?: string;
   bias?: string;
@@ -54,17 +57,29 @@ export default function TradePlanChart({
   plan,
   currentPrice,
   candles = [],
+  m5Candles = [],
+  m15Candles = [],
+  h1Candles = [],
   timeframe = 'M15',
   marketSession = 'ปลายตลาดนิวยอร์ก',
   bias = 'NEUTRAL'
 }: TradePlanChartProps) {
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
+  const [selectedTF, setSelectedTF] = useState<'M5' | 'M15' | 'H1'>('M15');
+
+  // Select target candle series based on selected timeframe tab
+  const activeSourceCandles = useMemo(() => {
+    if (selectedTF === 'M5' && m5Candles && m5Candles.length > 0) return m5Candles;
+    if (selectedTF === 'H1' && h1Candles && h1Candles.length > 0) return h1Candles;
+    if (m15Candles && m15Candles.length > 0) return m15Candles;
+    return candles;
+  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles]);
 
   // Process real candles from database
   const chartCandles = useMemo(() => {
-    if (candles && candles.length > 0) {
+    if (activeSourceCandles && activeSourceCandles.length > 0) {
       // Sort chronologically ascending
-      const sorted = [...candles].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+      const sorted = [...activeSourceCandles].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
       return sorted.slice(-30);
     }
 
@@ -72,9 +87,10 @@ export default function TradePlanChart({
     const base = currentPrice || plan?.entry || 4040.0;
     const generated: Candle[] = [];
     const now = Date.now();
+    const intervalMinutes = selectedTF === 'M5' ? 5 : selectedTF === 'H1' ? 60 : 15;
 
     for (let i = 29; i >= 0; i--) {
-      const timeStr = new Date(now - i * 15 * 60 * 1000).toLocaleTimeString('th-TH', {
+      const timeStr = new Date(now - i * intervalMinutes * 60 * 1000).toLocaleTimeString('th-TH', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
@@ -96,7 +112,7 @@ export default function TradePlanChart({
     }
 
     return generated;
-  }, [candles, currentPrice, plan?.entry]);
+  }, [activeSourceCandles, currentPrice, plan?.entry, selectedTF]);
 
   // Price scale calculation
   const priceMetrics = useMemo(() => {
@@ -127,7 +143,7 @@ export default function TradePlanChart({
 
   return (
     <div className="w-full rounded-2xl border border-neutral-800/90 bg-gradient-to-b from-neutral-900/90 via-neutral-950 to-neutral-900/90 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] space-y-4">
-      {/* Card Header */}
+      {/* Card Header with Interactive Timeframe Selector */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
         <div className="flex items-center gap-3">
           <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
@@ -150,10 +166,22 @@ export default function TradePlanChart({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1 text-xs font-semibold text-neutral-400">
-            กรอบเวลา {timeframe}
-          </span>
+        {/* Interactive Timeframe Toggle Tabs */}
+        <div className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-955 p-1">
+          <span className="text-[10px] font-bold text-neutral-400 px-1.5">เลือกกรอบเวลา:</span>
+          {(['M5', 'M15', 'H1'] as const).map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setSelectedTF(tf)}
+              className={`rounded-lg px-3 py-1 text-xs font-black transition-all ${
+                selectedTF === tf
+                  ? 'bg-amber-500 text-neutral-955 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+                  : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
+              }`}
+            >
+              {tf}
+            </button>
+          ))}
         </div>
       </div>
 

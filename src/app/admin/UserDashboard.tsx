@@ -112,6 +112,9 @@ interface DashboardStats {
     timeframeBiases?: { D1?: string; H1?: string; M15?: string; M5?: string };
     marketSession?: string;
     candles?: any[];
+    m5Candles?: any[];
+    m15Candles?: any[];
+    h1Candles?: any[];
     proactivePlans?: any[];
   }>;
   mt5Connection?: {
@@ -605,6 +608,9 @@ export default function UserDashboard() {
               plan={plan}
               currentPrice={market?.currentPrice ?? null}
               candles={market?.candles || []}
+              m5Candles={market?.m5Candles || []}
+              m15Candles={market?.m15Candles || []}
+              h1Candles={market?.h1Candles || []}
               timeframe="M15"
               marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
               bias={market?.bias ?? 'NEUTRAL'}
