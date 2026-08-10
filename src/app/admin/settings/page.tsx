@@ -10,6 +10,7 @@ interface FormState {
   paidDuration: string;
   fundamentalBias: string;
   newsWarning: string;
+  lineNotifyToken: string;
   lineChannelId: string;
   lineChannelSecret: string;
   lineSecretConfigured: boolean;
@@ -21,6 +22,7 @@ const initialState: FormState = {
   paidDuration: String(PAID_DURATION_DAYS),
   fundamentalBias: 'NEUTRAL',
   newsWarning: '',
+  lineNotifyToken: '',
   lineChannelId: '',
   lineChannelSecret: '',
   lineSecretConfigured: false,
@@ -46,9 +48,10 @@ export default function SettingsPage() {
           paidDuration: settings.PAID_DURATION_DAYS || String(PAID_DURATION_DAYS),
           fundamentalBias: settings.FUNDAMENTAL_BIAS_XAUUSD || 'NEUTRAL',
           newsWarning: settings.FUNDAMENTAL_NEWS_WARNING_XAUUSD || '',
+          lineNotifyToken: settings.LINE_NOTIFY_TOKEN || '',
           lineChannelId: settings.LINE_CHANNEL_ID || '',
           lineChannelSecret: '',
-          lineSecretConfigured: settings.LINE_CHANNEL_SECRET_CONFIGURED === 'true',
+          lineSecretConfigured: settings.LINE_CHANNEL_SECRET_CONFIGURED === 'true' || Boolean(settings.LINE_NOTIFY_TOKEN),
         });
       } catch (error) {
         setNotice({ type: 'error', text: error instanceof Error ? error.message : 'โหลดการตั้งค่าไม่สำเร็จ' });
@@ -70,6 +73,7 @@ export default function SettingsPage() {
       PAID_DURATION_DAYS: form.paidDuration,
       FUNDAMENTAL_BIAS_XAUUSD: form.fundamentalBias,
       FUNDAMENTAL_NEWS_WARNING_XAUUSD: form.newsWarning.trim(),
+      LINE_NOTIFY_TOKEN: form.lineNotifyToken.trim(),
       LINE_CHANNEL_ID: form.lineChannelId.trim(),
     };
     if (form.lineChannelSecret.trim()) settings.LINE_CHANNEL_SECRET = form.lineChannelSecret.trim();
@@ -81,8 +85,8 @@ export default function SettingsPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ');
-      setForm((current) => ({ ...current, lineChannelSecret: '', lineSecretConfigured: current.lineSecretConfigured || Boolean(settings.LINE_CHANNEL_SECRET) }));
-      setNotice({ type: 'success', text: 'บันทึกการตั้งค่าที่ใช้งานจริงเรียบร้อยแล้ว' });
+      setForm((current) => ({ ...current, lineChannelSecret: '', lineSecretConfigured: current.lineSecretConfigured || Boolean(settings.LINE_CHANNEL_SECRET || settings.LINE_NOTIFY_TOKEN) }));
+      setNotice({ type: 'success', text: 'บันทึกการตั้งค่า LINE และระบบเรียบร้อยแล้ว' });
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ' });
     } finally {
@@ -97,7 +101,7 @@ export default function SettingsPage() {
       const response = await fetch('/api/admin/test-notification', { method: 'POST' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'ส่งข้อความทดสอบไม่สำเร็จ');
-      setNotice({ type: 'success', text: data.message || 'LINE Messaging API พร้อมใช้งาน' });
+      setNotice({ type: 'success', text: data.message || 'LINE พร้อมใช้งาน' });
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'ส่งข้อความทดสอบไม่สำเร็จ' });
     } finally {
@@ -114,7 +118,7 @@ export default function SettingsPage() {
       <header className="border-b border-neutral-800 pb-5">
         <div className="flex items-center gap-2 text-amber-400"><Settings className="h-5 w-5" /><span className="text-xs font-semibold uppercase">Operations</span></div>
         <h1 className="mt-2 text-2xl font-bold">ตั้งค่าบริการ</h1>
-        <p className="mt-1 text-sm text-neutral-400">เฉพาะค่าที่มีผลต่อบริการสมาชิก แผนทองคำ และการส่ง LINE</p>
+        <p className="mt-1 text-sm text-neutral-400">เฉพาะค่าที่มีผลต่อบริการสมาชิก แผนทองคำ และการส่ง LINE Notification</p>
       </header>
 
       {notice && <div className={`rounded-lg border p-4 text-sm ${notice.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}>{notice.text}</div>}
@@ -146,17 +150,53 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-        <div className="flex gap-3"><Bell className="mt-0.5 h-5 w-5 text-amber-400" /><div><h2 className="font-bold">LINE Messaging API</h2><p className="mt-1 text-sm text-neutral-400">ส่งแผนใหม่และผล TP/SL ให้สมาชิกที่เชื่อม LINE และยังมีสิทธิ์ใช้งาน</p></div></div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm text-neutral-300">Channel ID<input value={form.lineChannelId} onChange={(event) => update('lineChannelId', event.target.value)} className={`${inputClass} mt-2 font-mono`} autoComplete="off" /></label>
-          <label className="text-sm text-neutral-300">Channel Secret<input type="password" value={form.lineChannelSecret} onChange={(event) => update('lineChannelSecret', event.target.value)} className={`${inputClass} mt-2 font-mono`} placeholder={form.lineSecretConfigured ? 'ตั้งค่าแล้ว · ใส่ค่าใหม่เมื่อต้องการเปลี่ยน' : 'ยังไม่ได้ตั้งค่า'} autoComplete="new-password" /></label>
+      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5 space-y-4">
+        <div className="flex gap-3">
+          <Bell className="mt-0.5 h-5 w-5 text-amber-400" />
+          <div>
+            <h2 className="font-bold">การตั้งค่าแจ้งเตือน LINE (LINE Notify & Bot API)</h2>
+            <p className="mt-1 text-sm text-neutral-400">ส่งสัญญาณแผนเข้าเทรดและผล TP/SL เข้ากลุ่ม LINE หรือสมาชิกที่มีสิทธิ์ใช้งาน</p>
+          </div>
         </div>
-        <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm"><p className="text-neutral-500">Webhook URL</p><code className="mt-1 block break-all text-amber-300">https://goldaisig.com/api/webhooks/line</code></div>
-        <button type="button" onClick={testLine} disabled={testing || !form.lineSecretConfigured} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/30 px-4 text-sm font-medium text-amber-300 disabled:cursor-not-allowed disabled:opacity-40">{testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}ส่งทดสอบหาแอดมิน</button>
+
+        <div>
+          <label className="text-sm font-semibold text-amber-300">1. LINE Notify Token (แนะนำสำหรับส่งเข้ากลุ่มแอดมิน/กลุ่มสมาชิกง่ายๆ)</label>
+          <input
+            type="text"
+            value={form.lineNotifyToken}
+            onChange={(event) => update('lineNotifyToken', event.target.value)}
+            className={`${inputClass} mt-1.5 font-mono text-xs`}
+            placeholder="ใส่ LINE Notify Token (เช่น Bearer Token ที่สร้างจาก notify-bot.line.me)"
+            autoComplete="off"
+          />
+          <p className="mt-1 text-[11px] text-neutral-500">หากใส่ Token นี้ ระบบจะส่งสัญญาณแผนเทรดสดเข้า LINE Notify ของคุณ/กลุ่ม LINE โดยตรงทันที</p>
+        </div>
+
+        <div className="pt-2 border-t border-neutral-800">
+          <label className="text-sm font-semibold text-neutral-300">2. LINE Messaging API (สำหรับส่ง Push Direct หาผู้ใช้แต่ละราย)</label>
+          <div className="mt-2 grid gap-4 sm:grid-cols-2">
+            <label className="text-xs text-neutral-400">Channel ID<input value={form.lineChannelId} onChange={(event) => update('lineChannelId', event.target.value)} className={`${inputClass} mt-1 font-mono`} autoComplete="off" /></label>
+            <label className="text-xs text-neutral-400">Channel Secret<input type="password" value={form.lineChannelSecret} onChange={(event) => update('lineChannelSecret', event.target.value)} className={`${inputClass} mt-1 font-mono`} placeholder={form.lineSecretConfigured ? 'ตั้งค่าแล้ว · ใส่ค่าใหม่เมื่อต้องการเปลี่ยน' : 'ยังไม่ได้ตั้งค่า'} autoComplete="new-password" /></label>
+          </div>
+        </div>
+
+        <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm">
+          <p className="text-neutral-500 text-xs">LINE Bot Webhook URL</p>
+          <code className="mt-0.5 block break-all text-amber-300 font-mono text-xs">https://goldaisig.com/api/webhooks/line</code>
+        </div>
+
+        <button type="button" onClick={testLine} disabled={testing || !form.lineSecretConfigured} className="mt-2 inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/30 px-4 text-sm font-medium text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40">
+          {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          ทดสอบส่งข้อความ LINE
+        </button>
       </section>
 
-      <div className="flex justify-end"><button type="button" onClick={save} disabled={saving} className="inline-flex h-11 items-center gap-2 rounded-lg bg-amber-400 px-5 text-sm font-bold text-neutral-950 hover:bg-amber-300 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}บันทึกการตั้งค่า</button></div>
+      <div className="flex justify-end">
+        <button type="button" onClick={save} disabled={saving} className="inline-flex h-11 items-center gap-2 rounded-lg bg-amber-400 px-5 text-sm font-bold text-neutral-950 hover:bg-amber-300 disabled:opacity-50">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          บันทึกการตั้งค่า
+        </button>
+      </div>
     </main>
   );
 }

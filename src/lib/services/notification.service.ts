@@ -74,21 +74,53 @@ async function sendLinePushMessage(accessToken: string, to: string, text: string
   }
 }
 
+async function sendLineNotifyMessage(token: string, text: string) {
+  try {
+    const params = new URLSearchParams();
+    params.append('message', text);
+
+    const res = await fetch('https://notify-api.line.me/api/notify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Bearer ${token.trim()}`,
+      },
+      body: params,
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`LINE Notify returned status ${res.status}: ${errText}`);
+      return { success: false, status: res.status, error: errText };
+    }
+    return { success: true, status: res.status };
+  } catch (error) {
+    console.error('Failed to send LINE Notify message:', error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export interface NotificationResult {
   lineUsers?: { success: boolean; error?: string; count?: number; failedCount?: number };
+  lineNotify?: { success: boolean; error?: string };
 }
 
 export class NotificationService {
   static async verifyConfiguration(): Promise<{ success: boolean; error?: string }> {
     try {
       const settings = await prisma.systemSetting.findMany({
-        where: { key: { in: ['LINE_CHANNEL_ID', 'LINE_CHANNEL_SECRET'] } },
+        where: { key: { in: ['LINE_CHANNEL_ID', 'LINE_CHANNEL_SECRET', 'LINE_NOTIFY_TOKEN'] } },
       });
       const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
       const channelId = settingsMap.get('LINE_CHANNEL_ID') || process.env.LINE_CHANNEL_ID;
       const channelSecret = settingsMap.get('LINE_CHANNEL_SECRET') || process.env.LINE_CHANNEL_SECRET;
+      const notifyToken = settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_NOTIFY_TOKEN;
+
+      if (notifyToken) {
+        return { success: true };
+      }
+
       if (!channelId || !channelSecret) {
-        return { success: false, error: 'LINE Messaging API is not configured.' };
+        return { success: false, error: 'LINE Token / LINE Messaging API is not configured.' };
       }
 
       const token = await getLineAccessToken(channelId, channelSecret);
@@ -104,7 +136,7 @@ export class NotificationService {
   }
 
   /**
-   * Sends a LINE push to a single admin test account or active paid members.
+   * Sends a LINE push / LINE Notify message to admins or subscribers.
    */
   static async sendNotification(
     message: string,
@@ -118,7 +150,8 @@ export class NotificationService {
           key: {
             in: [
               'LINE_CHANNEL_ID',
-              'LINE_CHANNEL_SECRET'
+              'LINE_CHANNEL_SECRET',
+              'LINE_NOTIFY_TOKEN'
             ]
           }
         }
@@ -128,14 +161,24 @@ export class NotificationService {
 
       const lineChannelId = settingsMap.get('LINE_CHANNEL_ID') || process.env.LINE_CHANNEL_ID;
       const lineChannelSecret = settingsMap.get('LINE_CHANNEL_SECRET') || process.env.LINE_CHANNEL_SECRET;
+      const lineNotifyToken = settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_NOTIFY_TOKEN;
+
+      const cleanText = message.replace(/\*/g, '');
+
+      // 2. Send via LINE Notify if token is configured
+      if (lineNotifyToken) {
+        const notifyRes = await sendLineNotifyMessage(lineNotifyToken, cleanText);
+        result.lineNotify = notifyRes;
+        if (notifyRes.success) {
+          console.info('[Notification] Delivered via LINE Notify API.');
+        }
+      }
 
       // 3. Send LINE Messaging API notifications.
       if (lineChannelId && lineChannelSecret) {
         try {
           const lineAccessToken = await getLineAccessToken(lineChannelId, lineChannelSecret);
           if (lineAccessToken) {
-            const cleanText = message.replace(/\*/g, '');
-
             if (overrides?.testLineUserId) {
               // Option A: Send push to specific test user ID
               const testResult = await sendLinePushMessage(
@@ -193,7 +236,7 @@ export class NotificationService {
                 }
               } else {
                 result.lineUsers = { success: true, count: 0, failedCount: 0 };
-                console.info('[Notification] No eligible LINE recipients found.');
+                console.info('[Notification] No eligible LINE Bot recipients found.');
               }
             }
           } else {
@@ -203,8 +246,8 @@ export class NotificationService {
           console.error('Error sending LINE Channel messages:', error);
           result.lineUsers = { success: false, error: getErrorMessage(error) };
         }
-      } else {
-        result.lineUsers = { success: false, error: 'LINE Messaging API is not configured.' };
+      } else if (!lineNotifyToken) {
+        result.lineUsers = { success: false, error: 'LINE Messaging API / LINE Notify is not configured.' };
       }
     } catch (error) {
       console.error('NotificationService failed to evaluate settings or send messages:', error);
