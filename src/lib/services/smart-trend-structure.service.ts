@@ -169,7 +169,7 @@ export class SmartTrendStructureService {
     const m15Bias = this.computeTimeframeBias(m15, 'M15');
     const h1Bias = this.computeTimeframeBias(h1, 'H1');
 
-    // Aggregate overall signal score
+    // Strict Multi-Timeframe Score & H1 Alignment Filter (Anti-Counter-Trend & Choppy Market Filter)
     let score = 0;
     if (m5Bias.signal === 'BUY') score++;
     else if (m5Bias.signal === 'SELL') score--;
@@ -177,12 +177,17 @@ export class SmartTrendStructureService {
     if (m15Bias.signal === 'BUY') score++;
     else if (m15Bias.signal === 'SELL') score--;
 
-    if (h1Bias.signal === 'BUY') score++;
-    else if (h1Bias.signal === 'SELL') score--;
+    if (h1Bias.signal === 'BUY') score += 2; // Extra weight on H1 trend
+    else if (h1Bias.signal === 'SELL') score -= 2;
 
     let overallSignal: 'BUY' | 'SELL' | 'WAIT' = 'WAIT';
-    if (score >= 2) overallSignal = 'BUY';
-    else if (score <= -2) overallSignal = 'SELL';
+    
+    // Enforce 100% Anti-Counter-Trend: Never BUY in H1 BEARISH, Never SELL in H1 BULLISH
+    if (score >= 2 && h1Bias.bias !== 'BEARISH') {
+      overallSignal = 'BUY';
+    } else if (score <= -2 && h1Bias.bias !== 'BULLISH') {
+      overallSignal = 'SELL';
+    }
 
     // Extract Support / Resistance Swing Levels for M5, M15, H1
     const supportLevels: SRZoneLevel[] = [];
@@ -247,32 +252,43 @@ export class SmartTrendStructureService {
     const validSupports = supportLevels.filter((s) => s.price < currentPrice).map((s) => s.price);
     const validResistances = resistanceLevels.filter((r) => r.price > currentPrice).map((r) => r.price);
 
-    const nearestSup = validSupports.length > 0 ? Math.max(...validSupports) : currentPrice - 3.5;
-    const nearestRes = validResistances.length > 0 ? Math.min(...validResistances) : currentPrice + 3.5;
+    const nearestSup = validSupports.length > 0 ? Math.max(...validSupports) : currentPrice - 4.5;
+    const nearestRes = validResistances.length > 0 ? Math.min(...validResistances) : currentPrice + 4.5;
+
+    // Calculate ATR for dynamic SL buffer
+    let atr = 4.5;
+    if (m15.length >= 14) {
+      const trs = m15.slice(-14).map((c) => c.high - c.low);
+      atr = trs.reduce((a, b) => a + b, 0) / 14;
+    }
+
+    // Dynamic Anti-Wick-Hunt SL distance ($6.80 - $8.50)
+    const slBuffer = Math.max(6.80, Math.min(8.50, atr * 1.6));
+    const tpDistance = Math.max(16.50, slBuffer * 2.5); // Minimum 1:2.5 RR Ratio
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;
     let takeProfitTarget = currentPrice;
 
     if (overallSignal === 'BUY') {
-      // Entry at Support or pullback level
-      entryTarget = nearestSup > currentPrice - 1.5 ? Number((currentPrice - 2.8).toFixed(2)) : nearestSup;
-      stopLossTarget = Number((entryTarget - 4.5).toFixed(2));
-      takeProfitTarget = Number((entryTarget + 11.5).toFixed(2));
+      // Entry deep at Support or Discount Zone (never buy at market price or resistance)
+      entryTarget = nearestSup > currentPrice - 2.5 ? Number((currentPrice - 4.5).toFixed(2)) : nearestSup;
+      stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
+      takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
     } else if (overallSignal === 'SELL') {
-      // Entry at Resistance or rebound level
-      entryTarget = nearestRes < currentPrice + 1.5 ? Number((currentPrice + 2.8).toFixed(2)) : nearestRes;
-      stopLossTarget = Number((entryTarget + 4.5).toFixed(2));
-      takeProfitTarget = Number((entryTarget - 11.5).toFixed(2));
+      // Entry high at Resistance or Premium Zone (never sell at market price or support)
+      entryTarget = nearestRes < currentPrice + 2.5 ? Number((currentPrice + 4.5).toFixed(2)) : nearestRes;
+      stopLossTarget = Number((entryTarget + slBuffer).toFixed(2));
+      takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
     } else {
-      // Wait / Range mode
-      entryTarget = Number((currentPrice - 3.0).toFixed(2));
-      stopLossTarget = Number((entryTarget - 5.0).toFixed(2));
-      takeProfitTarget = Number((entryTarget + 12.0).toFixed(2));
+      // Wait / Range mode: High precision Limit Orders with wide buffers
+      entryTarget = Number((currentPrice - 4.5).toFixed(2));
+      stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
+      takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
     }
 
-    const confidence = overallSignal !== 'WAIT' ? (score === 3 || score === -3 ? 95 : 88) : 75;
-    const reason = `[SmartTrendStructure Indicator Engine] M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${lastStructureEvent?.tag || 'กำลังสะสมพลัง'}`;
+    const confidence = overallSignal !== 'WAIT' ? (Math.abs(score) >= 3 ? 96 : 90) : 78;
+    const reason = `[SmartTrendStructure Engine]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${lastStructureEvent?.tag || 'กำลังสะสมพลัง'} | SL Buffer $${slBuffer.toFixed(2)} (กันไส้เทียนสะบัด)`;
 
     return {
       overallSignal,
