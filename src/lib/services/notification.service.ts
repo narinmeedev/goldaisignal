@@ -74,8 +74,38 @@ async function sendLinePushMessage(accessToken: string, to: string, text: string
   }
 }
 
+async function sendLineBroadcastMessage(accessToken: string, text: string) {
+  try {
+    const res = await fetch('https://api.line.me/v2/bot/message/broadcast', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken.trim()}`,
+      },
+      body: JSON.stringify({
+        messages: [{ type: 'text', text: text.trim() }]
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`LINE Broadcast API returned status ${res.status}: ${errText}`);
+      return { success: false, status: res.status, error: errText };
+    }
+    return { success: true, status: res.status };
+  } catch (error) {
+    console.error('Failed to send LINE Broadcast message:', error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 async function sendLineNotifyMessage(token: string, text: string) {
   try {
+    // Try LINE Official Account Broadcast API first if token starts with long access token or length > 50
+    if (token.length > 50) {
+      const broadcastRes = await sendLineBroadcastMessage(token, text);
+      if (broadcastRes.success) return broadcastRes;
+    }
+
     const params = new URLSearchParams();
     params.append('message', text);
 
@@ -108,19 +138,19 @@ export class NotificationService {
   static async verifyConfiguration(): Promise<{ success: boolean; error?: string }> {
     try {
       const settings = await prisma.systemSetting.findMany({
-        where: { key: { in: ['LINE_CHANNEL_ID', 'LINE_CHANNEL_SECRET', 'LINE_NOTIFY_TOKEN'] } },
+        where: { key: { in: ['LINE_CHANNEL_ID', 'LINE_CHANNEL_SECRET', 'LINE_NOTIFY_TOKEN', 'LINE_CHANNEL_ACCESS_TOKEN'] } },
       });
       const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
       const channelId = settingsMap.get('LINE_CHANNEL_ID') || process.env.LINE_CHANNEL_ID;
       const channelSecret = settingsMap.get('LINE_CHANNEL_SECRET') || process.env.LINE_CHANNEL_SECRET;
-      const notifyToken = settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_NOTIFY_TOKEN;
+      const accessToken = settingsMap.get('LINE_CHANNEL_ACCESS_TOKEN') || settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_CHANNEL_ACCESS_TOKEN || process.env.LINE_NOTIFY_TOKEN;
 
-      if (notifyToken) {
+      if (accessToken) {
         return { success: true };
       }
 
       if (!channelId || !channelSecret) {
-        return { success: false, error: 'LINE Token / LINE Messaging API is not configured.' };
+        return { success: false, error: 'LINE Channel Access Token / LINE Messaging API is not configured.' };
       }
 
       const token = await getLineAccessToken(channelId, channelSecret);
@@ -136,7 +166,7 @@ export class NotificationService {
   }
 
   /**
-   * Sends a LINE push / LINE Notify message to admins or subscribers.
+   * Sends a LINE push / LINE Broadcast message to LINE Official Account followers or active subscribers.
    */
   static async sendNotification(
     message: string,
@@ -151,7 +181,8 @@ export class NotificationService {
             in: [
               'LINE_CHANNEL_ID',
               'LINE_CHANNEL_SECRET',
-              'LINE_NOTIFY_TOKEN'
+              'LINE_NOTIFY_TOKEN',
+              'LINE_CHANNEL_ACCESS_TOKEN'
             ]
           }
         }
@@ -161,28 +192,32 @@ export class NotificationService {
 
       const lineChannelId = settingsMap.get('LINE_CHANNEL_ID') || process.env.LINE_CHANNEL_ID;
       const lineChannelSecret = settingsMap.get('LINE_CHANNEL_SECRET') || process.env.LINE_CHANNEL_SECRET;
-      const lineNotifyToken = settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_NOTIFY_TOKEN;
+      const lineAccessToken = settingsMap.get('LINE_CHANNEL_ACCESS_TOKEN') || settingsMap.get('LINE_NOTIFY_TOKEN') || process.env.LINE_CHANNEL_ACCESS_TOKEN || process.env.LINE_NOTIFY_TOKEN;
 
       const cleanText = message.replace(/\*/g, '');
 
-      // 2. Send via LINE Notify if token is configured
-      if (lineNotifyToken) {
-        const notifyRes = await sendLineNotifyMessage(lineNotifyToken, cleanText);
-        result.lineNotify = notifyRes;
-        if (notifyRes.success) {
-          console.info('[Notification] Delivered via LINE Notify API.');
+      // 2. Broadcast to all LINE Official Account followers if Channel Access Token is provided
+      if (lineAccessToken) {
+        // Try Broadcast API directly
+        const broadcastRes = await sendLineBroadcastMessage(lineAccessToken, cleanText);
+        result.lineNotify = broadcastRes;
+        if (broadcastRes.success) {
+          console.info('[Notification] Broadcast delivered via LINE Official Account API.');
+        } else {
+          // Fallback to push message if token is for specific user / notify
+          const fallbackRes = await sendLineNotifyMessage(lineAccessToken, cleanText);
+          result.lineNotify = fallbackRes;
         }
       }
 
-      // 3. Send LINE Messaging API notifications.
+      // 3. Send LINE Messaging API push notifications if Channel ID & Secret are configured.
       if (lineChannelId && lineChannelSecret) {
         try {
-          const lineAccessToken = await getLineAccessToken(lineChannelId, lineChannelSecret);
-          if (lineAccessToken) {
+          const botAccessToken = await getLineAccessToken(lineChannelId, lineChannelSecret);
+          if (botAccessToken) {
             if (overrides?.testLineUserId) {
-              // Option A: Send push to specific test user ID
               const testResult = await sendLinePushMessage(
-                lineAccessToken,
+                botAccessToken,
                 overrides.testLineUserId.trim(),
                 cleanText
               );
@@ -197,7 +232,6 @@ export class NotificationService {
                 result.lineUsers = { success: true, count: 1, failedCount: 0 };
               }
             } else {
-              // Default: send individual push messages to all connected LINE users (Admins & Subscribers)
               const activeLineUsers = await prisma.user.findMany({
                 where: {
                   lineId: { not: null },
@@ -216,7 +250,7 @@ export class NotificationService {
                 let failedCount = 0;
                 for (const user of activeLineUsers) {
                   if (user.lineId) {
-                    const pushResult = await sendLinePushMessage(lineAccessToken, user.lineId, cleanText);
+                    const pushResult = await sendLinePushMessage(botAccessToken, user.lineId, cleanText);
                     if (pushResult.success) sentCount++;
                     else failedCount++;
                   }
@@ -229,25 +263,18 @@ export class NotificationService {
                     failedCount,
                     error: `${failedCount} of ${activeLineUsers.length} LINE pushes failed.`,
                   };
-                  console.error(`[Notification] LINE push failed for ${failedCount} recipient(s).`);
                 } else {
                   result.lineUsers = { success: true, count: sentCount, failedCount: 0 };
-                  console.info(`[Notification] LINE push delivered to ${sentCount} recipient(s).`);
                 }
-              } else {
-                result.lineUsers = { success: true, count: 0, failedCount: 0 };
-                console.info('[Notification] No eligible LINE Bot recipients found.');
               }
             }
-          } else {
-            result.lineUsers = { success: false, error: 'Failed to obtain LINE Channel Access Token.' };
           }
         } catch (error) {
           console.error('Error sending LINE Channel messages:', error);
           result.lineUsers = { success: false, error: getErrorMessage(error) };
         }
-      } else if (!lineNotifyToken) {
-        result.lineUsers = { success: false, error: 'LINE Messaging API / LINE Notify is not configured.' };
+      } else if (!lineAccessToken) {
+        result.lineUsers = { success: false, error: 'LINE Official Account Channel Access Token is not configured.' };
       }
     } catch (error) {
       console.error('NotificationService failed to evaluate settings or send messages:', error);

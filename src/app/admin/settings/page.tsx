@@ -154,26 +154,26 @@ export default function SettingsPage() {
         <div className="flex gap-3">
           <Bell className="mt-0.5 h-5 w-5 text-amber-400" />
           <div>
-            <h2 className="font-bold">การตั้งค่าแจ้งเตือน LINE (LINE Notify & Bot API)</h2>
-            <p className="mt-1 text-sm text-neutral-400">ส่งสัญญาณแผนเข้าเทรดและผล TP/SL เข้ากลุ่ม LINE หรือสมาชิกที่มีสิทธิ์ใช้งาน</p>
+            <h2 className="font-bold">การตั้งค่าแจ้งเตือน LINE (LINE Official Account / Messaging API)</h2>
+            <p className="mt-1 text-sm text-neutral-400">ส่งสัญญาณแผนเข้าเทรดและผล TP/SL กระจายหาผู้ติดตาม LINE Official Account และสมาชิกที่มีสิทธิ์ใช้งาน</p>
           </div>
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-amber-300">1. LINE Notify Token (แนะนำสำหรับส่งเข้ากลุ่มแอดมิน/กลุ่มสมาชิกง่ายๆ)</label>
+          <label className="text-sm font-semibold text-amber-300">1. LINE Official Account Channel Access Token (แนะนำส่ง Broadcast บอร์ดแคสต์หาสมาชิกทุกคน)</label>
           <input
             type="text"
             value={form.lineNotifyToken}
             onChange={(event) => update('lineNotifyToken', event.target.value)}
             className={`${inputClass} mt-1.5 font-mono text-xs`}
-            placeholder="ใส่ LINE Notify Token (เช่น Bearer Token ที่สร้างจาก notify-bot.line.me)"
+            placeholder="ใส่ Channel Access Token (ออกไอดีจาก LINE Official Account Manager -> developers.line.biz)"
             autoComplete="off"
           />
-          <p className="mt-1 text-[11px] text-neutral-500">หากใส่ Token นี้ ระบบจะส่งสัญญาณแผนเทรดสดเข้า LINE Notify ของคุณ/กลุ่ม LINE โดยตรงทันที</p>
+          <p className="mt-1 text-[11px] text-neutral-500">หากใส่ Channel Access Token นี้ ระบบจะใช้ LINE Broadcast API ยิงสัญญาณแผนเทรดสดหาผู้ติดตาม LINE OA ทุกคนโดยอัตโนมัติ</p>
         </div>
 
         <div className="pt-2 border-t border-neutral-800">
-          <label className="text-sm font-semibold text-neutral-300">2. LINE Messaging API (สำหรับส่ง Push Direct หาผู้ใช้แต่ละราย)</label>
+          <label className="text-sm font-semibold text-neutral-300">2. LINE Webhook & Channel Credentials (สำหรับระบบ Bot ทักทายอัตโนมัติ)</label>
           <div className="mt-2 grid gap-4 sm:grid-cols-2">
             <label className="text-xs text-neutral-400">Channel ID<input value={form.lineChannelId} onChange={(event) => update('lineChannelId', event.target.value)} className={`${inputClass} mt-1 font-mono`} autoComplete="off" /></label>
             <label className="text-xs text-neutral-400">Channel Secret<input type="password" value={form.lineChannelSecret} onChange={(event) => update('lineChannelSecret', event.target.value)} className={`${inputClass} mt-1 font-mono`} placeholder={form.lineSecretConfigured ? 'ตั้งค่าแล้ว · ใส่ค่าใหม่เมื่อต้องการเปลี่ยน' : 'ยังไม่ได้ตั้งค่า'} autoComplete="new-password" /></label>
