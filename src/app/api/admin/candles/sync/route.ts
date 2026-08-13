@@ -338,6 +338,7 @@ export async function POST(request: Request) {
         timeframe,
         source: 'mt5_sync',
         rawPayload: JSON.stringify({
+          price: latestIncoming.close,
           count: dataToInsert.length,
           oldestCandleAt: oldestIncoming.time.toISOString(),
           latestCandleAt: latestIncoming.time.toISOString(),

@@ -45,62 +45,71 @@ const calcEMA = (candles: { close: number }[], period: number) => {
 
 export async function GET() {
   try {
-    const xauSymbolsFilter = { in: ['GOLD#', 'XAUUSD', 'GOLD', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'GOLD.ecn'] };
+    const xauSymbolsFilter = {
+      in: [
+        'XAUUSD',
+        'GOLD',
+        'GOLD#',
+        'GOLD.a',
+        'GOLDm',
+        'GOLDmicro',
+        'GOLD.ecn',
+        'XAUUSD#',
+        'XAUUSD.iux',
+        'XAUUSD.a',
+        'XAUUSDm',
+        'XAUUSD.raw',
+      ],
+    };
 
-    const latestPriceEvent = await prisma.webhookEvent.findFirst({
+    // 1. Find latest price event from tradingview or mt5_sync
+    const latestEvent = await prisma.webhookEvent.findFirst({
       where: {
         symbol: xauSymbolsFilter,
         status: 'processed',
-        source: 'tradingview',
+        source: { in: ['tradingview', 'mt5_sync'] },
       },
       orderBy: { receivedAt: 'desc' },
     });
 
-    const latestSyncEvent = await prisma.webhookEvent.findFirst({
-      where: {
-        symbol: xauSymbolsFilter,
-        status: 'processed',
-        source: 'mt5_sync',
-      },
-      orderBy: { receivedAt: 'desc' },
-    });
-
-    const activeSymbol = latestPriceEvent?.symbol || latestSyncEvent?.symbol || 'XAUUSD';
     let currentPrice: number | null = null;
+    let eventPriceTime: Date | null = null;
 
-    const isPriceEventRecent = latestPriceEvent && Date.now() - latestPriceEvent.receivedAt.getTime() < 5 * 60 * 1000;
-    if (isPriceEventRecent) {
+    if (latestEvent) {
       try {
-        const payload = JSON.parse(latestPriceEvent.rawPayload);
+        const payload = JSON.parse(latestEvent.rawPayload);
         const price = Number(payload.price);
-        if (Number.isFinite(price) && price > 0) currentPrice = price;
+        if (Number.isFinite(price) && price > 0) {
+          currentPrice = price;
+          eventPriceTime = latestEvent.receivedAt;
+        }
       } catch {
-        // Keep default/current candle price below.
+        // Fallback to candle close below
       }
     }
 
+    // 2. Fetch candles under all normalized Gold symbols
     const [m15Candles, h1Candles] = await Promise.all([
       prisma.candle.findMany({
-        where: { symbol: activeSymbol, timeframe: 'M15' },
+        where: { symbol: xauSymbolsFilter, timeframe: 'M15' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
       prisma.candle.findMany({
-        where: { symbol: activeSymbol, timeframe: 'H1' },
+        where: { symbol: xauSymbolsFilter, timeframe: 'H1' },
         orderBy: { time: 'desc' },
         take: 30,
       }),
     ]);
 
-    if (!isPriceEventRecent) {
+    if (currentPrice === null) {
       currentPrice = m15Candles[0]?.close ?? h1Candles[0]?.close ?? null;
+      eventPriceTime = m15Candles[0]?.createdAt ?? m15Candles[0]?.time ?? h1Candles[0]?.time ?? null;
     }
 
-    const latestMarketUpdate = isPriceEventRecent
-      ? latestPriceEvent?.receivedAt
-      : m15Candles[0]?.time ?? h1Candles[0]?.time ?? null;
+    const latestMarketUpdate = eventPriceTime || m15Candles[0]?.time || h1Candles[0]?.time || null;
     const dataAgeMs = latestMarketUpdate ? Date.now() - latestMarketUpdate.getTime() : null;
-    const isLive = currentPrice !== null && dataAgeMs !== null && dataAgeMs < 20 * 60 * 1000;
+    const isLive = currentPrice !== null && dataAgeMs !== null && dataAgeMs < 30 * 60 * 1000;
 
     let bias = 'NEUTRAL';
     if (currentPrice !== null && h1Candles.length >= 20 && m15Candles.length >= 20) {
@@ -142,8 +151,8 @@ export async function GET() {
         const highPrice = latestM15 ? Math.max(currentPrice, latestM15.high) : currentPrice;
         const lowPrice = latestM15 ? Math.min(currentPrice, latestM15.low) : currentPrice;
 
-        await PaperTradeService.evaluatePendingPlansWithPrice(activeSymbol, currentPrice);
-        await PaperTradeService.evaluateOpenTradesWithPrice(activeSymbol, currentPrice, highPrice, lowPrice);
+        await PaperTradeService.evaluatePendingPlansWithPrice('XAUUSD', currentPrice);
+        await PaperTradeService.evaluateOpenTradesWithPrice('XAUUSD', currentPrice, highPrice, lowPrice);
       }
     } catch (evalErr) {
       console.error('Error evaluating trades with latest price:', evalErr);
