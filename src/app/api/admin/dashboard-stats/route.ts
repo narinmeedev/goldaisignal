@@ -167,10 +167,12 @@ const serializeOwnerTrade = (trade: any) => ({
 });
 
 const noStoreHeaders = {
-  'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate, proxy-revalidate',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
   Pragma: 'no-cache',
   Expires: '0',
   'Surrogate-Control': 'no-store',
+  'CDN-Cache-Control': 'no-store',
+  'Cloudflare-CDN-Cache-Control': 'no-store',
 };
 
 const serializeCandles = (candles: CandlePoint[], limit = CHART_CANDLE_LIMIT) =>
@@ -1107,41 +1109,6 @@ export async function GET(request?: Request) {
 
     const runFullQueries = isPlanAutomation || !isPublic;
     const runAdminQueries = isPlanAutomation || userRole === 'admin';
-
-    // Database Cache check: Skip queries if pre-calculated cache is available (except for automation runs)
-    if (!isPlanAutomation) {
-      const cacheKey = isPublic 
-        ? 'CACHE_DASHBOARD_STATS_PUBLIC'
-        : userRole === 'admin'
-          ? 'CACHE_DASHBOARD_STATS_ADMIN'
-          : 'CACHE_DASHBOARD_STATS_VIEWER';
-
-      try {
-        const cachedSetting = await prisma.systemSetting.findUnique({ where: { key: cacheKey } });
-        if (cachedSetting?.value) {
-          return NextResponse.json(JSON.parse(cachedSetting.value), { headers: noStoreHeaders });
-        }
-      } catch (cacheErr) {
-        console.error('[Cache Read Error]:', cacheErr);
-      }
-    }
-
-    const fullCacheKey = `${userRole}_${baseKey}`;
-
-    // Check in-memory cache
-    if (isPublic) {
-      const cached = globalFetchCache.cachedPublicStats?.[fullCacheKey];
-      const cachedTime = globalFetchCache.cachedPublicTime?.[fullCacheKey] || 0;
-      if (cached && Date.now() - cachedTime < 4000) { // 4s TTL for public
-        return NextResponse.json(cached, { headers: noStoreHeaders });
-      }
-    } else {
-      const cached = globalFetchCache.cachedAdminStats?.[fullCacheKey];
-      const cachedTime = globalFetchCache.cachedAdminTime?.[fullCacheKey] || 0;
-      if (cached && Date.now() - cachedTime < 2000) { // 2s TTL for admin/viewer
-        return NextResponse.json(cached, { headers: noStoreHeaders });
-      }
-    }
 
     const now = new Date();
     const todayRange = getBangkokDayRange(now);
@@ -2941,113 +2908,6 @@ export async function GET(request?: Request) {
         recentEvents: formattedEvents
       }
     };
-
-    // Cache the response in memory
-    if (isPublic) {
-      globalFetchCache.cachedPublicStats[fullCacheKey] = responseData;
-      globalFetchCache.cachedPublicTime[fullCacheKey] = Date.now();
-    } else {
-      globalFetchCache.cachedAdminStats[fullCacheKey] = responseData;
-      globalFetchCache.cachedAdminTime[fullCacheKey] = Date.now();
-    }
-
-    // Pre-calculate and write to Database Cache
-    if (isPlanAutomation) {
-      const adminResponseData = responseData;
-
-      const viewerResponseData = {
-        ...adminResponseData,
-        mt5Connection: {
-          ...adminResponseData.mt5Connection,
-          recentEvents: [],
-        },
-        ownerMetrics: {
-          ...adminResponseData.ownerMetrics,
-          subscription: {
-            activeMembers: 0,
-            cancelledMembers: 0,
-            cancelledPayments: 0,
-            revenueTotal: 0,
-            revenueThisMonth: 0,
-            revenueToday: 0,
-            approvedPayments: 0,
-            approvedPaymentsThisMonth: 0,
-            approvedPaymentsToday: 0,
-          },
-        },
-      };
-
-      const publicResponseData = {
-        ...adminResponseData,
-        totalSignals: 0,
-        totalTrades: 0,
-        openTradesCount: 0,
-        openTrades: [],
-        suggestedPlansCount: 0,
-        suggestedPlans: [],
-        recentPlanResults: [],
-        latestSignals: [],
-        winRate: 0,
-        netR: 0,
-        bestSetup: 'N/A',
-        worstSetup: 'N/A',
-        zoneCount: 0,
-        winCount: 0,
-        lossCount: 0,
-        mt5Connection: {
-          ...adminResponseData.mt5Connection,
-          recentEvents: [],
-        },
-        marketIntelligence: {
-          XAUUSD: {
-            ...adminResponseData.marketIntelligence.XAUUSD,
-            proactivePlans: [],
-            activeOrderPlan: null,
-            strategyResearch: null,
-            decisionChart: undefined,
-          },
-        },
-        ownerMetrics: undefined,
-      };
-
-      try {
-        await Promise.all([
-          prisma.systemSetting.upsert({
-            where: { key: 'CACHE_DASHBOARD_STATS_PUBLIC' },
-            update: { value: JSON.stringify(publicResponseData) },
-            create: { key: 'CACHE_DASHBOARD_STATS_PUBLIC', value: JSON.stringify(publicResponseData) },
-          }),
-          prisma.systemSetting.upsert({
-            where: { key: 'CACHE_DASHBOARD_STATS_VIEWER' },
-            update: { value: JSON.stringify(viewerResponseData) },
-            create: { key: 'CACHE_DASHBOARD_STATS_VIEWER', value: JSON.stringify(viewerResponseData) },
-          }),
-          prisma.systemSetting.upsert({
-            where: { key: 'CACHE_DASHBOARD_STATS_ADMIN' },
-            update: { value: JSON.stringify(adminResponseData) },
-            create: { key: 'CACHE_DASHBOARD_STATS_ADMIN', value: JSON.stringify(adminResponseData) },
-          }),
-        ]);
-        console.log('[Dashboard Cache] Updated all 3 database caches successfully.');
-      } catch (cacheWriteErr) {
-        console.error('[Dashboard Cache] Failed to write database caches:', cacheWriteErr);
-      }
-
-      // Return the public version for the automation caller
-      return NextResponse.json(publicResponseData, { headers: noStoreHeaders });
-    }
-
-    // Fallback cache write for normal page hits that missed the cache
-    const cacheKey = isPublic 
-      ? 'CACHE_DASHBOARD_STATS_PUBLIC'
-      : userRole === 'admin'
-        ? 'CACHE_DASHBOARD_STATS_ADMIN'
-        : 'CACHE_DASHBOARD_STATS_VIEWER';
-    prisma.systemSetting.upsert({
-      where: { key: cacheKey },
-      update: { value: JSON.stringify(responseData) },
-      create: { key: cacheKey, value: JSON.stringify(responseData) },
-    }).catch((err) => console.error('[Cache Fallback Write Failed]:', err));
 
     return NextResponse.json(responseData, { headers: noStoreHeaders });
   } catch (err: any) {
