@@ -1488,25 +1488,42 @@ export async function GET(request?: Request) {
         currentPrice = latestLiveTick.price;
       }
 
+      const xauSymbolsFilter = {
+        in: [
+          'XAUUSD',
+          'GOLD',
+          'GOLD#',
+          'GOLD.a',
+          'GOLDm',
+          'GOLDmicro',
+          'GOLD.ecn',
+          'XAUUSD#',
+          'XAUUSD.iux',
+          'XAUUSD.a',
+          'XAUUSDm',
+          'XAUUSD.raw',
+        ],
+      };
+
       // Try to get from database first (MT5 Sync or previously cached fallback candles)
       let [m5Candles, m15Candles, h1Candles, d1Candles]: CandlePoint[][] = await Promise.all([
         prisma.candle.findMany({
-          where: { symbol: activeSymbol, timeframe: 'M5' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'M5' },
           orderBy: { time: 'desc' },
           take: M5_CANDLE_FETCH_LIMIT,
         }),
         prisma.candle.findMany({
-          where: { symbol: activeSymbol, timeframe: 'M15' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'M15' },
           orderBy: { time: 'desc' },
           take: M15_CANDLE_FETCH_LIMIT,
         }),
         prisma.candle.findMany({
-          where: { symbol: activeSymbol, timeframe: 'H1' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'H1' },
           orderBy: { time: 'desc' },
           take: H1_CANDLE_FETCH_LIMIT,
         }),
         prisma.candle.findMany({
-          where: { symbol: activeSymbol, timeframe: 'D1' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'D1' },
           orderBy: { time: 'desc' },
           take: D1_CANDLE_FETCH_LIMIT,
         }),

@@ -178,10 +178,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const normalizedSymbol = isGoldSymbol ? 'XAUUSD' : rawSymbol.toUpperCase().trim();
+
     // Insert or update candles
     const dataToInsert = candles
       .map((c: any) => ({
-        symbol,
+        symbol: normalizedSymbol,
         timeframe,
         time: new Date(c.time),
         open: parseFloat(c.open),
@@ -201,7 +203,7 @@ export async function POST(request: Request) {
     if (dataToInsert.length === 0) {
       await prisma.webhookEvent.create({
         data: {
-          symbol,
+          symbol: normalizedSymbol,
           timeframe,
           source: 'mt5_sync_error',
           rawPayload: JSON.stringify(body),
@@ -213,7 +215,7 @@ export async function POST(request: Request) {
     }
 
     const latestBefore = await prisma.candle.findFirst({
-      where: { symbol, timeframe },
+      where: { symbol: normalizedSymbol, timeframe },
       orderBy: { time: 'desc' },
       select: { time: true, open: true, high: true, low: true, close: true },
     });
@@ -223,7 +225,7 @@ export async function POST(request: Request) {
     // Optimize database writes: Fetch existing candles in this timeframe range first
     const existingCandles = await prisma.candle.findMany({
       where: {
-        symbol,
+        symbol: normalizedSymbol,
         timeframe,
         time: { in: dataToInsert.map((c: any) => c.time) }
       },

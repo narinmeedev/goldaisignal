@@ -83,92 +83,14 @@ export default function TradePlanChart({
 
     if (basePool.length > 0) {
       const sorted = [...basePool].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+      const limit = selectedTF === 'H1' ? 20 : 30;
 
-      if (selectedTF === 'H1') {
-        // H1 TIMEFRAME: Group every 4 M15 candles into 1 H1 candle (Thick, wide 1-hour bars)
-        const h1List: Candle[] = [];
-        for (let i = 0; i < sorted.length; i += 4) {
-          const group = sorted.slice(i, i + 4);
-          if (group.length === 0) continue;
-
-          const open = group[0].open;
-          const close = group[group.length - 1].close;
-          const high = Math.max(...group.map((c) => c.high));
-          const low = Math.min(...group.map((c) => c.low));
-          const volume = group.reduce((sum, c) => sum + (c.volume || 100), 0);
-          
-          let tLabel = group[group.length - 1].time;
-          try {
-            const d = new Date(tLabel);
-            if (!isNaN(d.getTime())) {
-              tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
-            }
-          } catch {}
-
-          h1List.push({ time: tLabel, open, high, low, close, volume });
-        }
-        return h1List.slice(-20);
-      }
-
-      if (selectedTF === 'M5') {
-        // M5 TIMEFRAME: Split each M15 candle into 3 M5 sub-candles with micro price oscillations
-        const m5List: Candle[] = [];
-        for (const c of sorted) {
-          const tMs = new Date(c.time).getTime();
-          const open = c.open;
-          const close = c.close;
-          const high = c.high;
-          const low = c.low;
-
-          const delta = close - open;
-          const step1 = Number((open + delta * 0.35).toFixed(2));
-          const step2 = Number((open + delta * 0.70).toFixed(2));
-
-          const formatTime = (ms: number) => {
-            if (isNaN(ms)) return c.time;
-            return new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
-          };
-
-          // Sub-candle 1 (mins 0-5)
-          m5List.push({
-            time: formatTime(tMs - 10 * 60 * 1000),
-            open,
-            high: Math.max(open, step1, high - 0.2),
-            low: Math.min(open, step1, low + 0.2),
-            close: step1,
-            volume: Math.round((c.volume || 100) / 3)
-          });
-
-          // Sub-candle 2 (mins 5-10)
-          m5List.push({
-            time: formatTime(tMs - 5 * 60 * 1000),
-            open: step1,
-            high: Math.max(step1, step2, high),
-            low: Math.min(step1, step2, low),
-            close: step2,
-            volume: Math.round((c.volume || 100) / 3)
-          });
-
-          // Sub-candle 3 (mins 10-15)
-          m5List.push({
-            time: formatTime(tMs),
-            open: step2,
-            high: Math.max(step2, close, high - 0.1),
-            low: Math.min(step2, close, low + 0.1),
-            close,
-            volume: Math.round((c.volume || 100) / 3)
-          });
-        }
-        return m5List.slice(-30);
-      }
-
-      // M15 TIMEFRAME (Default)
-      return sorted.slice(-30).map((c) => {
+      return sorted.slice(-limit).map((c) => {
         let tLabel = c.time;
         try {
           const d = new Date(c.time);
           if (!isNaN(d.getTime())) {
-            tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+            tLabel = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
           }
         } catch {}
         return { ...c, time: tLabel };
