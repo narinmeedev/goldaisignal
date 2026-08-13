@@ -71,7 +71,11 @@ export default function TradePlanChart({
   const chartCandles = useMemo(() => {
     // Determine baseline candle pool from props
     let basePool: Candle[] = [];
-    if (m15Candles && m15Candles.length > 0) {
+    if (selectedTF === 'M5' && m5Candles && m5Candles.length > 0) {
+      basePool = m5Candles;
+    } else if (selectedTF === 'H1' && h1Candles && h1Candles.length > 0) {
+      basePool = h1Candles;
+    } else if (m15Candles && m15Candles.length > 0) {
       basePool = m15Candles;
     } else if (candles && candles.length > 0) {
       basePool = candles;

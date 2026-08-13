@@ -399,9 +399,11 @@ export default function UserDashboard() {
           const cachedPlanStr = localStorage.getItem('GOLDAI_SAVED_QWEN_PLAN');
           if (cachedPlanStr) {
             const cachedPlan = JSON.parse(cachedPlanStr);
-            const planAgeHours = (Date.now() - new Date(cachedPlan.lockedAt || Date.now()).getTime()) / (1000 * 60 * 60);
-            if (planAgeHours < 6) {
+            const planAgeMins = (Date.now() - new Date(cachedPlan.lockedAt || Date.now()).getTime()) / (1000 * 60);
+            if (planAgeMins < 20 && !cachedPlan.isClosed) {
               currentActivePlan = cachedPlan;
+            } else {
+              localStorage.removeItem('GOLDAI_SAVED_QWEN_PLAN');
             }
           }
         } catch {}
