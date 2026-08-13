@@ -1415,14 +1415,31 @@ export async function GET(request?: Request) {
       tvPriceEvents = recentPriceEvents;
       mt5SyncEvent = latestAnySyncEvent;
 
+      const xauSymbolsFilter = {
+        in: [
+          'XAUUSD',
+          'GOLD',
+          'GOLD#',
+          'GOLD.a',
+          'GOLDm',
+          'GOLDmicro',
+          'GOLD.ecn',
+          'XAUUSD#',
+          'XAUUSD.iux',
+          'XAUUSD.a',
+          'XAUUSDm',
+          'XAUUSD.raw',
+        ],
+      };
+
       const activeSymbol = latestPriceEvent?.symbol || latestAnySyncEvent?.symbol || symbol;
       const [latestM5SyncEvent, latestM15SyncEvent] = await Promise.all([
         prisma.webhookEvent.findFirst({
-          where: { symbol: activeSymbol, timeframe: 'M5', status: 'processed', source: 'mt5_sync' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'M5', status: 'processed', source: 'mt5_sync' },
           orderBy: { receivedAt: 'desc' },
         }),
         prisma.webhookEvent.findFirst({
-          where: { symbol: activeSymbol, timeframe: 'M15', status: 'processed', source: 'mt5_sync' },
+          where: { symbol: xauSymbolsFilter, timeframe: 'M15', status: 'processed', source: 'mt5_sync' },
           orderBy: { receivedAt: 'desc' },
         }),
       ]);
@@ -1433,7 +1450,7 @@ export async function GET(request?: Request) {
       mt5M5SyncEvent = latestM5SyncEvent;
       mt5M15SyncEvent = latestM15SyncEvent;
 
-      const activeSymbolPriceEvents = recentPriceEvents.filter((event) => event.symbol === activeSymbol);
+      const activeSymbolPriceEvents = recentPriceEvents.filter((event) => xauSymbolsFilter.in.includes(event.symbol));
       const liveTickEvents = activeSymbolPriceEvents.length > 0
         ? activeSymbolPriceEvents
         : recentPriceEvents;
@@ -1454,23 +1471,6 @@ export async function GET(request?: Request) {
       if (isPriceEventRecent && latestLiveTick) {
         currentPrice = latestLiveTick.price;
       }
-
-      const xauSymbolsFilter = {
-        in: [
-          'XAUUSD',
-          'GOLD',
-          'GOLD#',
-          'GOLD.a',
-          'GOLDm',
-          'GOLDmicro',
-          'GOLD.ecn',
-          'XAUUSD#',
-          'XAUUSD.iux',
-          'XAUUSD.a',
-          'XAUUSDm',
-          'XAUUSD.raw',
-        ],
-      };
 
       // Try to get from database first (MT5 Sync or previously cached fallback candles)
       let [m5Candles, m15Candles, h1Candles, d1Candles]: CandlePoint[][] = await Promise.all([
