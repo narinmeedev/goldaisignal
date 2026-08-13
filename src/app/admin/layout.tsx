@@ -301,12 +301,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             )}
 
-            <div className="text-right hidden sm:block">
-              <div className="flex items-center justify-end gap-2">
-                <span className={`h-2 w-2 rounded-full ${price.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                <span className="text-sm font-bold tabular-nums text-neutral-100">{formatPrice(price.price)}</span>
+            <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1 transition-all ${
+              price.isLive
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+            }`}>
+              <span className="relative flex h-2 w-2">
+                {price.isLive && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${price.isLive ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+              </span>
+              <div className="text-right">
+                <div className="flex items-center gap-1">
+                  <span className={`text-xs font-black tabular-nums ${price.isLive ? 'text-emerald-400 font-extrabold' : 'text-neutral-200'}`}>
+                    {formatPrice(price.price)}
+                  </span>
+                </div>
+                <p className={`text-[9px] font-bold uppercase tracking-wider ${price.isLive ? 'text-emerald-400/90' : 'text-neutral-500'}`}>
+                  GOLD# · {price.isLive ? 'LIVE 🟢' : 'DELAYED 🟡'}
+                </p>
               </div>
-              <p className="text-[11px] text-neutral-400">GOLD# · {price.isLive ? 'LIVE' : 'DELAYED'}</p>
             </div>
             <div className="hidden border-l border-neutral-800 pl-3 md:block">
               <p className="max-w-36 truncate text-xs font-bold text-neutral-300">{user?.email}</p>
