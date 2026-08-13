@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ZoneService } from '@/lib/services/zone.service';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
+import { SmartTrendStructureService } from '@/lib/services/smart-trend-structure.service';
+import { NotificationService } from '@/lib/services/notification.service';
 
 const isMarketOpen = () => {
   const now = new Date();
@@ -370,32 +372,137 @@ export async function POST(request: Request) {
       console.error('Failed to consume MT5 command:', cmdErr);
     }
 
-    // Attach active trade plan for MT5 automatic line drawing & execution
+    // Automatic Live Plan Refresh: Expire stale plans (>30 mins or price moved >$8.00 away) & generate fresh plan
     let activePlan = null;
     try {
+      const currentPrice = latestIncoming.close;
       const activePlanSetting = await prisma.systemSetting.findUnique({
         where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' }
       });
+
+      let parsedPlan: any = null;
       if (activePlanSetting?.value) {
-        const parsed = JSON.parse(activePlanSetting.value);
-        if (parsed && parsed.entry && parsed.stopLoss && parsed.takeProfit) {
-          activePlan = {
-            id: parsed.id,
-            type: parsed.type,
-            title: parsed.title,
-            entry: parsed.entry,
-            stopLoss: parsed.stopLoss,
-            takeProfit: parsed.takeProfit,
-            confidence: parsed.confidence,
-            timeframe: parsed.timeframe,
-            isClosed: Boolean(parsed.isClosed),
-            closedReason: parsed.closedReason || null,
-            lockedAt: parsed.lockedAt || null,
+        try { parsedPlan = JSON.parse(activePlanSetting.value); } catch {}
+      }
+
+      const planAgeMs = parsedPlan?.lockedAt ? Date.now() - new Date(parsedPlan.lockedAt).getTime() : 999999999;
+      const priceDistance = parsedPlan?.entry ? Math.abs(currentPrice - parsedPlan.entry) : 999;
+
+      // Auto-refresh if active plan is older than 30 minutes OR price moved > $8.00 away from entry
+      const isStale = planAgeMs > 30 * 60 * 1000 || priceDistance > 8.0;
+
+      if (isStale || !parsedPlan) {
+        console.log(`[MT5 SYNC] Active plan is stale (Age: ${Math.round(planAgeMs / 60000)}m, Dist: $${priceDistance.toFixed(2)}). Generating fresh live plan...`);
+
+        const xauSymbolsFilter = {
+          in: [
+            'XAUUSD',
+            'GOLD',
+            'GOLD#',
+            'GOLD.a',
+            'GOLDm',
+            'GOLDmicro',
+            'GOLD.ecn',
+            'XAUUSD#',
+            'XAUUSD.iux',
+            'XAUUSD.a',
+            'XAUUSDm',
+            'XAUUSD.raw',
+          ],
+        };
+
+        const [m5Candles, m15Candles, h1Candles] = await Promise.all([
+          prisma.candle.findMany({ where: { symbol: xauSymbolsFilter, timeframe: 'M5' }, orderBy: { time: 'desc' }, take: 40 }),
+          prisma.candle.findMany({ where: { symbol: xauSymbolsFilter, timeframe: 'M15' }, orderBy: { time: 'desc' }, take: 40 }),
+          prisma.candle.findMany({ where: { symbol: xauSymbolsFilter, timeframe: 'H1' }, orderBy: { time: 'desc' }, take: 40 }),
+        ]);
+
+        if (m15Candles.length > 0 && h1Candles.length > 0) {
+          const analysis = SmartTrendStructureService.analyze({
+            currentPrice,
+            m5Candles,
+            m15Candles,
+            h1Candles,
+          });
+
+          const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);
+          const bangkokTimeStr = `${nowBangkok.getUTCHours().toString().padStart(2, '0')}:${nowBangkok.getUTCMinutes().toString().padStart(2, '0')} น.`;
+
+          const targetDir = analysis.overallSignal !== 'WAIT' ? analysis.overallSignal : (analysis.score >= 0 ? 'BUY' : 'SELL');
+          const planType = targetDir === 'BUY'
+            ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
+            : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
+
+          const freshPlan = {
+            id: `qwen-plan-${Date.now()}`,
+            type: planType,
+            title: `[M15 Live Sync] ${targetDir === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${analysis.entryTarget.toFixed(2)} (เป้าเก็บส่วนต่าง $16-$22)`,
+            entry: analysis.entryTarget,
+            entry1: analysis.entryTarget,
+            stopLoss: analysis.stopLossTarget,
+            takeProfit: analysis.takeProfitTarget,
+            reason: `[ซิงค์สด ${bangkokTimeStr}] ${analysis.reason}`,
+            timeframe: 'M15',
+            confidence: analysis.confidence,
+            strategyLabel: 'SmartTrendStructure Auto-Engine (Live MT5 Sync)',
+            planTime: bangkokTimeStr,
+            createdAtThailand: `${bangkokTimeStr} (เวลาไทย)`,
+            lockedAt: new Date().toISOString(),
           };
+
+          // Save fresh plan to SystemSetting
+          await prisma.systemSetting.upsert({
+            where: { key: 'ACTIVE_ORDER_PLAN_XAUUSD' },
+            update: { value: JSON.stringify(freshPlan) },
+            create: { key: 'ACTIVE_ORDER_PLAN_XAUUSD', value: JSON.stringify(freshPlan) },
+          });
+
+          // Expire older pending PLANs
+          await prisma.paperTrade.updateMany({
+            where: { symbol: 'XAUUSD', result: 'PLAN' },
+            data: { result: 'EXPIRED', notes: `ยกเลิกแผนเก่าเนื่องจากราคาขยับไปไกล ($${priceDistance.toFixed(2)}) หรือเกินเวลา 30 นาที` }
+          });
+
+          // Record new plan
+          await prisma.paperTrade.create({
+            data: {
+              symbol: 'XAUUSD',
+              direction: targetDir,
+              entry: freshPlan.entry,
+              stopLoss: freshPlan.stopLoss,
+              takeProfit1: freshPlan.takeProfit,
+              takeProfit2: freshPlan.takeProfit,
+              result: 'PLAN',
+              notes: freshPlan.reason,
+            }
+          });
+
+          // Dispatch LINE notification
+          const lineMessage = `⚡ [ Gold AI Signal สัญญาณอัปเดตใหม่ ] ⚡\n\n🕒 เวลาที่ปรับแผน: ${bangkokTimeStr} (เวลาไทย)\n📌 แผน: ${freshPlan.title}\n📊 ประเภท: ${freshPlan.type}\n🎯 จุดเข้า (Entry Target): $${freshPlan.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${freshPlan.stopLoss.toFixed(2)}\n🟢 Take Profit (TP): $${freshPlan.takeProfit.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${freshPlan.reason}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
+
+          NotificationService.sendNotification(lineMessage).catch(() => {});
+
+          parsedPlan = freshPlan;
         }
       }
+
+      if (parsedPlan && parsedPlan.entry && parsedPlan.stopLoss && parsedPlan.takeProfit) {
+        activePlan = {
+          id: parsedPlan.id,
+          type: parsedPlan.type,
+          title: parsedPlan.title,
+          entry: parsedPlan.entry,
+          stopLoss: parsedPlan.stopLoss,
+          takeProfit: parsedPlan.takeProfit,
+          confidence: parsedPlan.confidence,
+          timeframe: parsedPlan.timeframe,
+          isClosed: Boolean(parsedPlan.isClosed),
+          closedReason: parsedPlan.closedReason || null,
+          lockedAt: parsedPlan.lockedAt || null,
+        };
+      }
     } catch (planErr) {
-      console.error('Failed to attach activePlan to MT5 sync response:', planErr);
+      console.error('Failed to update/attach activePlan in MT5 sync response:', planErr);
     }
 
     return NextResponse.json({
