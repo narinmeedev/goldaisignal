@@ -429,7 +429,7 @@ export default function UserDashboard() {
     const initialTimer = window.setTimeout(() => load(), 0);
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') load();
-    }, 15_000);
+    }, 3_000);
     const onVisibility = () => {
       if (document.visibilityState === 'visible') load();
     };

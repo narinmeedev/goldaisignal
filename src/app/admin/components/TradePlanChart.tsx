@@ -85,7 +85,7 @@ export default function TradePlanChart({
       const sorted = [...basePool].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
       const limit = selectedTF === 'H1' ? 20 : 30;
 
-      return sorted.slice(-limit).map((c) => {
+      const mapped = sorted.slice(-limit).map((c) => {
         let tLabel = c.time;
         try {
           const d = new Date(c.time);
@@ -95,10 +95,23 @@ export default function TradePlanChart({
         } catch {}
         return { ...c, time: tLabel };
       });
+
+      if (currentPrice && mapped.length > 0) {
+        const lastIdx = mapped.length - 1;
+        const last = mapped[lastIdx];
+        mapped[lastIdx] = {
+          ...last,
+          close: currentPrice,
+          high: Math.max(last.high, currentPrice),
+          low: Math.min(last.low, currentPrice),
+        };
+      }
+
+      return mapped;
     }
 
     return [];
-  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles]);
+  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles, currentPrice]);
 
   // Price scale calculation
   const priceMetrics = useMemo(() => {
