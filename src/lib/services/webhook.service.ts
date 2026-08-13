@@ -40,7 +40,7 @@ export class WebhookService {
       if (strategy === 'price_feed' || strategy === 'tick') {
         const latestPriceEvent = await prisma.webhookEvent.findFirst({
           where: {
-            symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+            symbol: { in: ['XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
             source: 'tradingview',
           },
           orderBy: { receivedAt: 'desc' },

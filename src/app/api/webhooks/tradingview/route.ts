@@ -30,12 +30,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!String(payload.symbol).toUpperCase().includes('XAU')) {
+    const upperSym = String(payload.symbol || '').toUpperCase().trim();
+    const isGoldSymbol = upperSym.includes('XAU') || upperSym.includes('GOLD');
+
+    if (!isGoldSymbol) {
       return NextResponse.json(
         {
           status: 'accepted',
           decision: 'IGNORED_NON_GOLD',
-          message: 'Gold AI Signal processes XAU symbols only.',
+          message: 'Gold AI Signal processes XAU and GOLD symbols only.',
         },
         { status: 200 },
       );
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
 
     const result = await WebhookService.processWebhook({
       secret: payload.secret,
-      symbol: String(payload.symbol).toUpperCase().includes('XAU') ? 'XAUUSD' : payload.symbol,
+      symbol: 'XAUUSD', // Normalize XAUUSD.iux, GOLD#, etc. to XAUUSD
       timeframe: payload.timeframe,
       direction: payload.direction,
       price: parseFloat(payload.price),
