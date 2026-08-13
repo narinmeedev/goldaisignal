@@ -117,6 +117,23 @@ const runPlanAutomation = async (request: Request, symbol: string, timeframe: st
  *   ]
  * }
  */
+function parseCandleTime(rawTime: any): Date {
+  if (rawTime === null || rawTime === undefined) return new Date();
+  if (typeof rawTime === 'number') {
+    if (rawTime < 1e11) return new Date(rawTime * 1000);
+    return new Date(rawTime);
+  }
+  if (typeof rawTime === 'string') {
+    let str = rawTime.trim().replace(/\./g, '-');
+    if (str.includes(' ') && !str.includes('T')) {
+      str = str.replace(' ', 'T') + 'Z';
+    }
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date(rawTime);
+}
+
 export async function POST(request: Request) {
   let body: any = null;
   try {
@@ -185,7 +202,7 @@ export async function POST(request: Request) {
       .map((c: any) => ({
         symbol: normalizedSymbol,
         timeframe,
-        time: new Date(c.time),
+        time: parseCandleTime(c.time),
         open: parseFloat(c.open),
         high: parseFloat(c.high),
         low: parseFloat(c.low),

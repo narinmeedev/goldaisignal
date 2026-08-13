@@ -97,41 +97,8 @@ export default function TradePlanChart({
       });
     }
 
-    // Dynamic fallback when database candles are loading
-    const base = currentPrice || plan?.entry || 4040.0;
-    const generated: Candle[] = [];
-    const now = Date.now();
-    const intervalMinutes = selectedTF === 'M5' ? 5 : selectedTF === 'H1' ? 60 : 15;
-    const count = selectedTF === 'H1' ? 20 : 30;
-
-    for (let i = count - 1; i >= 0; i--) {
-      const d = new Date(now - i * intervalMinutes * 60 * 1000);
-      const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
-      
-      const noise = Math.sin(i * 0.6) * (selectedTF === 'H1' ? 5.0 : selectedTF === 'M15' ? 2.2 : 0.9);
-      const openPx = Number((base + noise).toFixed(2));
-      const closePx = Number((base + Math.cos(i * 0.5) * (selectedTF === 'H1' ? 4.2 : selectedTF === 'M15' ? 1.8 : 0.8)).toFixed(2));
-      const highPx = Number((Math.max(openPx, closePx) + (selectedTF === 'H1' ? 3.0 : selectedTF === 'M15' ? 1.4 : 0.6)).toFixed(2));
-      const lowPx = Number((Math.min(openPx, closePx) - (selectedTF === 'H1' ? 3.0 : selectedTF === 'M15' ? 1.4 : 0.6)).toFixed(2));
-
-      generated.push({
-        time: timeStr,
-        open: openPx,
-        high: highPx,
-        low: lowPx,
-        close: closePx,
-        volume: Math.floor(80 + Math.random() * 200)
-      });
-    }
-
-    if (currentPrice && generated.length > 0) {
-      generated[generated.length - 1].close = currentPrice;
-      generated[generated.length - 1].high = Math.max(generated[generated.length - 1].high, currentPrice);
-      generated[generated.length - 1].low = Math.min(generated[generated.length - 1].low, currentPrice);
-    }
-
-    return generated;
-  }, [selectedTF, m15Candles, candles, currentPrice, plan?.entry]);
+    return [];
+  }, [selectedTF, m5Candles, m15Candles, h1Candles, candles]);
 
   // Price scale calculation
   const priceMetrics = useMemo(() => {
