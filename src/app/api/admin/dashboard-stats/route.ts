@@ -497,13 +497,22 @@ const buildPlanRiskProfile = (
   };
 };
 
-const parseStoredOrderPlan = (value?: string | null): RecommendationPlan | null => {
+const parseStoredOrderPlan = (value?: string | null, currentPrice?: number): RecommendationPlan | null => {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value) as RecommendationPlan;
+    const parsed = JSON.parse(value) as RecommendationPlan & { isClosed?: boolean };
     if (!parsed || !parsed.id || !parsed.type) return null;
+    if (parsed.isClosed) return null;
     if (!Number.isFinite(parsed.entry) || !Number.isFinite(parsed.stopLoss) || !Number.isFinite(parsed.takeProfit)) return null;
     if (!getPlanDirection(parsed)) return null;
+
+    if (parsed.lockedAt) {
+      const ageMs = Date.now() - new Date(parsed.lockedAt).getTime();
+      if (ageMs > 30 * 60 * 1000) return null; // Expire plans older than 30 minutes
+    }
+    if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0) {
+      if (Math.abs(currentPrice - parsed.entry) > 8.0) return null; // Expire plans where price moved > $8 away
+    }
     return parsed;
   } catch {
     return null;
@@ -2450,7 +2459,7 @@ export async function GET(request?: Request) {
 
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
-      const storedPlan = parseStoredOrderPlan(storedSetting?.value);
+      const storedPlan = parseStoredOrderPlan(storedSetting?.value, currentPrice);
 
       if (storedPlan) {
         activeOrderPlan = storedPlan;
