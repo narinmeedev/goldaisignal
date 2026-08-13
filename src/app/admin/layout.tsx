@@ -355,25 +355,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {/* Live Metrics Group */}
             <div className="flex flex-wrap items-center gap-2.5">
               {/* Price Pill */}
-              <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-neutral-900 px-2.5 py-1 text-neutral-100">
-                <span className="text-[10px] text-amber-400 font-extrabold uppercase">GOLD#</span>
-                <span className="font-black tabular-nums text-sm text-amber-300">${formatPrice(price.price)}</span>
+              <div className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-all ${
+                price.isLive
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                  : 'border-amber-500/30 bg-neutral-900 text-neutral-100'
+              }`}>
+                <span className={`text-[10px] font-extrabold uppercase ${price.isLive ? 'text-emerald-400' : 'text-amber-400'}`}>GOLD#</span>
+                <span className={`font-black tabular-nums text-sm ${price.isLive ? 'text-emerald-400 font-extrabold' : 'text-amber-300'}`}>${formatPrice(price.price)}</span>
               </div>
 
               {/* Data Status Pill */}
-              <div className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs">
+              <div className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-all ${
+                price.isLive
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  : 'border-amber-500/30 bg-neutral-900 text-amber-400'
+              }`}>
                 <span className="relative flex h-2 w-2">
                   {price.isLive ? (
                     <>
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                     </>
                   ) : (
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
                   )}
                 </span>
-                <span className={price.isLive ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                  {price.isLive ? 'LIVE' : 'DELAYED'}
+                <span className="font-extrabold">
+                  {price.isLive ? 'LIVE 🟢' : 'DELAYED 🟡'}
                 </span>
               </div>
 
