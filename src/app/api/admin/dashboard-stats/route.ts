@@ -2476,7 +2476,21 @@ export async function GET(request?: Request) {
 
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
-      const storedPlan = parseStoredOrderPlan(storedSetting?.value, currentPrice);
+      let storedPlan = parseStoredOrderPlan(storedSetting?.value, currentPrice);
+
+      // Discard plan if price breached SL or hit TP
+      if (storedPlan) {
+        const dir = getPlanDirection(storedPlan);
+        const isBreached = dir === 'BUY'
+          ? (currentPrice <= storedPlan.stopLoss)
+          : (currentPrice >= storedPlan.stopLoss);
+
+        if (isBreached) {
+          console.log(`[DASHBOARD STATS] Stored plan ${storedPlan.id} breached by price $${currentPrice}. Purging stored plan...`);
+          storedPlan = null;
+          await prisma.systemSetting.deleteMany({ where: { key: stablePlanSettingKey(symbol) } }).catch(() => {});
+        }
+      }
 
       if (storedPlan) {
         activeOrderPlan = storedPlan;

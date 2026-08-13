@@ -376,6 +376,21 @@ export class PaperTradeService {
           });
         }
 
+        // Update active plan in SystemSetting to reflection OPEN status
+        try {
+          const key = `ACTIVE_ORDER_PLAN_XAUUSD`;
+          const existing = await prisma.systemSetting.findUnique({ where: { key } });
+          if (existing?.value) {
+            const planObj = JSON.parse(existing.value);
+            planObj.isTriggered = true;
+            planObj.triggeredAt = new Date().toISOString();
+            await prisma.systemSetting.update({
+              where: { key },
+              data: { value: JSON.stringify(planObj) },
+            });
+          }
+        } catch {}
+
         // Notify mobile
         const sideIcon = direction === 'BUY' ? '🟢 BUY' : '🔴 SELL';
         const msg = `🔔 *ราคาถึงแนวเข้าออเดอร์ (Entry Target Hit!)*\n\n*Symbol*: ${symbol}\n*Position*: ${sideIcon}\n*Entry Target*: $${entry.toFixed(2)}\n*Triggered Price*: $${currentPrice.toFixed(2)}\n*Time*: ${new Date().toLocaleTimeString('th-TH')}`;
