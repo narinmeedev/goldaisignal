@@ -6,6 +6,7 @@ import { QrCode, UploadCloud, AlertCircle, ArrowLeft, CheckCircle2, Download } f
 import generatePayload from 'promptpay-qr';
 import { QRCodeSVG } from 'qrcode.react';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
+import PublicShell from '@/components/PublicShell';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -225,7 +226,8 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center py-12 px-4 w-full overflow-x-hidden">
+    <PublicShell>
+    <main className="relative flex min-h-[calc(100vh-72px)] w-full flex-col items-center justify-center overflow-x-hidden bg-neutral-950 px-4 py-16">
       
       <button 
         onClick={() => router.push('/pricing')}
@@ -234,7 +236,7 @@ export default function CheckoutPage() {
         <ArrowLeft className="h-5 w-5" /> ย้อนกลับ
       </button>
 
-      <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl relative">
+      <div className="public-panel relative w-full max-w-md overflow-hidden">
         
         {/* Step 2 Loading Overlay */}
         {step === 2 && isLoading && (
@@ -257,7 +259,7 @@ export default function CheckoutPage() {
         {/* Header */}
         <div className="p-6 border-b border-neutral-800 bg-neutral-900/50">
           <h1 className="text-xl font-bold text-neutral-100 flex items-center gap-2">
-            สมัครสมาชิก Gold AI <span className="text-amber-500">PRO</span>
+            เริ่มใช้งาน Gold AI <span className="text-ga-gold">PRO</span>
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
             สิทธิ์ทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วันแรก และต่ออายุช่วงโปรโมชัน {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน จากราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)}
@@ -308,7 +310,7 @@ export default function CheckoutPage() {
                 <button
                   type="submit"
                   disabled={isLoading || otp.length < 6}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold py-3.5 rounded-xl transition-colors disabled:opacity-50"
+                  className="public-button-primary min-h-12 w-full px-5 text-sm"
                 >
                   {isLoading ? 'กำลังตรวจสอบ...' : 'ยืนยันรหัส OTP'}
                 </button>
@@ -370,7 +372,7 @@ export default function CheckoutPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
+                  className="public-button-primary min-h-12 w-full px-5 text-sm"
                 >
                   {isLoading ? 'กำลังดำเนินการ...' : (isLoginMode ? 'เข้าสู่ระบบ' : 'สมัครสมาชิกและรับ OTP')}
                 </button>
@@ -496,7 +498,7 @@ export default function CheckoutPage() {
               <button
                 onClick={handleSubmitSlip}
                 disabled={!slipFile || isLoading}
-                className="w-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold py-3 rounded-xl transition-colors disabled:opacity-50 mt-4"
+                className="public-button-primary mt-4 min-h-12 w-full px-5 text-sm"
               >
                 {isLoading ? 'กำลังส่งข้อมูล...' : 'ส่งสลิปยืนยัน'}
               </button>
@@ -528,7 +530,7 @@ export default function CheckoutPage() {
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 uppercase tracking-widest">
                     PRO ACTIVATED INSTANTLY
                   </span>
-                  <h2 className="text-xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                  <h2 className="text-xl font-semibold text-ga-text">
                     อนุมัติสมาชิก PRO สำเร็จ! 🎉
                   </h2>
                   <p className="text-xs text-neutral-400 leading-relaxed px-4">
@@ -542,7 +544,7 @@ export default function CheckoutPage() {
                     router.push('/admin');
                     router.refresh();
                   }}
-                  className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-black text-sm rounded-2xl transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0"
+                  className="public-button-primary min-h-13 w-full px-5 text-sm"
                 >
                   เข้าสู่หน้า Dashboard (PRO)
                 </button>
@@ -576,6 +578,7 @@ export default function CheckoutPage() {
           </div>
         )}
       </div>
-    </div>
+    </main>
+    </PublicShell>
   );
 }

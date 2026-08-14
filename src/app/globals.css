@@ -8,6 +8,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ga-canvas: #0b1118;
+  --color-ga-surface: #111820;
+  --color-ga-elevated: #16202a;
+  --color-ga-border: #27313b;
+  --color-ga-text: #e9edf1;
+  --color-ga-muted: #929ca8;
+  --color-ga-gold: #e3b52d;
   --font-sans: var(--font-kanit);
   --font-mono: var(--font-geist-mono);
 }
@@ -60,3 +67,44 @@ input, select, textarea, button {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+@layer components {
+  .public-nav-link {
+    @apply inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-ga-muted transition-colors hover:bg-ga-surface hover:text-ga-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold;
+  }
+
+  .public-button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ga-gold bg-ga-gold font-semibold text-[#0b1118] transition-colors hover:border-[#f0c84c] hover:bg-[#f0c84c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold focus-visible:ring-offset-2 focus-visible:ring-offset-ga-canvas disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .public-button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ga-border bg-ga-surface font-medium text-ga-text transition-colors hover:border-[#3b4855] hover:bg-ga-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold;
+  }
+
+  .public-panel {
+    @apply rounded-xl border border-ga-border bg-ga-surface shadow-[0_18px_50px_rgba(0,0,0,0.16)];
+  }
+
+  .public-kicker {
+    @apply inline-flex items-center gap-2 rounded-md border border-ga-border bg-ga-surface px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-ga-gold;
+  }
+}
+
+/* Bring legacy public account and checkout views onto the dashboard palette. */
+.public-theme .bg-neutral-950 { background-color: #0b1118 !important; }
+.public-theme .bg-neutral-950\/80,
+.public-theme .bg-neutral-950\/60 { background-color: rgb(11 17 24 / 0.86) !important; }
+.public-theme .bg-neutral-900,
+.public-theme .bg-neutral-900\/60,
+.public-theme .bg-neutral-900\/50 { background-color: #111820 !important; }
+.public-theme .bg-neutral-850 { background-color: #16202a !important; }
+.public-theme .border-neutral-900,
+.public-theme .border-neutral-850,
+.public-theme .border-neutral-800,
+.public-theme .border-neutral-800\/80 { border-color: #27313b !important; }
+.public-theme .text-neutral-100,
+.public-theme .text-neutral-200 { color: #e9edf1 !important; }
+.public-theme .text-neutral-300,
+.public-theme .text-neutral-400 { color: #a6b0ba !important; }
+.public-theme .text-neutral-500,
+.public-theme .text-neutral-600 { color: #7f8a96 !important; }

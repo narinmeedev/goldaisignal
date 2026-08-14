@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Coins, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
+import PublicShell from '@/components/PublicShell';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -118,29 +119,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans w-full overflow-x-hidden">
-      {/* Background glowing gradients */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-yellow-600/5 rounded-full blur-[100px] pointer-events-none" />
+    <PublicShell>
+    <main className="relative flex min-h-[calc(100vh-72px)] w-full flex-col items-center justify-center overflow-hidden bg-neutral-950 p-6 font-sans">
+      <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(39,49,59,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(39,49,59,0.18)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(circle_at_center,black,transparent_75%)]" />
 
       {/* Main Container */}
       <div className="w-full max-w-md">
         {/* Brand header */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="h-12 w-12 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/30 shadow-xl shadow-amber-500/10 mb-4 animate-bounce">
-            <Coins className="h-6 w-6 text-amber-500" />
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-gold/10 font-mono text-lg font-black text-ga-gold">
+            GA
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent">
-            GOLD AI SIGNAL LAB
+          <h1 className="text-2xl font-semibold tracking-tight text-ga-text">
+            Gold AI Signal
           </h1>
           <p className="text-sm text-neutral-400 mt-2">
-            ระบบบอทวิเคราะห์เทรดทองคำ (XAUUSD) อัจฉริยะ
+            เข้าสู่ระบบเพื่อดูแผนวิเคราะห์ XAUUSD
           </p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-8 backdrop-blur-md shadow-2xl relative">
-          <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+        <div className="public-panel relative p-6 sm:p-8">
           
           {isForgotMode ? (
             forgotStep === 1 ? (
@@ -179,7 +178,7 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 text-sm font-bold text-neutral-950 rounded-xl transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
+                    className="public-button-primary min-h-12 w-full px-5 text-sm"
                   >
                     {isLoading ? 'กำลังส่งรหัส OTP...' : 'ส่งรหัส OTP'}
                     {!isLoading && <ArrowRight className="h-4 w-4" />}
@@ -253,7 +252,7 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={isLoading || forgotOtp.length < 6}
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 text-sm font-bold text-neutral-950 rounded-xl transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
+                    className="public-button-primary min-h-12 w-full px-5 text-sm"
                   >
                     {isLoading ? 'กำลังบันทึกรหัสผ่าน...' : 'บันทึกรหัสผ่านใหม่'}
                   </button>
@@ -355,7 +354,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 text-sm font-bold text-neutral-950 rounded-xl transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
+                  className="public-button-primary min-h-12 w-full px-5 text-sm"
                 >
                   {isLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
                   {!isLoading && <ArrowRight className="h-4 w-4" />}
@@ -370,6 +369,7 @@ export default function LoginPage() {
           ระบบผู้ช่วยอัจฉริยะสำหรับการเทรดทองคำ เวอร์ชั่น 1
         </p>
       </div>
-    </div>
+    </main>
+    </PublicShell>
   );
 }
