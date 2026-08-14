@@ -44,6 +44,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const bid = Number(payload.bid);
+    const ask = Number(payload.ask);
+    const reportedSpread = Number(payload.spread);
+    const hasTickIntegrityFields = Number.isFinite(bid) && Number.isFinite(ask);
+    const spread = hasTickIntegrityFields ? ask - bid : reportedSpread;
+    const invalidTick = hasTickIntegrityFields && (
+      ask < bid ||
+      spread <= 0 ||
+      spread > 1.5 ||
+      Math.abs(((ask + bid) / 2) - Number(payload.price)) > Math.max(spread, 0.25)
+    );
+
+    if (invalidTick) {
+      return NextResponse.json({
+        status: 'accepted',
+        decision: 'DATA_UNRELIABLE',
+        message: 'Tick rejected by bid/ask/spread integrity gate.',
+      }, { status: 202 });
+    }
+
     const result = await WebhookService.processWebhook({
       secret: payload.secret,
       symbol: 'XAUUSD', // Normalize XAUUSD.iux, GOLD#, etc. to XAUUSD

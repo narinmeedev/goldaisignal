@@ -129,6 +129,23 @@ export async function POST(request: Request) {
       h1Candles: h1Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
     });
 
+    if (stsResult.overallSignal === 'WAIT') {
+      return NextResponse.json({
+        success: true,
+        model: 'SmartTrendStructure safety gate',
+        currentPrice,
+        result: {
+          isApproved: false,
+          direction: 'NO_TRADE',
+          confidence: 0,
+          reason: stsResult.reason,
+        },
+        appliedPlan: null,
+        autoApplied: false,
+        noTrade: true,
+      }, { headers: noStoreHeaders });
+    }
+
     const zones = await prisma.zone.findMany({
       where: { symbol: { in: GOLD_SYMBOLS } },
       orderBy: { priceMin: 'asc' },
@@ -162,7 +179,7 @@ export async function POST(request: Request) {
       atr14 = trSum / 14;
     }
 
-    const targetDirection: 'BUY' | 'SELL' = stsResult.overallSignal === 'SELL' ? 'SELL' : 'BUY';
+    const targetDirection: 'BUY' | 'SELL' = stsResult.overallSignal;
     const smcTag = stsResult.lastStructureEvent?.tag
       ? `⚡ [SmartTrendStructure]: ${stsResult.lastStructureEvent.tag}`
       : `🟢 [SmartTrendStructure]: M5 (${stsResult.biases.M5.bias}) | M15 (${stsResult.biases.M15.bias}) | H1 (${stsResult.biases.H1.bias})`;
@@ -228,7 +245,7 @@ export async function POST(request: Request) {
       currentPrice,
       h1Bias,
       m15Bias,
-      trendStrength: stsResult.overallSignal !== 'WAIT' ? 90 : 75,
+      trendStrength: 90,
       rsi14M5: stsResult.biases.M5.rsi,
       rsi14M15: stsResult.biases.M15.rsi,
       rsi14H1: stsResult.biases.H1.rsi,
@@ -250,6 +267,31 @@ export async function POST(request: Request) {
       m5Candles: m5Candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
       recentLosses: recentLosses.map((l) => ({ direction: l.direction, entry: l.entry, stopLoss: l.stopLoss, notes: l.notes, closedAt: l.closedAt })),
     });
+
+    if (!qwenResult.isApproved) {
+      return NextResponse.json({
+        success: true,
+        model: `Qwen plan reviewer (${qwenResult.source})`,
+        currentPrice,
+        result: qwenResult,
+        appliedPlan: null,
+        autoApplied: false,
+        noTrade: true,
+      }, { headers: noStoreHeaders });
+    }
+
+    if (process.env.QWEN_AUTO_APPLY_VALIDATED !== 'true') {
+      return NextResponse.json({
+        success: true,
+        model: `Qwen plan reviewer (${qwenResult.source})`,
+        currentPrice,
+        result: qwenResult,
+        appliedPlan: null,
+        autoApplied: false,
+        shadowOnly: true,
+        message: 'Qwen auto-apply is disabled until forward validation is approved.',
+      }, { headers: noStoreHeaders });
+    }
 
     // Format Thailand Local Time (UTC+7)
     const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);

@@ -58,10 +58,7 @@ export interface QwenAnalysisOutput {
 export class QwenLocalAiService {
   private static LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://127.0.0.1:1234/v1/chat/completions';
 
-  /**
-   * Generates a high-winrate Gold trade plan using local Qwen 3.5-9B LLM + Institutional Quant Engine.
-   * Feeds full H1/M15/M5 OHLCV structural candle series, Fibonacci Golden Pocket, and SL post-mortem feedback.
-   */
+  /** Refines a rule-based candidate. The LLM may reject it but cannot create statistical evidence. */
   static async refineTradePlan(input: QwenAnalysisInput): Promise<QwenAnalysisOutput> {
     const isProposedBuy = input.h1Bias === 'BULLISH' || input.m15Bias === 'BULLISH' || input.proposedType.includes('BUY');
     const fallbackDirection: 'BUY' | 'SELL' = isProposedBuy ? 'BUY' : 'SELL';
@@ -92,14 +89,14 @@ export class QwenLocalAiService {
       : Number((smartEntry - atrBuffer * 2.2).toFixed(2));
 
     const fallback: QwenAnalysisOutput = {
-      isApproved: true,
+      isApproved: false,
       direction: fallbackDirection,
       type: fallbackType,
       refinedEntry: smartEntry,
       refinedSL: smartSL,
       refinedTP: smartTP,
-      confidence: 88,
-      reason: `คำนวณตามโครงสร้าง Fibonacci Golden Zone (50%-61.8%) และ ATR Volatility ($${smartEntry.toFixed(2)})`,
+      confidence: 45,
+      reason: `แผนสำรองจากสูตรยังไม่ผ่านการยืนยันจากโมเดล จึงใช้เพื่อ shadow test เท่านั้น ($${smartEntry.toFixed(2)})`,
       source: 'MATH_ENGINE',
     };
 
@@ -127,10 +124,10 @@ export class QwenLocalAiService {
         .map((l) => `${l.direction} @ $${l.entry.toFixed(2)} (SL $${l.stopLoss.toFixed(2)}: ${l.notes || 'Hit SL'})`)
         .join(' | ') || 'ไม่มีประวัติชน SL ล่าสุด';
 
-      const systemPrompt = `คุณคือ Senior Institutional Quantitative Analyst & High-Winrate Gold Specialist (XAUUSD Expert)
-หน้าที่ของคุณคือวิเคราะห์โครงสร้างราคาทองคำ ($${input.currentPrice.toFixed(2)}) ผ่านมิติ Multi-Timeframe (H1, M15, M5), Fibonacci Golden Pocket, และแนวรับแนวต้านสถาบัน เพื่อออกแผนเทรดที่มี Win Rate สูงที่สุด (>85%)
+      const systemPrompt = `คุณคือผู้ตรวจสอบแผน XAUUSD ที่เน้นการปฏิเสธแผนเมื่อหลักฐานไม่พอ
+หน้าที่ของคุณคือประเมิน candidate จากกฎเชิงปริมาณ ห้ามอ้างหรือคาดการณ์ Win Rate ที่ข้อมูลไม่ได้พิสูจน์ และให้ approved=false เมื่อกรอบเวลาไม่สอดคล้องกัน
 
-กฎเหล็กยกระดับ WIN RATE สูงสุด และคุมความเสี่ยงเข้มงวด:
+กฎควบคุมความเสี่ยง:
 1. ห้ามสวนเทรนด์เด็ดขาด (100% Anti-Counter-Trend): หาก H4 หรือ H1 เป็นขาขึ้น ห้ามออกสัญญาณ SELL เด็ดขาด! ให้รอ BUY_LIMIT ย่อรับแนวรับเท่านั้น
 2. จุดเข้าต้องได้เปรียบราคา (No FOMO / Demand-Supply Entry Only):
    - BUY_LIMIT: ต้องตั้งรับที่แนวรับสถาบัน ($${input.nearestSupport.map((p) => p.toFixed(2)).join(', ')}) หรือ Fibonacci 50%-61.8% ($${input.fib50.toFixed(2)} - $${input.fib618.toFixed(2)}) ซึ่งต่ำกว่าราคาปัจจุบันอย่างน้อย $2.5 - $6.0
@@ -146,7 +143,7 @@ export class QwenLocalAiService {
   "entry": number (จุดเข้าได้เปรียบที่แนวรับฐาน หรือ แนวต้านสูงสุด),
   "stopLoss": number (อยู่หลังจุด swing extreme 5.5$-8.0$),
   "takeProfit": number (เป้ากำไรฝั่งตรงข้ามกรอบ),
-  "confidence": number (80-98),
+  "confidence": number (0-80; เป็นคะแนนคุณภาพ setup ไม่ใช่ความน่าจะเป็นชนะ),
   "reason": "สรุปเหตุผลเชิงเทคนิคสั้นๆ อ้างอิง Structural Support/Resistance และ SMC Confluence"
 }`;
 
@@ -242,7 +239,7 @@ export class QwenLocalAiService {
         refinedEntry,
         refinedSL,
         refinedTP,
-        confidence: Math.min(95, Math.max(75, Number(parsed.confidence) || 90)),
+        confidence: Math.min(80, Math.max(0, Number(parsed.confidence) || 0)),
         reason: `${entryNote} | ${parsed.reason || fallback.reason}`,
         source: 'LOCAL_QWEN_LLM',
       };

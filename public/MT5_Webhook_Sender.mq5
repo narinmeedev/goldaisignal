@@ -15,7 +15,7 @@ input string   StrategyName   = "support_bounce";
 input int      FastMA_Period  = 9;
 input int      SlowMA_Period  = 21;
 input int      CandleSyncSeconds = 60;
-input int      CandleHistoryBars = 500;
+input int      CandleHistoryBars = 7000;
 
 int handle_fastMA, handle_slowMA;
 datetime lastAlertTimeBuy = 0, lastAlertTimeSell = 0;
@@ -132,10 +132,13 @@ void SendSignalToDashboard(string direction, double price, string strategyType)
 {
    char postData[], resultData[];
    string resultHeaders;
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick)) return;
    
    string jsonPayload = StringFormat(
-      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%f,\"strategy\":\"%s\",\"timestamp\":\"%s\"}",
-      SecretKey, _Symbol, GetTimeframeString(), direction, price, strategyType, ToIsoUtc(TimeCurrent())
+      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%f,\"bid\":%f,\"ask\":%f,\"spread\":%f,\"tickTimeMsc\":%I64d,\"strategy\":\"%s\",\"timestamp\":\"%s\"}",
+      SecretKey, _Symbol, GetTimeframeString(), direction, price, tick.bid, tick.ask,
+      tick.ask - tick.bid, tick.time_msc, strategyType, ToIsoUtc(TimeCurrent())
    );
    
    StringToCharArray(jsonPayload, postData, 0, WHOLE_ARRAY, CP_UTF8);
@@ -163,7 +166,8 @@ void SyncCandlesToWeb(bool fullHistory)
 
       MqlRates rates[];
       ArraySetAsSeries(rates, true);
-      int barsToCopy = fullHistory ? CandleHistoryBars : 10;
+      int fullHistoryBars = tfIndex == 0 ? CandleHistoryBars : (tfIndex == 1 ? 2500 : 1000);
+      int barsToCopy = fullHistory ? fullHistoryBars : 10;
       int copied = CopyRates(_Symbol, periods[tfIndex], 0, barsToCopy, rates);
 
       if(copied <= 0) continue;

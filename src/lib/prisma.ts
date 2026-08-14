@@ -7,7 +7,11 @@ export function createPrismaClient() {
   const isProd = process.env.NODE_ENV === 'production';
   const defaultPort = isProd ? '3306' : '3307';
 
-  let connectionString = process.env.DATABASE_URL || `mysql://u286424856_goldaisig:%40oibomiN42%40@127.0.0.1:${defaultPort}/u286424856_goldaisig?allowPublicKeyRetrieval=true`;
+  const configuredDatabaseUrl = process.env.DATABASE_URL;
+  if (!configuredDatabaseUrl) {
+    throw new Error('DATABASE_URL is required. Database credentials must not be embedded in source code.');
+  }
+  let connectionString = configuredDatabaseUrl;
   
   // On local development, route through SSH Tunnel on port 3307 to access Cloud MySQL
   if (!isProd && connectionString.includes('127.0.0.1:3306')) {

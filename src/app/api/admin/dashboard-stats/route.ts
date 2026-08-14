@@ -7,6 +7,7 @@ import { verifyToken } from '@/lib/auth';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
 import { NotificationService } from '@/lib/services/notification.service';
 import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
+import { MarketRegimeService } from '@/lib/services/market-regime.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -562,13 +563,21 @@ const getOpenTrackingPlan = async (
   symbol: string,
   currentPrice: number,
 ): Promise<RecommendationPlan | null> => {
-  const openTrade = await prisma.paperTrade.findFirst({
+  const openTrades = await prisma.paperTrade.findMany({
     where: {
       symbol: { in: [symbol, ...GOLD_SYMBOL_LIST] },
       result: 'OPEN',
     },
     orderBy: { openedAt: 'desc' },
+    take: 20,
     include: { signal: true },
+  });
+  const openTrade = openTrades.find((trade) => {
+    try {
+      return JSON.parse(trade.signal?.reason || '{}')?.shadowMode !== true;
+    } catch {
+      return true;
+    }
   });
   if (!openTrade) return null;
 
@@ -724,6 +733,66 @@ const getPlanTrackingReason = (plan: RecommendationPlan) => ({
   riskReasons: plan.riskReasons,
   riskReward: plan.riskReward,
 });
+
+const recordShadowPlans = async (symbol: string, plans: RecommendationPlan[]) => {
+  if (!isMarketOpen()) return;
+
+  for (const plan of plans.slice(0, 3)) {
+    const direction = getPlanDirection(plan);
+    if (!direction || !plan.strategyId) continue;
+
+    const shadowMarker = `"shadowStrategyId":"${plan.strategyId}"`;
+    const existing = await prisma.paperTrade.findFirst({
+      where: {
+        symbol: { in: [symbol, ...GOLD_SYMBOL_LIST] },
+        result: { in: ['PLAN', 'OPEN', 'TESTING'] },
+        signal: { is: { reason: { contains: shadowMarker } } },
+      },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    const reason = JSON.stringify({
+      shadowMode: true,
+      shadowStrategyId: plan.strategyId,
+      strategyId: plan.strategyId,
+      regime: plan.reason.match(/^\[([^\]]+)\]/)?.[1] || null,
+      planType: plan.type,
+      riskScore: plan.riskScore,
+      riskReward: plan.riskReward,
+    });
+    const signal = await prisma.signal.create({
+      data: {
+        symbol: 'XAUUSD',
+        timeframe: plan.timeframe || 'M15',
+        direction,
+        entry: plan.entry,
+        stopLoss: plan.stopLoss,
+        takeProfit1: plan.takeProfit,
+        takeProfit2: plan.takeProfit,
+        riskReward: plan.riskReward || 0,
+        confidence: plan.confidence,
+        status: 'shadow',
+        bias: 'Wait',
+        result: 'Pending',
+        reason,
+      },
+    });
+    await prisma.paperTrade.create({
+      data: {
+        signalId: signal.id,
+        symbol: 'XAUUSD',
+        direction,
+        entry: plan.entry,
+        stopLoss: plan.stopLoss,
+        takeProfit1: plan.takeProfit,
+        takeProfit2: plan.takeProfit,
+        result: 'PLAN',
+        notes: `[SHADOW] ${plan.strategyId} | ${plan.reason}`,
+      },
+    });
+  }
+};
 
 const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string) => {
   const trackingSignals = await prisma.signal.findMany({
@@ -909,16 +978,6 @@ const getStableOrderPlan = async (
   const storedSetting = await prisma.systemSetting.findUnique({ where: { key } });
   const storedPlan = parseStoredOrderPlan(storedSetting?.value);
 
-  const isQwenPlan = storedPlan && (
-    storedPlan.id?.toLowerCase().includes('qwen') ||
-    storedPlan.title?.toLowerCase().includes('qwen') ||
-    storedPlan.strategyLabel?.toLowerCase().includes('qwen')
-  );
-
-  if (isQwenPlan) {
-    return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
-  }
-
   // Once Entry is reached, that plan remains authoritative until TP/SL closes it.
   // Research may pause the strategy for future plans, but must not hide an open plan from customers.
   const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
@@ -930,6 +989,39 @@ const getStableOrderPlan = async (
       create: { key: stablePlanSettingKey(symbol), value: JSON.stringify(openTrackingPlan) },
     });
     return openTrackingPlan;
+  }
+
+  // Portfolio circuit breaker: preserve an already-open trade, but do not
+  // create or retain pending entries after a damaging daily sequence.
+  const { start: bangkokDayStart, end: bangkokDayEnd } = getBangkokDayRange(now);
+  const recentDecisionCandidates = await prisma.paperTrade.findMany({
+    where: {
+      symbol: { in: ['XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+      result: { in: ['WIN', 'LOSS', 'BE'] },
+      closedAt: { gte: bangkokDayStart, lt: bangkokDayEnd },
+    },
+    orderBy: { closedAt: 'desc' },
+    take: 30,
+    include: { signal: { select: { reason: true } } },
+  });
+  const recentDecisions = recentDecisionCandidates.filter((trade) => {
+    try {
+      return JSON.parse(trade.signal?.reason || '{}')?.shadowMode !== true;
+    } catch {
+      return true;
+    }
+  }).slice(0, 10);
+  const threeConsecutiveLosses = recentDecisions.length >= 3 &&
+    recentDecisions.slice(0, 3).every((trade) => trade.result === 'LOSS');
+  const dailyNetR = recentDecisions.reduce((sum, trade) => sum + trade.rrResult, 0);
+  const circuitBreakerActive = threeConsecutiveLosses || dailyNetR <= -2;
+
+  if (circuitBreakerActive) {
+    if (storedPlan) {
+      await retirePendingStoredPlan(storedPlan, 'daily portfolio circuit breaker active');
+      await prisma.systemSetting.deleteMany({ where: { key } });
+    }
+    return null;
   }
 
   // Competing directions must separate clearly before a new plan is allowed.
@@ -970,7 +1062,7 @@ const getStableOrderPlan = async (
 
   if (!candidate) {
     // Keep a valid locked plan, but retire stale plans and strategies with poor measured results.
-    if (storedPlan && storedPlanAllowed && !storedPlanResearchRejected && !isPlanStale(storedPlan, currentPrice, now)) {
+    if (candidates.length > 0 && storedPlan && storedPlanAllowed && !storedPlanResearchRejected && !isPlanStale(storedPlan, currentPrice, now)) {
       return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
     }
     if (storedPlan) {
@@ -1561,6 +1653,7 @@ export async function GET(request?: Request) {
       const hasM5Mt5Base = m5Candles.length >= 3 || (isM5CandleSyncRecent && mt5M5CandleCount >= 3);
       const hasM15Mt5Base = m15Candles.length >= 3 || (isM15CandleSyncRecent && mt5M15CandleCount >= 3);
       const m5AnalysisCandles = m5Candles.length >= 3 ? m5Candles : (m15Candles.length > 0 ? m15Candles : recentCandles);
+      const marketRegime = MarketRegimeService.assess(m5AnalysisCandles, m5Candles.length >= 3 ? 5 : 15);
 
       const brokerTickM5Candles = symbol !== 'XAUUSD' && isPriceEventRecent && liveTicks.length > 0
         ? mergeLiveTicksIntoCandles([], 'M5', liveTicks)
@@ -2378,8 +2471,16 @@ export async function GET(request?: Request) {
         strategyResearch = await ensureResearchUpkeep(symbol, strategyResearch);
       }
       const hasFreshTradeStructure = true;
-      const eligibleProactivePlans = proactivePlans;
-      let recommendationPlans: RecommendationPlan[] = (isPublic ? [] : eligibleProactivePlans)
+      const eligibleProactivePlans = marketRegime.tradable
+        ? proactivePlans
+            .filter((plan) => MarketRegimeService.strategyAllowed(marketRegime.regime, plan.strategyId))
+            .map((plan) => ({
+              ...plan,
+              confidence: Math.min(plan.confidence, marketRegime.confidenceCap),
+              reason: `[${marketRegime.regime}] ${plan.reason}`,
+            }))
+        : [];
+      const evaluatedPlans: RecommendationPlan[] = (isPublic ? [] : eligibleProactivePlans)
         .map((plan) => {
           const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
 
@@ -2454,39 +2555,18 @@ export async function GET(request?: Request) {
           (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
           (plan.riskReward ?? 0) >= 1.8
         )
-        .sort((a, b) => b.confidence - a.confidence)
+        .sort((a, b) => b.confidence - a.confidence);
+
+      if (!isPublic) {
+        await recordShadowPlans(symbol, evaluatedPlans);
+      }
+
+      let recommendationPlans = evaluatedPlans
+        .filter((plan) => getResearchCandidate(strategyResearch, plan.strategyId)?.status === 'APPROVED')
         .slice(0, 6);
 
-      // Safeguard: Fallback to top proactive plans if filtering yields 0 plans
-      if (recommendationPlans.length === 0 && eligibleProactivePlans.length > 0) {
-        recommendationPlans = eligibleProactivePlans
-          .filter((p) => p.type !== 'WAIT')
-          .map((plan) => {
-            const candidatePlan: RecommendationPlan = {
-              ...plan,
-              confidence: Math.max(65, plan.confidence || 65),
-              stopLoss: roundPrice(plan.stopLoss),
-              takeProfit: roundPrice(plan.takeProfit),
-              researchStatus: 'NOT_RUN',
-              researchWinRate: null,
-              researchSampleSize: 0,
-            };
-            return {
-              ...candidatePlan,
-              ...buildPlanRiskProfile(candidatePlan, {
-                currentPrice,
-                volatility,
-                h1Bias,
-                m15Bias,
-                researchSampleSize: 0,
-                fundamentalBias,
-                fundamentalWarning,
-              }),
-            };
-          })
-          .sort((a, b) => b.confidence - a.confidence)
-          .slice(0, 6);
-      }
+      // No fallback here: if every candidate fails the evidence/risk filters,
+      // the correct customer-facing decision is NO_TRADE.
 
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
@@ -2506,15 +2586,17 @@ export async function GET(request?: Request) {
         }
       }
 
-      if (storedPlan) {
-        activeOrderPlan = storedPlan;
+      const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
+      if (openTrackingPlan) {
+        activeOrderPlan = openTrackingPlan;
       } else {
-        const openTrackingPlan = await getOpenTrackingPlan(symbol, currentPrice);
-        if (openTrackingPlan) {
-          activeOrderPlan = openTrackingPlan;
-        } else {
-          activeOrderPlan = await getStableOrderPlan(symbol, recommendationPlans, currentPrice, hasM5Mt5Base, hasFreshTradeStructure);
-        }
+        activeOrderPlan = await getStableOrderPlan(
+          symbol,
+          recommendationPlans,
+          currentPrice,
+          hasM5Mt5Base && marketRegime.tradable,
+          hasFreshTradeStructure && marketRegime.tradable,
+        );
       }
 
       if (activeOrderPlan) {

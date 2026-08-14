@@ -22,6 +22,9 @@ export type StrategyCandidateResult = {
   wins: number;
   losses: number;
   netR: number;
+  expectancyR?: number;
+  maxDrawdownR?: number;
+  wilsonLowerBound?: number;
   parameters: {
     confirmation: string;
     slPoints?: number;
@@ -34,6 +37,9 @@ export type StrategyCandidateResult = {
     wins: number;
     losses: number;
     netR: number;
+    expectancyR?: number;
+    maxDrawdownR?: number;
+    wilsonLowerBound?: number;
   };
   liveForwardTest?: {
     winRate: number;
@@ -67,7 +73,10 @@ type BacktestVariant = {
 };
 
 const TARGET_WIN_RATE = 50;
-const MIN_SAMPLES_TO_APPROVE = 3;
+const MIN_BACKTEST_SAMPLES = 30;
+const MIN_FORWARD_SAMPLES_TO_APPROVE = 20;
+const MIN_FORWARD_WILSON_LOWER_BOUND = 30;
+const ESTIMATED_EXECUTION_COST_R = 0.08;
 
 const normalizeCandles = (candles: ResearchCandle[]) =>
   [...candles]
@@ -109,6 +118,18 @@ const calcATRAt = (candles: ResearchCandle[], endIndex: number, period = 14) => 
   return count > 0 ? sum / count : 1;
 };
 
+const findLastClosedCandleIndex = (
+  candles: ResearchCandle[],
+  decisionTime: Date,
+  timeframeMs: number,
+) => {
+  const cutoff = decisionTime.getTime() - timeframeMs;
+  for (let index = candles.length - 1; index >= 0; index--) {
+    if (candles[index].time.getTime() <= cutoff) return index;
+  }
+  return -1;
+};
+
 const evaluateOutcome = (
   candles: ResearchCandle[],
   index: number,
@@ -122,11 +143,11 @@ const evaluateOutcome = (
   for (let i = index + 1; i <= end; i++) {
     const candle = candles[i];
     if (direction === 'BUY') {
-      if (candle.low <= stopLoss) return { result: 'LOSS', rr: -1 };
-      if (candle.high >= takeProfit) return { result: 'WIN', rr: Math.abs(takeProfit - entry) / Math.abs(entry - stopLoss) };
+      if (candle.low <= stopLoss) return { result: 'LOSS', rr: -1 - ESTIMATED_EXECUTION_COST_R };
+      if (candle.high >= takeProfit) return { result: 'WIN', rr: Math.abs(takeProfit - entry) / Math.abs(entry - stopLoss) - ESTIMATED_EXECUTION_COST_R };
     } else {
-      if (candle.high >= stopLoss) return { result: 'LOSS', rr: -1 };
-      if (candle.low <= takeProfit) return { result: 'WIN', rr: Math.abs(entry - takeProfit) / Math.abs(stopLoss - entry) };
+      if (candle.high >= stopLoss) return { result: 'LOSS', rr: -1 - ESTIMATED_EXECUTION_COST_R };
+      if (candle.low <= takeProfit) return { result: 'WIN', rr: Math.abs(entry - takeProfit) / Math.abs(stopLoss - entry) - ESTIMATED_EXECUTION_COST_R };
     }
   }
   return null;
@@ -150,6 +171,25 @@ const summarizeOutcomes = (outcomes: BacktestOutcome[]) => {
   const sampleSize = wins + losses;
   const winRate = sampleSize > 0 ? (wins / sampleSize) * 100 : 0;
   const netR = outcomes.reduce((sum, trade) => sum + trade.rr, 0);
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdownR = 0;
+  outcomes.forEach((trade) => {
+    equity += trade.rr;
+    peak = Math.max(peak, equity);
+    maxDrawdownR = Math.max(maxDrawdownR, peak - equity);
+  });
+
+  // 95% Wilson score lower bound. This keeps small, lucky samples from being
+  // presented as reliable probabilities.
+  const z = 1.96;
+  const p = sampleSize > 0 ? wins / sampleSize : 0;
+  const denominator = 1 + (z * z) / Math.max(sampleSize, 1);
+  const centre = p + (z * z) / (2 * Math.max(sampleSize, 1));
+  const margin = z * Math.sqrt(
+    (p * (1 - p)) / Math.max(sampleSize, 1) + (z * z) / (4 * Math.max(sampleSize, 1) ** 2),
+  );
+  const wilsonLowerBound = sampleSize > 0 ? ((centre - margin) / denominator) * 100 : 0;
 
   return {
     wins,
@@ -157,6 +197,9 @@ const summarizeOutcomes = (outcomes: BacktestOutcome[]) => {
     sampleSize,
     winRate: round(winRate, 1),
     netR: round(netR, 2),
+    expectancyR: sampleSize > 0 ? round(netR / sampleSize, 3) : 0,
+    maxDrawdownR: round(maxDrawdownR, 2),
+    wilsonLowerBound: round(wilsonLowerBound, 1),
   };
 };
 
@@ -165,13 +208,26 @@ const chooseBestVariant = (
   tester: (variant: BacktestVariant) => BacktestOutcome[],
 ) => {
   return variants
-    .map((variant) => ({ variant, stats: summarizeOutcomes(tester(variant)) }))
+    .map((variant) => {
+      const outcomes = tester(variant);
+      const splitIndex = Math.max(1, Math.floor(outcomes.length * 0.7));
+      return {
+        variant,
+        trainingStats: summarizeOutcomes(outcomes.slice(0, splitIndex)),
+        stats: summarizeOutcomes(outcomes.slice(splitIndex)),
+      };
+    })
     .sort((a, b) => {
-      if (b.stats.winRate !== a.stats.winRate) return b.stats.winRate - a.stats.winRate;
-      if (b.stats.sampleSize !== a.stats.sampleSize) return b.stats.sampleSize - a.stats.sampleSize;
-      return b.stats.netR - a.stats.netR;
+      if (b.trainingStats.expectancyR !== a.trainingStats.expectancyR) {
+        return b.trainingStats.expectancyR - a.trainingStats.expectancyR;
+      }
+      if (b.trainingStats.wilsonLowerBound !== a.trainingStats.wilsonLowerBound) {
+        return b.trainingStats.wilsonLowerBound - a.trainingStats.wilsonLowerBound;
+      }
+      return b.trainingStats.sampleSize - a.trainingStats.sampleSize;
     })[0] ?? {
       variant: variants[0],
+      trainingStats: summarizeOutcomes([]),
       stats: summarizeOutcomes([]),
     };
 };
@@ -183,26 +239,35 @@ const buildCandidate = (
   rationale: string,
   best: ReturnType<typeof chooseBestVariant>,
 ): StrategyCandidateResult => {
-  const approved = best.stats.sampleSize >= MIN_SAMPLES_TO_APPROVE && best.stats.winRate >= TARGET_WIN_RATE;
+  // Historical optimization never approves a live strategy by itself. It can
+  // only nominate a candidate for forward/shadow testing.
+  const historicallyViable = best.stats.sampleSize >= MIN_BACKTEST_SAMPLES &&
+    best.stats.netR > 0 && best.stats.expectancyR > 0;
   return {
     id,
     label,
     mode,
-    status: approved ? 'APPROVED' : 'RESEARCHING',
+    status: 'RESEARCHING',
     winRate: best.stats.winRate,
     sampleSize: best.stats.sampleSize,
     wins: best.stats.wins,
     losses: best.stats.losses,
     netR: best.stats.netR,
+    expectancyR: best.stats.expectancyR,
+    maxDrawdownR: best.stats.maxDrawdownR,
+    wilsonLowerBound: best.stats.wilsonLowerBound,
     backtest: {
       winRate: best.stats.winRate,
       sampleSize: best.stats.sampleSize,
       wins: best.stats.wins,
       losses: best.stats.losses,
       netR: best.stats.netR,
+      expectancyR: best.stats.expectancyR,
+      maxDrawdownR: best.stats.maxDrawdownR,
+      wilsonLowerBound: best.stats.wilsonLowerBound,
     },
     parameters: best.variant,
-    rationale,
+    rationale: `${rationale} | ${historicallyViable ? 'ผ่านเกณฑ์ส่งเข้า shadow test' : 'ข้อมูล out-of-sample ยังไม่พอสำหรับเปิดใช้จริง'}`,
   };
 };
 
@@ -306,7 +371,14 @@ export class StrategyResearchService {
       const combinedSampleSize = combinedWins + combinedLosses;
       const combinedWinRate = combinedSampleSize > 0 ? round((combinedWins / combinedSampleSize) * 100, 1) : 0;
       const combinedNetR = round(base.netR + live.netR, 2);
-      const approved = combinedSampleSize >= MIN_SAMPLES_TO_APPROVE && combinedWinRate >= TARGET_WIN_RATE;
+      const liveSummary = summarizeOutcomes([
+        ...Array.from({ length: live.wins }, () => ({ result: 'WIN' as const, rr: live.wins > 0 ? Math.max(0.1, live.netR + live.losses) / live.wins : 0 })),
+        ...Array.from({ length: live.losses }, () => ({ result: 'LOSS' as const, rr: -1 })),
+      ]);
+      const approved = liveSampleSize >= MIN_FORWARD_SAMPLES_TO_APPROVE &&
+        live.netR > 0 &&
+        liveWinRate >= 40 &&
+        liveSummary.wilsonLowerBound >= MIN_FORWARD_WILSON_LOWER_BOUND;
       const status: ResearchStatus = approved ? 'APPROVED' : 'RESEARCHING';
 
       return {
@@ -317,6 +389,8 @@ export class StrategyResearchService {
         wins: combinedWins,
         losses: combinedLosses,
         netR: combinedNetR,
+        expectancyR: combinedSampleSize > 0 ? round(combinedNetR / combinedSampleSize, 3) : 0,
+        wilsonLowerBound: liveSummary.wilsonLowerBound,
         backtest: base,
         liveForwardTest: {
           winRate: liveWinRate,
@@ -344,17 +418,17 @@ export class StrategyResearchService {
       prisma.candle.findMany({
         where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M5' },
         orderBy: { time: 'desc' },
-        take: 240,
+        take: 9000,
       }),
       prisma.candle.findMany({
         where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M15' },
         orderBy: { time: 'desc' },
-        take: 200,
+        take: 3000,
       }),
       prisma.candle.findMany({
         where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'H1' },
         orderBy: { time: 'desc' },
-        take: 160,
+        take: 1000,
       }),
     ]);
 
@@ -445,9 +519,10 @@ export class StrategyResearchService {
         const previous = m15[i - 1];
         const ema20 = calcEMAAt(m15, i, 20);
         const atr = calcATRAt(m15, i);
-        const h1Index = Math.min(h1.length - 1, Math.floor((i / Math.max(m15.length, 1)) * Math.max(h1.length, 1)));
-        const h1Ema20 = h1.length > 20 ? calcEMAAt(h1, Math.max(20, h1Index), 20) : ema20;
-        const h1Close = h1[Math.max(0, h1Index)]?.close ?? current.close;
+        const h1Index = findLastClosedCandleIndex(h1, current.time, 60 * 60 * 1000);
+        if (h1Index < 20) continue;
+        const h1Ema20 = calcEMAAt(h1, h1Index, 20);
+        const h1Close = h1[h1Index].close;
 
         const bullishSetup = h1Close >= h1Ema20 && current.close > ema20 && previous.low <= ema20 && current.close > previous.high;
         const bearishSetup = h1Close <= h1Ema20 && current.close < ema20 && previous.high >= ema20 && current.close < previous.low;

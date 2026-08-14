@@ -103,15 +103,18 @@ export class SmartTrendStructureService {
     const fastEMA = this.calcEMA(closes, this.FAST_EMA_PERIOD);
     const slowEMA = this.calcEMA(closes, this.SLOW_EMA_PERIOD);
     const rsi = this.calcRSI(closes, this.RSI_PERIOD);
+    const recentRanges = candles.slice(-20).map((candle) => Math.max(0, candle.high - candle.low));
+    const averageRange = recentRanges.reduce((sum, range) => sum + range, 0) / Math.max(1, recentRanges.length);
+    const minimumTrendSeparation = Math.max(0.05, averageRange * 0.2);
 
     let bias: 'BULLISH' | 'BEARISH' | 'RANGE' = 'RANGE';
     let signal: 'BUY' | 'SELL' | 'WAIT' = 'WAIT';
 
     // MQL5 logic: f[0] > s[0] && r[0] >= 50.0 -> BUY / BULLISH
-    if (fastEMA > slowEMA && rsi >= 50.0) {
+    if (fastEMA - slowEMA >= minimumTrendSeparation && rsi >= 53.0) {
       bias = 'BULLISH';
       signal = 'BUY';
-    } else if (fastEMA < slowEMA && rsi <= 50.0) {
+    } else if (slowEMA - fastEMA >= minimumTrendSeparation && rsi <= 47.0) {
       bias = 'BEARISH';
       signal = 'SELL';
     }
@@ -246,13 +249,17 @@ export class SmartTrendStructureService {
       overallSignal = 'SELL';
     }
 
-    // OVERRIDE if M5 Top Rejection or Bottom Support is active!
+    // Exhaustion is a veto, not a direction generator. A local M5 pattern must
+    // never manufacture a counter-trend trade when the higher timeframes are
+    // neutral or disagree.
     if (exhaustion.isTopExhaustion) {
-      if (overallSignal === 'BUY') overallSignal = 'WAIT'; // Never BUY into a Double/Triple Top Exhaustion!
-      else overallSignal = 'SELL'; // Switch to SELL if structure confirms exhaustion
+      if (overallSignal === 'BUY' || h1Bias.bias !== 'BEARISH' || m15Bias.bias !== 'BEARISH') {
+        overallSignal = 'WAIT';
+      }
     } else if (exhaustion.isBottomExhaustion) {
-      if (overallSignal === 'SELL') overallSignal = 'WAIT'; // Never SELL into a Double/Triple Bottom Support!
-      else overallSignal = 'BUY'; // Switch to BUY if structure confirms support
+      if (overallSignal === 'SELL' || h1Bias.bias !== 'BULLISH' || m15Bias.bias !== 'BULLISH') {
+        overallSignal = 'WAIT';
+      }
     }
 
     // Extract Support / Resistance Swing Levels for M5, M15, H1
@@ -336,12 +343,12 @@ export class SmartTrendStructureService {
     let stopLossTarget = currentPrice;
     let takeProfitTarget = currentPrice;
 
-    if (exhaustion.isTopExhaustion) {
+    if (overallSignal === 'SELL' && exhaustion.isTopExhaustion) {
       // Entry near peak resistance with tight SL just above peak
       entryTarget = Number((currentPrice + 0.80).toFixed(2));
       stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.20, entryTarget + 3.20)).toFixed(2));
       takeProfitTarget = Number((entryTarget - (stopLossTarget - entryTarget) * 1.5).toFixed(2));
-    } else if (exhaustion.isBottomExhaustion) {
+    } else if (overallSignal === 'BUY' && exhaustion.isBottomExhaustion) {
       // Entry near trough support with tight SL just below trough
       entryTarget = Number((currentPrice - 0.80).toFixed(2));
       stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.20, entryTarget - 3.20)).toFixed(2));
@@ -357,13 +364,17 @@ export class SmartTrendStructureService {
       stopLossTarget = Number((entryTarget + slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
     } else {
-      // Wait / Range mode: High precision Limit Orders with tight SL
-      entryTarget = Number((currentPrice - 2.5).toFixed(2));
-      stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
-      takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
+      // WAIT is a real no-trade state. Neutral levels prevent downstream code
+      // from accidentally turning an undecided market into a BUY plan.
+      entryTarget = Number(currentPrice.toFixed(2));
+      stopLossTarget = Number(currentPrice.toFixed(2));
+      takeProfitTarget = Number(currentPrice.toFixed(2));
     }
 
-    const confidence = overallSignal !== 'WAIT' ? (Math.abs(score) >= 3 ? 96 : 90) : 78;
+    const alignedTimeframes = [m5Bias, m15Bias, h1Bias].filter((bias) => bias.signal === overallSignal).length;
+    const confidence = overallSignal === 'WAIT'
+      ? 0
+      : Math.min(82, 52 + Math.abs(score) * 6 + alignedTimeframes * 2);
     const structureTag = exhaustion.tag || lastStructureEvent?.tag || 'กำลังสะสมพลัง';
     const reason = `[SmartTrendStructure Engine]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${structureTag} | SL Tight $${slBuffer.toFixed(2)} (กระชับความเสี่ยง)`;
 

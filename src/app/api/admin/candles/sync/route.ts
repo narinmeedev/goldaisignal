@@ -29,9 +29,9 @@ const noStoreHeaders = {
 };
 
 const maxStoredCandlesByTimeframe: Record<string, number> = {
-  M5: 720,
-  M15: 480,
-  H1: 360,
+  M5: 9000,
+  M15: 3000,
+  H1: 1000,
   D1: 240,
 };
 
@@ -249,8 +249,18 @@ export async function POST(request: Request) {
         Number.isFinite(c.open) &&
         Number.isFinite(c.high) &&
         Number.isFinite(c.low) &&
-        Number.isFinite(c.close)
+        Number.isFinite(c.close) &&
+        c.high >= c.low &&
+        c.high >= Math.max(c.open, c.close) &&
+        c.low <= Math.min(c.open, c.close)
       );
+
+    if (parsedCandles.length !== candles.length) {
+      return NextResponse.json(
+        { status: 'rejected', decision: 'DATA_UNRELIABLE', error: 'One or more candles have invalid OHLC geometry.' },
+        { status: 422, headers: noStoreHeaders },
+      );
+    }
     const dataToInsert = normalizeBrokerCandleTimes(parsedCandles, timeframe, receivedAt);
 
     if (dataToInsert.length === 0) {
@@ -458,7 +468,7 @@ export async function POST(request: Request) {
       // Auto-refresh if active plan is closed, older than 30 minutes, or price moved > $8.00 away from entry
       const isStale = !parsedPlan || Boolean(parsedPlan.isClosed) || planAgeMs > 30 * 60 * 1000 || priceDistance > 8.0;
 
-      if (isStale) {
+      if (isStale && process.env.LEGACY_SMART_PLAN_AUTO_APPLY === 'true') {
         console.log(`[MT5 SYNC] Active plan is missing/closed/stale (Closed: ${Boolean(parsedPlan?.isClosed)}, Age: ${Math.round(planAgeMs / 60000)}m, Dist: $${priceDistance.toFixed(2)}). Generating fresh live plan...`);
 
         const xauSymbolsFilter = {
@@ -499,10 +509,13 @@ export async function POST(request: Request) {
           const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);
           const bangkokTimeStr = `${nowBangkok.getUTCHours().toString().padStart(2, '0')}:${nowBangkok.getUTCMinutes().toString().padStart(2, '0')} น.`;
 
-          const targetDir = analysis.overallSignal !== 'WAIT' ? analysis.overallSignal : (analysis.score >= 0 ? 'BUY' : 'SELL');
-          const planType = targetDir === 'BUY'
-            ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
-            : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
+          if (analysis.overallSignal === 'WAIT') {
+            parsedPlan = null;
+          } else {
+            const targetDir = analysis.overallSignal;
+            const planType = targetDir === 'BUY'
+              ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
+              : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
 
           const freshPlan = {
             id: `qwen-plan-${Date.now()}`,
@@ -553,7 +566,8 @@ export async function POST(request: Request) {
 
           NotificationService.sendNotification(lineMessage).catch(() => {});
 
-          parsedPlan = freshPlan;
+            parsedPlan = freshPlan;
+          }
         }
       }
 
