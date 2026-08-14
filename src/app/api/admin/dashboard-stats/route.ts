@@ -317,6 +317,43 @@ const mergeLiveTicksIntoCandles = (
   candles,
 );
 
+const mergeDerivedCandles = (
+  baseCandles: CandlePoint[],
+  sourceCandles: CandlePoint[],
+  timeframe: 'M15' | 'H1',
+) => {
+  const frameMs = timeframeMs[timeframe];
+  const buckets = new Map<number, CandlePoint>();
+
+  [...sourceCandles]
+    .sort((a, b) => a.time.getTime() - b.time.getTime())
+    .forEach((candle) => {
+      const bucketTime = Math.floor(candle.time.getTime() / frameMs) * frameMs;
+      const existing = buckets.get(bucketTime);
+
+      if (!existing) {
+        buckets.set(bucketTime, {
+          ...candle,
+          time: new Date(bucketTime),
+        });
+        return;
+      }
+
+      buckets.set(bucketTime, {
+        ...existing,
+        high: Math.max(existing.high, candle.high),
+        low: Math.min(existing.low, candle.low),
+        close: candle.close,
+        volume: existing.volume + candle.volume,
+        createdAt: candle.createdAt ?? existing.createdAt,
+      });
+    });
+
+  const merged = new Map(baseCandles.map((candle) => [candle.time.getTime(), candle]));
+  buckets.forEach((candle, time) => merged.set(time, candle));
+  return [...merged.values()].sort((a, b) => b.time.getTime() - a.time.getTime());
+};
+
 const getResearchCandidate = (report: StrategyResearchReport | null, strategyId?: string) => {
   if (!report || !strategyId) return null;
   return report.candidates.find((candidate) => candidate.id === strategyId) || null;
@@ -1496,6 +1533,13 @@ export async function GET(request?: Request) {
           take: D1_CANDLE_FETCH_LIMIT,
         }),
       ]);
+
+      // The installed EA posts M5 every few seconds. Derive the open M15/H1 bars
+      // from that canonical feed when their dedicated sync cadence falls behind.
+      if (isM5CandleSyncRecent && m5Candles.length > 0) {
+        m15Candles = mergeDerivedCandles(m15Candles, m5Candles, 'M15').slice(0, M15_CANDLE_FETCH_LIMIT);
+        h1Candles = mergeDerivedCandles(h1Candles, m5Candles, 'H1').slice(0, H1_CANDLE_FETCH_LIMIT);
+      }
 
       if (!isPriceEventRecent) {
         currentPrice = isM5CandleSyncRecent && m5Candles.length > 0
