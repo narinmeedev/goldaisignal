@@ -35,6 +35,13 @@ const maxStoredCandlesByTimeframe: Record<string, number> = {
   D1: 240,
 };
 
+const timeframeDurationMs: Record<string, number> = {
+  M5: 5 * 60 * 1000,
+  M15: 15 * 60 * 1000,
+  H1: 60 * 60 * 1000,
+  D1: 24 * 60 * 60 * 1000,
+};
+
 const runPlanAutomation = async (request: Request, symbol: string, timeframe: string, latestChanged: boolean) => {
   const upperSym = (symbol || '').toUpperCase();
   const isGoldSymbol = upperSym.includes('XAU') || upperSym.includes('GOLD');
@@ -134,6 +141,33 @@ function parseCandleTime(rawTime: any): Date {
   return new Date(rawTime);
 }
 
+function normalizeBrokerCandleTimes<T extends { time: Date }>(items: T[], timeframe: string, now: Date) {
+  if (items.length === 0) return items;
+
+  const frameMs = timeframeDurationMs[timeframe] || 5 * 60 * 1000;
+  const latestTime = Math.max(...items.map((item) => item.time.getTime()));
+  const expectedFrameStart = Math.floor(now.getTime() / frameMs) * frameMs;
+  const futureToleranceMs = Math.min(frameMs, 5 * 60 * 1000);
+
+  // Older EA versions send broker-local wall-clock strings without a timezone.
+  // Infer the broker's whole-hour UTC offset only when the current bar lands in the future.
+  if (latestTime <= now.getTime() + futureToleranceMs) return items;
+
+  const inferredOffsetHours = Math.round((latestTime - expectedFrameStart) / (60 * 60 * 1000));
+  if (inferredOffsetHours < 1 || inferredOffsetHours > 14) return items;
+
+  const offsetMs = inferredOffsetHours * 60 * 60 * 1000;
+  const correctedLatestTime = latestTime - offsetMs;
+  if (correctedLatestTime > now.getTime() + futureToleranceMs || correctedLatestTime < expectedFrameStart - frameMs * 2) {
+    return items;
+  }
+
+  return items.map((item) => ({
+    ...item,
+    time: new Date(item.time.getTime() - offsetMs),
+  }));
+}
+
 export async function POST(request: Request) {
   let body: any = null;
   try {
@@ -198,7 +232,8 @@ export async function POST(request: Request) {
     const normalizedSymbol = isGoldSymbol ? 'XAUUSD' : rawSymbol.toUpperCase().trim();
 
     // Insert or update candles
-    const dataToInsert = candles
+    const receivedAt = new Date();
+    const parsedCandles = candles
       .map((c: any) => ({
         symbol: normalizedSymbol,
         timeframe,
@@ -216,6 +251,7 @@ export async function POST(request: Request) {
         Number.isFinite(c.low) &&
         Number.isFinite(c.close)
       );
+    const dataToInsert = normalizeBrokerCandleTimes(parsedCandles, timeframe, receivedAt);
 
     if (dataToInsert.length === 0) {
       await prisma.webhookEvent.create({
@@ -231,13 +267,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Candles array is empty.' }, { status: 400, headers: noStoreHeaders });
     }
 
+    const frameMs = timeframeDurationMs[timeframe] || 5 * 60 * 1000;
+    const futureCutoff = new Date(receivedAt.getTime() + Math.min(frameMs, 5 * 60 * 1000));
+
+    // Remove rows created by older EA payloads whose broker-local time was mistaken for UTC.
+    await prisma.candle.deleteMany({
+      where: {
+        symbol: normalizedSymbol,
+        timeframe,
+        time: { gt: futureCutoff },
+      },
+    });
+
     const latestBefore = await prisma.candle.findFirst({
       where: { symbol: normalizedSymbol, timeframe },
       orderBy: { time: 'desc' },
       select: { time: true, open: true, high: true, low: true, close: true },
     });
 
-    const touchedAt = new Date();
+    const touchedAt = receivedAt;
 
     // Optimize database writes: Fetch existing candles in this timeframe range first
     const existingCandles = await prisma.candle.findMany({

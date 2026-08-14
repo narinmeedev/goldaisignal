@@ -126,11 +126,9 @@ void UpdateChartHUD()
 //+------------------------------------------------------------------+
 string FormatCandleJSON(datetime time, double open, double high, double low, double close, long volume)
 {
-   string timeStr = TimeToString(time, TIME_DATE|TIME_SECONDS);
-   StringReplace(timeStr, ".", "-");
-   
-   return StringFormat("{\"time\":\"%s\",\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
-                       timeStr, open, high, low, close, volume);
+   // Send Unix seconds so broker-local wall-clock time is never mistaken for UTC.
+   return StringFormat("{\"time\":%I64d,\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
+                       (long)time, open, high, low, close, volume);
 }
 
 //+------------------------------------------------------------------+

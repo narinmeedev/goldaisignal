@@ -1383,7 +1383,7 @@ export async function GET(request?: Request) {
     const marketIntelligence: Record<string, any> = {};
 
     // Cache webhook event queries to reuse them
-    let tvPriceEvents: any[] = [];
+    let priceEvents: any[] = [];
     let mt5SyncEvent: any = null;
     let mt5M5SyncEvent: any = null;
     let mt5M15SyncEvent: any = null;
@@ -1391,14 +1391,15 @@ export async function GET(request?: Request) {
     for (const symbol of assets) {
       const searchSymbol = 'XAU';
 
-      // Get latest MT5 tick price and candle-sync symbol separately.
-      // Price ticks move the live candle; sync events provide the historical OHLC set.
+      // Both dedicated tick events and frequent MT5 syncs carry a current price.
+      // Treat either source as a live tick so the chart stays current even when
+      // the installed EA only posts its rolling M5 candle set.
       const [recentPriceEvents, latestAnySyncEvent] = await Promise.all([
         prisma.webhookEvent.findMany({
           where: {
             symbol: { in: [searchSymbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
             status: 'processed',
-            source: 'tradingview',
+            source: { in: ['tradingview', 'mt5_sync'] },
             receivedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
           },
           orderBy: { receivedAt: 'desc' },
@@ -1412,7 +1413,7 @@ export async function GET(request?: Request) {
       const latestPriceEvent = recentPriceEvents[0] || null;
 
       // Cache overall webhook events for connection status at the end
-      tvPriceEvents = recentPriceEvents;
+      priceEvents = recentPriceEvents;
       mt5SyncEvent = latestAnySyncEvent;
 
       const xauSymbolsFilter = {
@@ -1496,8 +1497,10 @@ export async function GET(request?: Request) {
         }),
       ]);
 
-      if (m15Candles.length > 0 && !isPriceEventRecent) {
-        currentPrice = m15Candles[0].close;
+      if (!isPriceEventRecent) {
+        currentPrice = isM5CandleSyncRecent && m5Candles.length > 0
+          ? m5Candles[0].close
+          : m15Candles[0]?.close ?? h1Candles[0]?.close ?? 0;
       }
 
       if (m15Candles.length === 0) m15Candles = recentCandles;
@@ -2550,7 +2553,7 @@ export async function GET(request?: Request) {
     }
 
     // 8. Determine live feed status by reusing cached webhook event queries
-    const latestPriceOverall = tvPriceEvents[0] || null;
+    const latestPriceOverall = priceEvents[0] || null;
     const latestCandleSyncOverall = mt5SyncEvent;
     const latestM5CandleSyncOverall = mt5M5SyncEvent;
     const latestM15CandleSyncOverall = mt5M15SyncEvent;
