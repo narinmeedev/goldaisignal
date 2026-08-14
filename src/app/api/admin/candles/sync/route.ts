@@ -436,12 +436,16 @@ export async function POST(request: Request) {
           prisma.candle.findMany({ where: { symbol: xauSymbolsFilter, timeframe: 'H1' }, orderBy: { time: 'desc' }, take: 40 }),
         ]);
 
-        if (m15Candles.length > 0 && h1Candles.length > 0) {
+        const m5Data = m5Candles.length > 0 ? m5Candles : dataToInsert;
+        const m15Data = m15Candles.length > 0 ? m15Candles : m5Data;
+        const h1Data = h1Candles.length > 0 ? h1Candles : m5Data;
+
+        if (m5Data.length > 0) {
           const analysis = SmartTrendStructureService.analyze({
             currentPrice,
-            m5Candles,
-            m15Candles,
-            h1Candles,
+            m5Candles: m5Data,
+            m15Candles: m15Data,
+            h1Candles: h1Data,
           });
 
           const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);

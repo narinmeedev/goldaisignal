@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import TradePlanChart from './components/TradePlanChart';
+import ActiveTradePlanPanel from './components/ActiveTradePlanPanel';
 import { fetchDashboardStats } from '@/lib/dashboard-fetch';
 
 type Direction = 'BUY' | 'SELL';
@@ -592,11 +593,37 @@ export default function UserDashboard() {
           </div>
         </div>
       )}
+      {/* Approved chart-first dashboard: live chart + one detailed decision panel */}
+      <div className="grid items-stretch gap-4 xl:grid-cols-12">
+        <div className="min-w-0 xl:col-span-8">
+          <TradePlanChart
+            plan={plan}
+            currentPrice={market?.currentPrice ?? null}
+            candles={market?.candles || []}
+            m5Candles={market?.m5Candles || []}
+            m15Candles={market?.m15Candles || []}
+            h1Candles={market?.h1Candles || []}
+            timeframe="M15"
+            marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
+            bias={market?.bias ?? 'NEUTRAL'}
+            supportZones={supportZones}
+            resistanceZones={resistanceZones}
+          />
+        </div>
+        <div className="min-w-0 xl:col-span-4">
+          <ActiveTradePlanPanel
+            plan={plan}
+            currentPrice={market?.currentPrice ?? null}
+            direction={direction}
+            instruction={plan ? getEntryInstruction(plan, isOpen) : 'รอข้อมูลตลาดและแผนที่ผ่านเกณฑ์'}
+            timeframeBiases={market?.timeframeBiases}
+            hasSupport={supportZones.length > 0}
+          />
+        </div>
+      </div>
 
-
-
-      {/* MAIN TWO-COLUMN SPLIT SCREEN (LEFT: EXPANDED LIVE CHART, RIGHT: ACTIVE TRADE PLAN) */}
-      <div className="grid gap-6 lg:grid-cols-12 items-start">
+      {/* Legacy summary kept out of view while lower history and performance sections remain available below. */}
+      <div className="hidden grid gap-6 lg:grid-cols-12 items-start">
         {/* LEFT COLUMN: EXPANDED LIVE CHART & CANDLE VISUALIZER (8 Cols for Maximum Width) */}
         <div className="lg:col-span-8 space-y-6">
           <section id="active-plan-chart-supplement" className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)]">

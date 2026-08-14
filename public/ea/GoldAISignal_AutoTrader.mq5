@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.00"
+#property version   "2.10"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -29,7 +29,13 @@ input int      InpSyncIntervalSec   = 3;                      // Candle & Price 
 //+------------------------------------------------------------------+
 CTrade         m_trade;
 datetime       m_lastSyncTime = 0;
-string         m_lastPlanId = "";
+string         m_lastStatus = "Initializing...";
+string         m_activePlanTitle = "";
+string         m_activePlanType = "";
+double         m_activeEntry = 0;
+double         m_activeSL = 0;
+double         m_activeTP = 0;
+int            m_totalSyncCount = 0;
 
 //+------------------------------------------------------------------+
 //| Expert Initialization Function                                   |
@@ -42,7 +48,7 @@ int OnInit()
    EventSetTimer(InpSyncIntervalSec);
    Print("[GoldAISignal EA] Initialized successfully. Sync interval: ", InpSyncIntervalSec, " seconds.");
    
-   // Run first sync immediately
+   UpdateChartHUD();
    SyncCandlesAndFetchPlan();
    return(INIT_SUCCEEDED);
 }
@@ -53,6 +59,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+   Comment(""); // Clear chart HUD
    Print("[GoldAISignal EA] Deinitialized. Reason: ", reason);
 }
 
@@ -69,11 +76,49 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Fallback tick sync if timer is slow
    if(TimeCurrent() - m_lastSyncTime >= InpSyncIntervalSec)
    {
       SyncCandlesAndFetchPlan();
    }
+}
+
+//+------------------------------------------------------------------+
+//| Render On-Screen HUD Panel on MT5 Chart                          |
+//+------------------------------------------------------------------+
+void UpdateChartHUD()
+{
+   string lastTimeStr = (m_lastSyncTime > 0) ? TimeToString(m_lastSyncTime, TIME_DATE|TIME_SECONDS) : "Waiting for first sync...";
+   
+   string hud = "=====================================================\n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.10)     \n";
+   hud += "=====================================================\n";
+   hud += " 🌐 Server URL  : " + InpServerURL + "\n";
+   hud += " ⚡ Live Status : " + m_lastStatus + "\n";
+   hud += " 🕒 Last Sync   : " + lastTimeStr + " (Total: " + IntegerToString(m_totalSyncCount) + " syncs)\n";
+   hud += "-----------------------------------------------------\n";
+   
+   if(m_activePlanType != "" && m_activeEntry > 0)
+   {
+      double slDist = MathAbs(m_activeEntry - m_activeSL);
+      double tpDist = MathAbs(m_activeTP - m_activeEntry);
+      
+      hud += " 📌 ACTIVE PLAN : " + m_activePlanTitle + "\n";
+      hud += " 📊 ORDER TYPE  : " + m_activePlanType + "\n";
+      hud += " 🎯 ENTRY TARGET: $" + DoubleToString(m_activeEntry, 2) + "\n";
+      hud += " 🔴 STOP LOSS   : $" + DoubleToString(m_activeSL, 2) + " (Risk: $" + DoubleToString(slDist, 2) + ")\n";
+      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(m_activeTP, 2) + " (Reward: $" + DoubleToString(tpDist, 2) + ")\n";
+   }
+   else
+   {
+      hud += " 📌 ACTIVE PLAN : ⏳ Synchronizing & Calculating Live AI Setup...\n";
+   }
+   
+   hud += "-----------------------------------------------------\n";
+   hud += " 🤖 Auto Trading: " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
+   hud += " 🔑 Magic Number: " + IntegerToString(InpMagicNumber) + "\n";
+   hud += "=====================================================";
+   
+   Comment(hud);
 }
 
 //+------------------------------------------------------------------+
@@ -82,7 +127,6 @@ void OnTick()
 string FormatCandleJSON(datetime time, double open, double high, double low, double close, long volume)
 {
    string timeStr = TimeToString(time, TIME_DATE|TIME_SECONDS);
-   // Convert "YYYY.MM.DD HH:MM:SS" to "YYYY-MM-DD HH:MM:SS"
    StringReplace(timeStr, ".", "-");
    
    return StringFormat("{\"time\":\"%s\",\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
@@ -99,7 +143,6 @@ string ExtractJSONValue(const string &json, const string &key)
    if(pos < 0) return "";
    
    int start = pos + StringLen(searchKey);
-   // Skip whitespace
    while(start < StringLen(json) && (StringGetCharacter(json, start) == ' ' || StringGetCharacter(json, start) == '\t'))
       start++;
       
@@ -137,7 +180,8 @@ void SyncCandlesAndFetchPlan()
    int copied = CopyRates(_Symbol, PERIOD_M5, 0, 20, rates);
    if(copied <= 0)
    {
-      Print("[GoldAISignal EA] Failed to copy rates for ", _Symbol);
+      m_lastStatus = "🔴 ERROR: CopyRates failed for " + _Symbol;
+      UpdateChartHUD();
       return;
    }
    
@@ -160,7 +204,6 @@ void SyncCandlesAndFetchPlan()
    string resultHeaders;
    
    StringToCharArray(payload, postData, 0, StringLen(payload), CP_UTF8);
-   // Remove null terminator at end
    if(ArraySize(postData) > 0 && postData[ArraySize(postData)-1] == 0)
       ArrayResize(postData, ArraySize(postData)-1);
       
@@ -169,11 +212,15 @@ void SyncCandlesAndFetchPlan()
    
    if(res == 200)
    {
+      m_totalSyncCount++;
+      m_lastStatus = "🟢 LIVE CONNECTED & SYNCING (HTTP 200 OK)";
       string responseJson = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
       ProcessServerResponse(responseJson);
    }
    else
    {
+      m_lastStatus = "🔴 ERROR: HTTP " + IntegerToString(res) + " (Err Code: " + IntegerToString(GetLastError()) + ")";
+      UpdateChartHUD();
       Print("[GoldAISignal EA] WebRequest failed. HTTP Status: ", res, " Error: ", GetLastError(), 
             " (Ensure ", InpServerURL, " is added to MT5 Tools -> Options -> Expert Advisors -> Allow WebRequest)");
    }
@@ -184,37 +231,52 @@ void SyncCandlesAndFetchPlan()
 //+------------------------------------------------------------------+
 void ProcessServerResponse(const string &json)
 {
-   if(!InpAutoTrade) return;
-   
    // Extract activePlan block
    int activePlanPos = StringFind(json, "\"activePlan\":");
-   if(activePlanPos < 0) return;
-   
-   int planBlockStart = StringFind(json, "{", activePlanPos);
-   if(planBlockStart < 0) return;
-   
-   int planBlockEnd = StringFind(json, "}", planBlockStart);
-   if(planBlockEnd < 0) return;
-   
-   string planBlock = StringSubstr(json, planBlockStart, planBlockEnd - planBlockStart + 1);
-   
-   string planId   = ExtractJSONValue(planBlock, "id");
-   string planType = ExtractJSONValue(planBlock, "type");
-   double entry    = StringToDouble(ExtractJSONValue(planBlock, "entry"));
-   double stopLoss = StringToDouble(ExtractJSONValue(planBlock, "stopLoss"));
-   double takeProf = StringToDouble(ExtractJSONValue(planBlock, "takeProfit"));
-   string isClosedStr = ExtractJSONValue(planBlock, "isClosed");
-   bool   isClosed = (isClosedStr == "true");
-   
-   if(planId == "" || entry <= 0 || stopLoss <= 0 || takeProf <= 0 || isClosed)
+   if(activePlanPos >= 0)
    {
-      // If plan is closed or deleted, remove existing pending orders from EA
-      CancelEAPendingOrders();
-      return;
+      int planBlockStart = StringFind(json, "{", activePlanPos);
+      int planBlockEnd = (planBlockStart >= 0) ? StringFind(json, "}", planBlockStart) : -1;
+      
+      if(planBlockStart >= 0 && planBlockEnd > planBlockStart)
+      {
+         string planBlock = StringSubstr(json, planBlockStart, planBlockEnd - planBlockStart + 1);
+         
+         string planId   = ExtractJSONValue(planBlock, "id");
+         string planTitle= ExtractJSONValue(planBlock, "title");
+         string planType = ExtractJSONValue(planBlock, "type");
+         double entry    = StringToDouble(ExtractJSONValue(planBlock, "entry"));
+         double stopLoss = StringToDouble(ExtractJSONValue(planBlock, "stopLoss"));
+         double takeProf = StringToDouble(ExtractJSONValue(planBlock, "takeProfit"));
+         string isClosedStr = ExtractJSONValue(planBlock, "isClosed");
+         bool   isClosed = (isClosedStr == "true");
+         
+         if(planId != "" && entry > 0 && !isClosed)
+         {
+            m_activePlanTitle = planTitle;
+            m_activePlanType  = planType;
+            m_activeEntry     = entry;
+            m_activeSL        = stopLoss;
+            m_activeTP        = takeProf;
+            
+            if(InpAutoTrade)
+            {
+               ExecuteTradePlan(planId, planType, entry, stopLoss, takeProf);
+            }
+         }
+         else
+         {
+            m_activePlanTitle = "No Active Plan (Waiting for Market Setup)";
+            m_activePlanType  = "";
+            m_activeEntry     = 0;
+            m_activeSL        = 0;
+            m_activeTP        = 0;
+            CancelEAPendingOrders();
+         }
+      }
    }
    
-   // If new plan or updated plan levels
-   ExecuteTradePlan(planId, planType, entry, stopLoss, takeProf);
+   UpdateChartHUD();
 }
 
 //+------------------------------------------------------------------+
@@ -222,7 +284,6 @@ void ProcessServerResponse(const string &json)
 //+------------------------------------------------------------------+
 void ExecuteTradePlan(string planId, string planType, double entry, double sl, double tp)
 {
-   // Check if we already have an open position or pending order for this EA
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       ulong ticket = OrderGetTicket(i);
@@ -232,17 +293,15 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
          double currentSL = OrderGetDouble(ORDER_SL);
          double currentTP = OrderGetDouble(ORDER_TP);
          
-         // If entry, SL, or TP changed by > 0.05, modify order
          if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - sl) > 0.05 || MathAbs(currentTP - tp) > 0.05)
          {
             Print("[GoldAISignal EA] Modifying Order #", ticket, " to Entry: ", entry, " SL: ", sl, " TP: ", tp);
             m_trade.OrderModify(ticket, entry, sl, tp, ORDER_TIME_GTC, 0);
          }
-         return; // Existing order maintained
+         return;
       }
    }
    
-   // If active position exists, do not stack new pending orders
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
@@ -251,28 +310,15 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
       }
    }
    
-   // Place new Pending Order
    ENUM_ORDER_TYPE orderType;
    if(planType == "BUY_LIMIT")       orderType = ORDER_TYPE_BUY_LIMIT;
    else if(planType == "SELL_LIMIT") orderType = ORDER_TYPE_SELL_LIMIT;
    else if(planType == "BUY_STOP")   orderType = ORDER_TYPE_BUY_STOP;
    else if(planType == "SELL_STOP")  orderType = ORDER_TYPE_SELL_STOP;
-   else
-   {
-      Print("[GoldAISignal EA] Unsupported order type: ", planType);
-      return;
-   }
+   else return;
    
    Print("[GoldAISignal EA] Placing New Order: ", planType, " Entry: ", entry, " SL: ", sl, " TP: ", tp);
-   if(m_trade.OrderOpen(_Symbol, orderType, InpLotSize, entry, entry, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId))
-   {
-      Print("[GoldAISignal EA] Order placed successfully! Ticket: ", m_trade.ResultOrder());
-      m_lastPlanId = planId;
-   }
-   else
-   {
-      Print("[GoldAISignal EA] Order placement failed. Code: ", m_trade.ResultRetcode(), " Desc: ", m_trade.ResultRetcodeDescription());
-   }
+   m_trade.OrderOpen(_Symbol, orderType, InpLotSize, entry, entry, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
 }
 
 //+------------------------------------------------------------------+

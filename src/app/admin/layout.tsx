@@ -15,7 +15,6 @@ import {
   Menu,
   RefreshCw,
   Settings,
-  ShieldAlert,
   Sparkles,
   User,
   Users,
@@ -27,7 +26,6 @@ interface SessionUser {
   role: 'admin' | 'viewer';
   email: string;
   isAffiliate?: boolean;
-  subscriptionPlan?: string;
   subscriptionStatus?: string;
   subscriptionEndsAt?: string | null;
   daysRemaining?: number | null;
@@ -45,74 +43,30 @@ const formatPrice = (price: number | null) => {
   return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const formatUpdateTime = (value: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+};
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [footerMenuOpen, setFooterMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [price, setPrice] = useState<PriceState>({ price: null, bias: 'NEUTRAL', isLive: false, updatedAt: null });
   const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleRunQwen = async () => {
-    setIsQwenAnalyzing(true);
-    try {
-      const res = await fetch('/api/admin/qwen-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: 'GOLD#' }),
-      });
-      const data = await res.json();
-      if (data.success || data.ok) {
-        alert('🤖 สั่ง Qwen วิเคราะห์แผนสดสำเร็จ!');
-        window.location.reload();
-      } else {
-        alert(`⚠️ ไม่สามารถวิเคราะห์ได้: ${data.message || data.error || 'โปรดลองอีกครั้ง'}`);
-      }
-    } catch (err: any) {
-      alert(`⚠️ เกิดข้อผิดพลาด: ${err.message}`);
-    } finally {
-      setIsQwenAnalyzing(false);
-    }
-  };
-
-  const handleTriggerSync = async () => {
-    setIsSyncing(true);
-    try {
-      await fetch('/api/admin/candles/sync', { cache: 'no-store' });
-      await fetch('/api/system/status', { cache: 'no-store' });
-      window.location.reload();
-    } catch {
-      alert('⚠️ เกิดข้อผิดพลาดในการซิงค์ราคา');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const [isResetting, setIsResetting] = useState(false);
-  const handleResetStats = async () => {
-    if (!confirm('⚠️ ยืนยันการรีเซ็ตสถิติวัดผลทั้งหมด? (ประวัติการเปิดไม้และสัญญาณที่ผ่านมาจะถูกล้างเพื่อเริ่มนับ 0/0 ใหม่)')) {
-      return;
-    }
-    setIsResetting(true);
-    try {
-      const res = await fetch('/api/admin/trades', { method: 'DELETE' });
-      const data = await res.json();
-      if (res.ok && (data.success || data.ok)) {
-        alert('🔄 รีเซ็ตสถิติวัดผลเรียบร้อยแล้ว! หน้าจอจะเริ่มนับ win rate 0/0 ใหม่');
-        window.location.reload();
-      } else {
-        alert(`⚠️ เกิดข้อผิดพลาด: ${data.error || data.message || 'ไม่สามารถรีเซ็ตสถิติได้'}`);
-      }
-    } catch (err: any) {
-      alert(`⚠️ เกิดข้อผิดพลาด: ${err.message}`);
-    } finally {
-      setIsResetting(false);
-    }
-  };
 
   useEffect(() => {
     let active = true;
@@ -152,7 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const data = response.ok ? await response.json() : null;
         if (active) setMaintenanceMode(Boolean(data?.maintenanceMode));
       } catch {
-        // The customer dashboard independently shows market-data degradation.
+        // The dashboard shows live-feed degradation independently.
       }
     };
     loadStatus();
@@ -184,27 +138,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, []);
 
-  const daysRemaining = user?.daysRemaining ?? null;
-
   const navItems = useMemo(() => {
     const customer = [
-      { label: 'แผนเทรดทองคำ', href: '/admin', icon: Activity },
-      { label: 'ประวัติแผน', href: '/admin/trades', icon: History },
+      { label: 'ภาพรวม', href: '/admin', icon: Activity },
+      { label: 'แผนเทรด', href: '/admin#active-plan', icon: BarChart3 },
+      { label: 'ประวัติ', href: '/admin/trades', icon: History },
       { label: 'ช่วยเหลือ', href: '/admin/support', icon: LifeBuoy },
+    ];
+    return customer;
+  }, []);
+
+  const moreItems = useMemo(() => {
+    const customer = [
       { label: 'การชำระเงิน', href: '/admin/billing', icon: CreditCard },
       { label: 'บัญชีของฉัน', href: '/admin/profile', icon: User },
     ];
-    if (user?.isAffiliate) {
-      customer.splice(2, 0, { label: 'รายได้แนะนำเพื่อน', href: '/admin/affiliate', icon: WalletCards });
-    }
+    if (user?.isAffiliate) customer.unshift({ label: 'รายได้แนะนำเพื่อน', href: '/admin/affiliate', icon: WalletCards });
     if (user?.role !== 'admin') return customer;
-
-    // For Admin: keep the detailed zones, performance, and management menus
     return [
-      customer[0], // แผนเทรดทองคำ
       { label: 'แนวรับและแนวต้าน', href: '/admin/zones', icon: Layers3 },
       { label: 'ผลวัดประสิทธิภาพ', href: '/admin/performance', icon: BarChart3 },
-      ...customer.slice(1),
+      ...customer,
       { label: 'จัดการผู้ใช้', href: '/admin/users', icon: Users },
       { label: 'ตรวจสอบการชำระเงิน', href: '/admin/payments', icon: CreditCard },
       { label: 'จัดการ Affiliate', href: '/admin/affiliate-manager', icon: WalletCards },
@@ -212,6 +166,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { label: 'ตั้งค่าระบบ', href: '/admin/settings', icon: Settings },
     ];
   }, [user?.isAffiliate, user?.role]);
+
+  const isActive = (href: string, label: string) => {
+    if (href === '/admin') return pathname === '/admin';
+    if (label === 'แผนเทรด') return false;
+    return pathname.startsWith(href);
+  };
 
   const logout = async () => {
     try {
@@ -222,253 +182,179 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   };
 
+  const syncPrice = async () => {
+    setIsSyncing(true);
+    try {
+      await fetch('/api/admin/candles/sync', { cache: 'no-store' });
+      const response = await fetch('/api/admin/latest-price', { cache: 'no-store' });
+      const data = response.ok ? await response.json() : null;
+      if (data?.XAUUSD) {
+        setPrice({
+          price: typeof data.XAUUSD.price === 'number' ? data.XAUUSD.price : null,
+          bias: data.XAUUSD.bias || 'NEUTRAL',
+          isLive: Boolean(data.XAUUSD.isLive),
+          updatedAt: data.XAUUSD.updatedAt || null,
+        });
+      }
+      router.refresh();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const runQwen = async () => {
+    setIsQwenAnalyzing(true);
+    try {
+      await fetch('/api/admin/qwen-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: 'GOLD#' }),
+      });
+      window.location.reload();
+    } finally {
+      setIsQwenAnalyzing(false);
+    }
+  };
+
+  const resetStats = async () => {
+    if (!confirm('ยืนยันการรีเซ็ตสถิติวัดผลทั้งหมดเพื่อเริ่มนับใหม่?')) return;
+    setIsResetting(true);
+    try {
+      const response = await fetch('/api/admin/trades', { method: 'DELETE' });
+      if (response.ok) window.location.reload();
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   if (authLoading) {
-    return <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">กำลังตรวจสอบบัญชี</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0e14] text-[14px] text-[#929ca8]">
+        <Loader2 className="mr-3 h-5 w-5 animate-spin text-amber-400" /> กำลังตรวจสอบบัญชี
+      </div>
+    );
   }
 
+  const daysRemaining = user?.daysRemaining ?? null;
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="admin-shell min-h-screen bg-[#0b0e14] text-[#f4f6f8]">
       {maintenanceMode && user?.role !== 'admin' && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-950 p-5">
-          <div className="w-full max-w-md rounded-lg border border-amber-500/30 bg-neutral-900 p-6 text-center">
-            <ShieldAlert className="mx-auto h-9 w-9 text-amber-400" />
-            <h2 className="mt-4 text-xl font-bold">ระบบอยู่ระหว่างตรวจสอบ</h2>
-            <p className="mt-2 text-sm leading-6 text-neutral-400">ทีมงานปิดการใช้งานแผนชั่วคราวเพื่อป้องกันการนำข้อมูลที่ยังไม่สมบูรณ์ไปเทรด กรุณากลับมาใหม่เมื่อการตรวจสอบเสร็จสิ้น</p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0b0e14] p-5">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/30 bg-[#111820] p-6 text-center">
+            <Settings className="mx-auto h-8 w-8 text-amber-400" />
+            <h2 className="mt-4 text-[20px] font-semibold">ระบบอยู่ระหว่างตรวจสอบ</h2>
+            <p className="mt-2 text-[14px] leading-6 text-[#9ba5b0]">ทีมงานปิดการใช้งานแผนชั่วคราวเพื่อป้องกันการนำข้อมูลที่ยังไม่สมบูรณ์ไปเทรด</p>
           </div>
         </div>
       )}
 
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">
-        <div className="flex h-16 items-center justify-between px-4 lg:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/admin" className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 font-black">
-                GA
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-bold text-neutral-100">Gold AI Signal</p>
-                  <span className="hidden sm:flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.2 text-[9px] font-black text-emerald-400">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                    </span>
-                    AI Assistant Active
-                  </span>
-                </div>
-                <p className="text-[10px] text-amber-400/80 font-mono">XAUUSD Live Scalp Engine</p>
-              </div>
-            </Link>
+      <aside className="fixed inset-y-0 left-0 z-50 hidden w-20 flex-col border-r border-[#252e38] bg-[#0c1219] lg:flex">
+        <Link href="/admin" aria-label="Gold AI Signal" className="flex h-[76px] items-center justify-center border-b border-[#252e38]">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-400/70 bg-amber-400/5 font-mono text-[18px] font-bold text-amber-400">GA</span>
+        </Link>
+        <nav className="flex flex-1 flex-col py-3" aria-label="เมนูหลัก">
+          {navItems.map((item) => {
+            const active = isActive(item.href, item.label);
+            const Icon = item.icon;
+            return (
+              <Link key={item.label} href={item.href} className={`relative flex min-h-[86px] flex-col items-center justify-center gap-2 px-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400 ${active ? 'bg-[#111923] text-amber-400 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-amber-400' : 'text-[#8f99a5] hover:bg-[#111923] hover:text-white'}`}>
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-medium leading-4">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="border-t border-[#252e38] py-2">
+          <button type="button" onClick={() => setAccountOpen((open) => !open)} className="flex min-h-[70px] w-full flex-col items-center justify-center gap-2 text-[#8f99a5] hover:bg-[#111923] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400">
+            <Settings className="h-5 w-5" />
+            <span className="text-[10px]">ตั้งค่า</span>
+          </button>
+          <button type="button" onClick={logout} className="flex min-h-[70px] w-full flex-col items-center justify-center gap-2 text-[#8f99a5] hover:bg-[#111923] hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-400">
+            <LogOut className="h-5 w-5" />
+            <span className="text-[10px]">ออกจากระบบ</span>
+          </button>
+        </div>
+      </aside>
+
+      <header className="fixed inset-x-0 top-0 z-40 h-[76px] border-b border-[#252e38] bg-[#0b1118]/95 backdrop-blur lg:left-20">
+        <div className="flex h-full items-center justify-between gap-3 px-4 lg:px-6">
+          <div className="flex min-w-0 items-center gap-3 lg:gap-6">
+            <button type="button" onClick={() => setMobileOpen(true)} aria-label="เปิดเมนู" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#2a3440] text-[#aab2bc] lg:hidden">
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link href="/admin" className="hidden text-[17px] font-semibold text-[#f4f6f8] sm:block">Gold AI Signal</Link>
+            <span className="hidden h-8 w-px bg-[#2a3440] sm:block" />
+            <div className="flex items-baseline gap-3">
+              <span className="hidden font-mono text-[15px] font-medium text-[#e6eaee] md:inline">XAUUSD</span>
+              <strong className="font-mono text-[22px] font-semibold tabular-nums text-amber-400">{formatPrice(price.price)}</strong>
+              <span className="hidden text-[11px] text-[#9ba5b0] md:inline">USD</span>
+            </div>
+            <div className="hidden items-center gap-2 text-[12px] text-[#aeb6c0] xl:flex">
+              <span className={`h-2 w-2 rounded-full ${price.isLive ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              ข้อมูลสดจาก MT5
+              <span className={`rounded px-2 py-1 font-mono text-[10px] ${price.isLive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{price.isLive ? 'LIVE' : 'DELAYED'}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Short Action Buttons for Admin */}
-            {user?.role === 'admin' && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleRunQwen}
-                  disabled={isQwenAnalyzing}
-                  className="flex items-center gap-1 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-purple-950/80 px-2.5 py-1 text-xs font-black text-purple-200 hover:from-purple-800/70 hover:to-indigo-800/70 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(168,85,247,0.2)]"
-                  title="สั่ง Qwen 3.5-9B วิเคราะห์กราฟสด"
-                >
-                  {isQwenAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-300" /> : <Sparkles className="h-3.5 w-3.5 text-purple-400" />}
-                  <span>🤖 สั่ง Qwen</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTriggerSync}
-                  disabled={isSyncing}
-                  className="flex items-center gap-1 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 to-neutral-900 px-2.5 py-1 text-xs font-black text-amber-200 hover:bg-amber-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
-                  title="กระตุ้นดึงข้อมูลราคาล่าสุดจาก MT5"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 text-amber-400 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>⚡ ซิงค์ราคา</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResetStats}
-                  disabled={isResetting}
-                  className="hidden md:flex items-center gap-1 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/60 to-neutral-900 px-2.5 py-1 text-xs font-black text-rose-200 hover:bg-rose-900/50 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(244,63,94,0.15)]"
-                  title="รีเซ็ตสถิติทั้งหมดเพื่อเริ่มวัดผลใหม่ 0/0"
-                >
-                  {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" /> : <History className="h-3.5 w-3.5 text-rose-400" />}
-                  <span>🔄 รีเซ็ตสถิติ</span>
-                </button>
-              </div>
-            )}
-
-            <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1 transition-all ${
-              price.isLive
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-                : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-            }`}>
-              <span className="relative flex h-2 w-2">
-                {price.isLive && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                )}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${price.isLive ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-              </span>
-              <div className="text-right">
-                <div className="flex items-center gap-1">
-                  <span className={`text-xs font-black tabular-nums ${price.isLive ? 'text-emerald-400 font-extrabold' : 'text-neutral-200'}`}>
-                    {formatPrice(price.price)}
-                  </span>
-                </div>
-                <p className={`text-[9px] font-bold uppercase tracking-wider ${price.isLive ? 'text-emerald-400/90' : 'text-neutral-500'}`}>
-                  GOLD# · {price.isLive ? 'LIVE 🟢' : 'DELAYED 🟡'}
-                </p>
-              </div>
-            </div>
-            <div className="hidden border-l border-neutral-800 pl-3 md:block">
-              <p className="max-w-36 truncate text-xs font-bold text-neutral-300">{user?.email}</p>
-              <p className="text-[10px] text-neutral-500">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : daysRemaining === null ? 'สมาชิก' : `เหลือ ${daysRemaining} วัน`}</p>
-            </div>
+          <div className="flex shrink-0 items-center gap-2 lg:gap-4">
+            <p className="hidden text-right text-[11px] leading-5 text-[#8f99a5] md:block">อัปเดต {formatUpdateTime(price.updatedAt)} น.</p>
+            <button type="button" onClick={syncPrice} disabled={isSyncing} aria-label="ซิงค์ข้อมูลล่าสุด" className="flex h-11 w-11 items-center justify-center rounded-lg text-[#9fa8b3] hover:bg-[#17202a] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:opacity-50">
+              <RefreshCw className={`h-5 w-5 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
+            <span className="hidden h-8 w-px bg-[#2a3440] sm:block" />
+            <button type="button" onClick={() => setAccountOpen((open) => !open)} className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-left hover:bg-[#17202a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#697482] text-[#cbd2d9]"><User className="h-4 w-4" /></span>
+              <span className="hidden max-w-44 truncate text-[12px] text-[#cbd2d9] xl:block">{user?.email}</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Full-Width Content (No 64px sidebar offset!) */}
-      <main className="w-full pb-24 p-4 lg:p-6">{children}</main>
-
-      {/* Collapsible Footer Drawer Drop Bar (Floating at Bottom) */}
-      <div className="fixed inset-x-0 bottom-0 z-50">
-        {/* Footer Drawer Backdrop when Open */}
-        {footerMenuOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-            onClick={() => setFooterMenuOpen(false)}
-          />
-        )}
-
-        {/* Collapsible Content Grid */}
-        <div
-          className={`relative border-t border-neutral-800/90 bg-neutral-950/95 backdrop-blur-md transition-all duration-300 ease-in-out shadow-[0_-8px_30px_rgba(0,0,0,0.8)] ${
-            footerMenuOpen ? 'max-h-[85vh] overflow-y-auto p-5' : 'max-h-12 overflow-hidden px-4 py-2'
-          }`}
-        >
-          {/* Header Toggle Line with Live Market Metrics */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 font-bold text-xs">
-            {/* Live Metrics Group */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* Price Pill */}
-              <div className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-all ${
-                price.isLive
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-                  : 'border-amber-500/30 bg-neutral-900 text-neutral-100'
-              }`}>
-                <span className={`text-[10px] font-extrabold uppercase ${price.isLive ? 'text-emerald-400' : 'text-amber-400'}`}>GOLD#</span>
-                <span className={`font-black tabular-nums text-sm ${price.isLive ? 'text-emerald-400 font-extrabold' : 'text-amber-300'}`}>${formatPrice(price.price)}</span>
-              </div>
-
-              {/* Data Status Pill */}
-              <div className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-all ${
-                price.isLive
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                  : 'border-amber-500/30 bg-neutral-900 text-amber-400'
-              }`}>
-                <span className="relative flex h-2 w-2">
-                  {price.isLive ? (
-                    <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                    </>
-                  ) : (
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
-                  )}
-                </span>
-                <span className="font-extrabold">
-                  {price.isLive ? 'LIVE 🟢' : 'DELAYED 🟡'}
-                </span>
-              </div>
-
-              {/* Market Bias Pill */}
-              <div className={`hidden sm:flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-black ${
-                price.bias === 'BULLISH' || price.bias === 'BUY'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                  : price.bias === 'BEARISH' || price.bias === 'SELL'
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                    : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-              }`}>
-                <span className="text-[10px] text-neutral-400 font-normal">มุมมอง:</span>
-                <span>
-                  {price.bias === 'BULLISH' || price.bias === 'BUY'
-                    ? 'BULLISH ขาขึ้น'
-                    : price.bias === 'BEARISH' || price.bias === 'SELL'
-                      ? 'BEARISH ขาลง'
-                      : 'NEUTRAL'}
-                </span>
-              </div>
-
-              {/* Session Pill */}
-              <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
-                <span className="text-[10px] text-neutral-500">ตลาด:</span>
-                <span className="font-bold text-sky-300">
-                  {(() => {
-                    const h = new Date().getUTCHours();
-                    if (h >= 13 && h <= 21) return 'นิวยอร์ก (US)';
-                    if (h >= 7 && h <= 15) return 'ลอนดอน (UK)';
-                    return 'เอเชีย (Asia)';
-                  })()}
-                </span>
-              </div>
-            </div>
-
-            {/* Menu Drawer Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setFooterMenuOpen(!footerMenuOpen)}
-              className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-300 hover:bg-amber-500/20 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)]"
-            >
-              <Menu className="h-3.5 w-3.5" />
-              <span>📂 เมนูระบบเพิ่มเติม {footerMenuOpen ? '▲ (ปิด)' : '▼ (เปิดเมนู)'}</span>
-            </button>
+      {accountOpen && (
+        <div className="fixed right-4 top-[68px] z-[60] w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[#2b3540] bg-[#111820] shadow-2xl lg:right-6">
+          <div className="border-b border-[#29323c] p-4">
+            <p className="truncate text-[13px] font-medium text-[#eef1f4]">{user?.email}</p>
+            <p className="mt-1 text-[11px] text-[#8f99a5]">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : daysRemaining === null ? 'สมาชิก' : `สมาชิก · เหลือ ${daysRemaining} วัน`}</p>
           </div>
-
-          {/* Expanded Drawer Links Grid */}
-          {footerMenuOpen && (
-            <div className="mt-4 border-t border-neutral-800/80 pt-4">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-                {navItems.map((item) => {
-                  const active = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setFooterMenuOpen(false)}
-                      className={`flex items-center gap-2.5 rounded-xl border p-3 text-xs font-bold transition-all ${
-                        active
-                          ? 'border-amber-400/60 bg-amber-500/15 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-                          : 'border-neutral-800/80 bg-neutral-900/60 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-100'
-                      }`}
-                    >
-                      <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${active ? 'bg-amber-400/20 text-amber-300' : 'bg-neutral-800 text-neutral-400'}`}>
-                        <Icon className="h-4 w-4 shrink-0" />
-                      </div>
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  );
-                })}
-
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs font-bold text-rose-300 hover:bg-rose-900/40 transition-all"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
-                    <LogOut className="h-4 w-4 shrink-0" />
-                  </div>
-                  <span>ออกจากระบบ</span>
-                </button>
+          <div className="max-h-[55vh] overflow-y-auto p-2">
+            {moreItems.map((item) => {
+              const Icon = item.icon;
+              return <Link key={item.href} href={item.href} onClick={() => setAccountOpen(false)} className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-[12px] text-[#bdc5ce] hover:bg-[#19222c] hover:text-white"><Icon className="h-4 w-4 text-[#87929e]" />{item.label}</Link>;
+            })}
+            {user?.role === 'admin' && (
+              <div className="mt-2 border-t border-[#29323c] pt-2">
+                <button type="button" onClick={runQwen} disabled={isQwenAnalyzing} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[12px] text-[#bdc5ce] hover:bg-[#19222c] hover:text-white disabled:opacity-50"><Sparkles className="h-4 w-4 text-amber-400" />วิเคราะห์แผนด้วย Qwen</button>
+                <button type="button" onClick={resetStats} disabled={isResetting} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[12px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"><History className="h-4 w-4" />รีเซ็ตสถิติวัดผล</button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-[70] lg:hidden">
+          <button type="button" aria-label="ปิดเมนู" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/70" />
+          <aside className="relative h-full w-[min(320px,86vw)] overflow-y-auto border-r border-[#29323c] bg-[#0c1219] p-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#29323c] pb-4">
+              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/60 font-mono font-bold text-amber-400">GA</span><span className="text-[16px] font-semibold">Gold AI Signal</span></div>
+              <button type="button" onClick={() => setMobileOpen(false)} aria-label="ปิดเมนู" className="flex h-11 w-11 items-center justify-center rounded-lg text-[#9ca6b1] hover:bg-[#19222c]"><X className="h-5 w-5" /></button>
+            </div>
+            <nav className="mt-4 space-y-1" aria-label="เมนูมือถือ">
+              {[...navItems, ...moreItems].filter((item, index, array) => array.findIndex((candidate) => candidate.href === item.href && candidate.label === item.label) === index).map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href, item.label);
+                return <Link key={`${item.label}-${item.href}`} href={item.href} onClick={() => setMobileOpen(false)} className={`flex min-h-12 items-center gap-3 rounded-lg px-3 text-[13px] ${active ? 'bg-amber-400/10 text-amber-400' : 'text-[#b8c0c9] hover:bg-[#19222c] hover:text-white'}`}><Icon className="h-5 w-5" />{item.label}</Link>;
+              })}
+            </nav>
+            <button type="button" onClick={logout} className="mt-4 flex min-h-12 w-full items-center gap-3 border-t border-[#29323c] px-3 pt-4 text-[13px] text-rose-400"><LogOut className="h-5 w-5" />ออกจากระบบ</button>
+          </aside>
+        </div>
+      )}
+
+      <main className="min-h-screen px-3 pb-8 pt-[88px] sm:px-4 lg:pl-[96px] lg:pr-4 xl:px-5 xl:pb-10 xl:pl-[100px] xl:pt-[94px]">
+        {children}
+      </main>
     </div>
   );
 }
