@@ -211,14 +211,14 @@ export async function POST(request: Request) {
     }
     targetEntry = Number(targetEntry.toFixed(2));
 
-    // Volatility-Adaptive Stop Loss ($5.0 - $6.5 depending on session ATR)
-    const tightSLDistance = Math.min(6.5, Math.max(4.8, atr14 * 0.90));
+    // Tight Scalp Stop Loss ($3.50 - $4.50 max risk distance)
+    const tightSLDistance = Math.min(4.50, Math.max(3.50, atr14 * 0.70));
     const targetSL = targetDirection === 'BUY'
       ? Number((targetEntry - tightSLDistance).toFixed(2))
       : Number((targetEntry + tightSLDistance).toFixed(2));
 
-    // High Risk/Reward Scalping Take Profit ($12.0 - $18.0 Gold Difference / 120 - 180 Pips)
-    const scalpProfitDist = Math.min(18.0, Math.max(12.0, swingRange * 0.65));
+    // High Risk/Reward Scalping Take Profit ($9.50 - $14.50 Gold Difference)
+    const scalpProfitDist = Math.min(14.50, Math.max(9.50, tightSLDistance * 2.5));
     const targetTP = targetDirection === 'BUY'
       ? Number((targetEntry + scalpProfitDist).toFixed(2))
       : Number((targetEntry - scalpProfitDist).toFixed(2));
