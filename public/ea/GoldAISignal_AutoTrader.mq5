@@ -18,14 +18,17 @@ input string   InpServerURL                = "http://localhost:3000"; // Server 
 input string   InpSecret                   = "GOLD_AI_SECRET";       // Webhook Secret Key
 
 input group "--- Auto Trading Control ---"
-input bool     InpAutoTrade                = true;                   // Enable Automatic Execution of AI Trade Plans
+input bool     InpAutoTrade                = false;                  // Keep OFF until forward validation passes
 input double   InpLotSize                  = 0.01;                   // Order Lot Size
 input ulong    InpMagicNumber              = 888999;                 // Magic Number for EA Orders
 input ulong    InpSlippage                 = 30;                     // Slippage in Points
 input int      InpSyncIntervalSec          = 3;                      // Candle & Price Sync Interval (Seconds)
+input int      InpMaxSpreadPoints          = 80;                     // Reject when Ask-Bid exceeds this many points
+input int      InpMaxEntrySlipPoints       = 35;                     // Maximum market-entry deviation from planned Entry
+input double   InpMinRiskReward            = 1.80;                   // Reject plans below this reward/risk ratio
 
 input group "--- Existing Order Management (เปิด/ปิด อัปเดตออเดอร์เดิม) ---"
-input bool     InpAutoModifyExistingOrders = true;                   // Auto-Update Existing Active Orders on Chart (true = เปิดอัปเดตตาม, false = ปิด)
+input bool     InpAutoModifyExistingOrders = false;                  // Keep original live orders unless explicitly enabled
 
 input group "--- Custom Entry Offset (In Points / จุด) ---"
 input int      InpEntryOffsetPoints        = 0;                      // Entry Offset in Points (e.g. 150 points = Shift Entry $1.50 deeper)
@@ -365,7 +368,27 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       double slDist = MathAbs(rawEntry - rawSL);
       double tpDist = MathAbs(rawTP - rawEntry);
       finalSL = isBuy ? (entry - slDist) : (entry + slDist);
-      finalTP = isBuy ? (entry - tpDist) : (entry + tpDist);
+      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
+   }
+
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick))
+   {
+      Print("[GoldAISignal EA] NO_TRADE: cannot read synchronized broker tick.");
+      return;
+   }
+   double spreadPoints = (tick.ask - tick.bid) / pointVal;
+   double riskDistance = MathAbs(entry - finalSL);
+   double rewardDistance = MathAbs(finalTP - entry);
+   double riskReward = riskDistance > 0 ? rewardDistance / riskDistance : 0;
+   bool validGeometry = isBuy
+      ? (finalSL < entry && finalTP > entry)
+      : (finalSL > entry && finalTP < entry);
+   if(spreadPoints <= 0 || spreadPoints > InpMaxSpreadPoints || !validGeometry || riskReward < InpMinRiskReward)
+   {
+      Print("[GoldAISignal EA] NO_TRADE: feed/spread/SL-TP/RR safety gate rejected this plan.");
+      CancelEAPendingOrders();
+      return;
    }
 
    // 1. Auto-Modify Existing Pending Orders on Chart (If Enabled)
@@ -412,43 +435,42 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
    }
    
    // 3. Smart execution: Handle Limit vs Market Order based on current Ask/Bid
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = tick.ask;
+   double bid = tick.bid;
+   double maxEntrySlippage = InpMaxEntrySlipPoints * pointVal;
    
    if(isBuy)
    {
-      if(ask <= entry + 0.50 && ask >= entry - 1.50)
+      if((planType == "BUY_MARKET" || planType == "BUY") && MathAbs(ask - entry) <= maxEntrySlippage)
       {
          Print("[GoldAISignal EA] Executing Market BUY at Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
          m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
-      else if(ask > entry)
+      else if(planType == "BUY_LIMIT" && ask > entry)
       {
          Print("[GoldAISignal EA] Placing BUY_LIMIT at ", entry, " Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
-         m_trade.BuyLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         Print("[GoldAISignal EA] Price dropped below entry. Executing Market BUY at Ask: ", ask);
-         m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] NO_TRADE: BUY entry missed or invalid order type. No chase order sent.");
       }
    }
    else
    {
-      if(bid >= entry - 0.50 && bid <= entry + 1.50)
+      if((planType == "SELL_MARKET" || planType == "SELL") && MathAbs(bid - entry) <= maxEntrySlippage)
       {
          Print("[GoldAISignal EA] Executing Market SELL at Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
          m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
       }
-      else if(bid < entry)
+      else if(planType == "SELL_LIMIT" && bid < entry)
       {
          Print("[GoldAISignal EA] Placing SELL_LIMIT at ", entry, " Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
-         m_trade.SellLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         Print("[GoldAISignal EA] Price surged above entry. Executing Market SELL at Bid: ", bid);
-         m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] NO_TRADE: SELL entry missed or invalid order type. No chase order sent.");
       }
    }
 }
