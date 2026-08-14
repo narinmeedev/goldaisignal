@@ -328,9 +328,9 @@ export class SmartTrendStructureService {
       atr = trs.reduce((a, b) => a + b, 0) / 14;
     }
 
-    // TIGHT SCALP SL GUARD: $3.50 - $4.80 Maximum Stop Loss Distance
-    const slBuffer = Math.max(3.50, Math.min(4.80, atr * 1.2));
-    const tpDistance = Math.max(9.50, slBuffer * 2.5); // Minimum 1:2.5 RR Ratio
+    // TIGHT SCALP SL & QUICK SCALP TP GUARD for High Win-Rate
+    const slBuffer = Math.max(3.00, Math.min(4.20, atr * 1.0));
+    const tpDistance = Math.min(6.80, Math.max(4.50, slBuffer * 1.5)); // Quick Scalp 1:1.5 RR Ratio for High Win-Rate
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;
@@ -339,13 +339,13 @@ export class SmartTrendStructureService {
     if (exhaustion.isTopExhaustion) {
       // Entry near peak resistance with tight SL just above peak
       entryTarget = Number((currentPrice + 0.80).toFixed(2));
-      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.20, entryTarget + 3.50)).toFixed(2));
-      takeProfitTarget = Number((entryTarget - (stopLossTarget - entryTarget) * 2.5).toFixed(2));
+      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.20, entryTarget + 3.20)).toFixed(2));
+      takeProfitTarget = Number((entryTarget - (stopLossTarget - entryTarget) * 1.5).toFixed(2));
     } else if (exhaustion.isBottomExhaustion) {
       // Entry near trough support with tight SL just below trough
       entryTarget = Number((currentPrice - 0.80).toFixed(2));
-      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.20, entryTarget - 3.50)).toFixed(2));
-      takeProfitTarget = Number((entryTarget + (entryTarget - stopLossTarget) * 2.5).toFixed(2));
+      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.20, entryTarget - 3.20)).toFixed(2));
+      takeProfitTarget = Number((entryTarget + (entryTarget - stopLossTarget) * 1.5).toFixed(2));
     } else if (overallSignal === 'BUY') {
       // Entry deep at Support or Discount Zone (never buy at market price or resistance)
       entryTarget = nearestSup > currentPrice - 1.5 ? Number((currentPrice - 2.5).toFixed(2)) : nearestSup;

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.20"
+#property version   "2.30"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -23,6 +23,11 @@ input double   InpLotSize           = 0.01;                   // Order Lot Size
 input ulong    InpMagicNumber       = 888999;                 // Magic Number for EA Orders
 input ulong    InpSlippage          = 30;                     // Slippage in Points
 input int      InpSyncIntervalSec   = 3;                      // Candle & Price Sync Interval (Seconds)
+
+input group "--- Custom Risk & Reward (TP / SL Override) ---"
+input bool     InpUseCustomTPSL     = false;                  // Enable Custom TP / SL Override (true = Use Custom, false = Use AI Target)
+input double   InpCustomTPDist      = 4.50;                   // Custom TP Distance in Dollars (e.g. 4.50 = $4.50 / 45 pips)
+input double   InpCustomSLDist      = 3.50;                   // Custom SL Distance in Dollars (e.g. 3.50 = $3.50 / 35 pips)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                 |
@@ -46,7 +51,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized v2.20 successfully. Sync interval: ", InpSyncIntervalSec, " seconds.");
+   Print("[GoldAISignal EA] Initialized v2.30 successfully. Custom TP/SL: ", InpUseCustomTPSL ? "ENABLED" : "DISABLED");
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -90,7 +95,7 @@ void UpdateChartHUD()
    string lastTimeStr = (m_lastSyncTime > 0) ? TimeToString(m_lastSyncTime, TIME_DATE|TIME_SECONDS) : "Waiting for first sync...";
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.20)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.30)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
@@ -99,14 +104,31 @@ void UpdateChartHUD()
    
    if(m_activePlanType != "" && m_activeEntry > 0)
    {
-      double slDist = MathAbs(m_activeEntry - m_activeSL);
-      double tpDist = MathAbs(m_activeTP - m_activeEntry);
+      double finalSL = m_activeSL;
+      double finalTP = m_activeTP;
+      
+      if(InpUseCustomTPSL)
+      {
+         if(m_activePlanType == "BUY" || m_activePlanType == "BUY_LIMIT" || m_activePlanType == "BUY_MARKET")
+         {
+            finalSL = m_activeEntry - InpCustomSLDist;
+            finalTP = m_activeEntry + InpCustomTPDist;
+         }
+         else
+         {
+            finalSL = m_activeEntry + InpCustomSLDist;
+            finalTP = m_activeEntry - InpCustomTPDist;
+         }
+      }
+      
+      double slDist = MathAbs(m_activeEntry - finalSL);
+      double tpDist = MathAbs(finalTP - m_activeEntry);
       
       hud += " 📌 ACTIVE PLAN : " + m_activePlanTitle + "\n";
       hud += " 📊 ORDER TYPE  : " + m_activePlanType + "\n";
       hud += " 🎯 ENTRY TARGET: $" + DoubleToString(m_activeEntry, 2) + "\n";
-      hud += " 🔴 STOP LOSS   : $" + DoubleToString(m_activeSL, 2) + " (Risk: $" + DoubleToString(slDist, 2) + ")\n";
-      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(m_activeTP, 2) + " (Reward: $" + DoubleToString(tpDist, 2) + ")\n";
+      hud += " 🔴 STOP LOSS   : $" + DoubleToString(finalSL, 2) + " (Risk: $" + DoubleToString(slDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom Override]" : "") + "\n";
+      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(finalTP, 2) + " (Reward: $" + DoubleToString(tpDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom Override]" : "") + "\n";
    }
    else
    {
@@ -115,6 +137,7 @@ void UpdateChartHUD()
    
    hud += "-----------------------------------------------------\n";
    hud += " 🤖 Auto Trading: " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
+   hud += " ⚙️ Custom TP/SL: " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: $" + DoubleToString(InpCustomTPDist, 2) + " / SL: $" + DoubleToString(InpCustomSLDist, 2) + ")" : "⚪ OFF (Using AI Target)") + "\n";
    hud += " 🔑 Magic Number: " + IntegerToString(InpMagicNumber) + "\n";
    hud += "=====================================================";
    
@@ -284,6 +307,24 @@ void ProcessServerResponse(const string &json)
 //+------------------------------------------------------------------+
 void ExecuteTradePlan(string planId, string planType, double entry, double sl, double tp)
 {
+   // Override SL & TP if Custom Override is enabled
+   double finalSL = sl;
+   double finalTP = tp;
+   
+   if(InpUseCustomTPSL)
+   {
+      if(planType == "BUY" || planType == "BUY_LIMIT" || planType == "BUY_MARKET")
+      {
+         finalSL = entry - InpCustomSLDist;
+         finalTP = entry + InpCustomTPDist;
+      }
+      else if(planType == "SELL" || planType == "SELL_LIMIT" || planType == "SELL_MARKET")
+      {
+         finalSL = entry + InpCustomSLDist;
+         finalTP = entry - InpCustomTPDist;
+      }
+   }
+
    // 1. Modify existing pending order if entry/SL/TP changed
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
@@ -294,10 +335,10 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
          double currentSL = OrderGetDouble(ORDER_SL);
          double currentTP = OrderGetDouble(ORDER_TP);
          
-         if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - sl) > 0.05 || MathAbs(currentTP - tp) > 0.05)
+         if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05)
          {
-            Print("[GoldAISignal EA] Modifying Order #", ticket, " to Entry: ", entry, " SL: ", sl, " TP: ", tp);
-            m_trade.OrderModify(ticket, entry, sl, tp, ORDER_TIME_GTC, 0);
+            Print("[GoldAISignal EA] Modifying Order #", ticket, " to Entry: ", entry, " SL: ", finalSL, " TP: ", finalTP);
+            m_trade.OrderModify(ticket, entry, finalSL, finalTP, ORDER_TIME_GTC, 0);
          }
          return;
       }
@@ -320,42 +361,36 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
    {
       if(ask <= entry + 0.50 && ask >= entry - 1.50)
       {
-         // Price is at or passed entry -> Execute Market Buy
-         Print("[GoldAISignal EA] Executing Market BUY at Ask: ", ask, " SL: ", sl, " TP: ", tp);
-         m_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] Executing Market BUY at Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
+         m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
       else if(ask > entry)
       {
-         // Price is above entry -> Place Limit Order below market
-         Print("[GoldAISignal EA] Placing BUY_LIMIT at ", entry, " Ask: ", ask);
-         m_trade.BuyLimit(InpLotSize, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] Placing BUY_LIMIT at ", entry, " Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
+         m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         // Price dropped far below entry -> Execute Market Buy
          Print("[GoldAISignal EA] Price dropped below entry. Executing Market BUY at Ask: ", ask);
-         m_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, "GoldAI: " + planId);
+         m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
    }
    else if(planType == "SELL_LIMIT" || planType == "SELL" || planType == "SELL_MARKET")
    {
       if(bid >= entry - 0.50 && bid <= entry + 1.50)
       {
-         // Price is at or passed entry -> Execute Market Sell
-         Print("[GoldAISignal EA] Executing Market SELL at Bid: ", bid, " SL: ", sl, " TP: ", tp);
-         m_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] Executing Market SELL at Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
+         m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
       }
       else if(bid < entry)
       {
-         // Price is below entry -> Place Limit Order above market
-         Print("[GoldAISignal EA] Placing SELL_LIMIT at ", entry, " Bid: ", bid);
-         m_trade.SellLimit(InpLotSize, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         Print("[GoldAISignal EA] Placing SELL_LIMIT at ", entry, " Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
+         m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         // Price surged far above entry -> Execute Market Sell
          Print("[GoldAISignal EA] Price surged above entry. Executing Market SELL at Bid: ", bid);
-         m_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, "GoldAI: " + planId);
+         m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
       }
    }
 }

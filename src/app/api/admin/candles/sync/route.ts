@@ -507,7 +507,7 @@ export async function POST(request: Request) {
           const freshPlan = {
             id: `qwen-plan-${Date.now()}`,
             type: planType,
-            title: `[M15 Live Sync] ${targetDir === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${analysis.entryTarget.toFixed(2)} (เป้าเก็บส่วนต่าง $16-$22)`,
+            title: `[M15 Live Sync] ${targetDir === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${analysis.entryTarget.toFixed(2)} (เป้าเก็บส่วนต่าง $4.50-$6.80)`,
             entry: analysis.entryTarget,
             entry1: analysis.entryTarget,
             stopLoss: analysis.stopLossTarget,
