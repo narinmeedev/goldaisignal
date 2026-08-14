@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.30"
+#property version   "2.40"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -23,6 +23,9 @@ input double   InpLotSize           = 0.01;                   // Order Lot Size
 input ulong    InpMagicNumber       = 888999;                 // Magic Number for EA Orders
 input ulong    InpSlippage          = 30;                     // Slippage in Points
 input int      InpSyncIntervalSec   = 3;                      // Candle & Price Sync Interval (Seconds)
+
+input group "--- Custom Volatility & Entry Offset ---"
+input double   InpEntryOffsetDist   = 0.00;                   // Entry Offset in Dollars (e.g. 1.50 = Shift Entry $1.50 deeper for better price fill)
 
 input group "--- Custom Risk & Reward (TP / SL Override) ---"
 input bool     InpUseCustomTPSL     = false;                  // Enable Custom TP / SL Override (true = Use Custom, false = Use AI Target)
@@ -51,7 +54,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized v2.30 successfully. Custom TP/SL: ", InpUseCustomTPSL ? "ENABLED" : "DISABLED");
+   Print("[GoldAISignal EA] Initialized v2.40 successfully. Entry Offset: $", DoubleToString(InpEntryOffsetDist, 2));
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -95,7 +98,7 @@ void UpdateChartHUD()
    string lastTimeStr = (m_lastSyncTime > 0) ? TimeToString(m_lastSyncTime, TIME_DATE|TIME_SECONDS) : "Waiting for first sync...";
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.30)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.40)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
@@ -104,31 +107,40 @@ void UpdateChartHUD()
    
    if(m_activePlanType != "" && m_activeEntry > 0)
    {
+      bool isBuy = (m_activePlanType == "BUY" || m_activePlanType == "BUY_LIMIT" || m_activePlanType == "BUY_MARKET");
+      
+      // Calculate Entry with Offset
+      double finalEntry = m_activeEntry;
+      if(InpEntryOffsetDist > 0)
+      {
+         finalEntry = isBuy ? (m_activeEntry - InpEntryOffsetDist) : (m_activeEntry + InpEntryOffsetDist);
+      }
+      
+      // Calculate SL & TP
       double finalSL = m_activeSL;
       double finalTP = m_activeTP;
       
       if(InpUseCustomTPSL)
       {
-         if(m_activePlanType == "BUY" || m_activePlanType == "BUY_LIMIT" || m_activePlanType == "BUY_MARKET")
-         {
-            finalSL = m_activeEntry - InpCustomSLDist;
-            finalTP = m_activeEntry + InpCustomTPDist;
-         }
-         else
-         {
-            finalSL = m_activeEntry + InpCustomSLDist;
-            finalTP = m_activeEntry - InpCustomTPDist;
-         }
+         finalSL = isBuy ? (finalEntry - InpCustomSLDist) : (finalEntry + InpCustomSLDist);
+         finalTP = isBuy ? (finalEntry + InpCustomTPDist) : (finalEntry - InpCustomTPDist);
+      }
+      else if(InpEntryOffsetDist > 0)
+      {
+         double originalSLDist = MathAbs(m_activeEntry - m_activeSL);
+         double originalTPDist = MathAbs(m_activeTP - m_activeEntry);
+         finalSL = isBuy ? (finalEntry - originalSLDist) : (finalEntry + originalSLDist);
+         finalTP = isBuy ? (finalEntry + originalTPDist) : (finalEntry - originalTPDist);
       }
       
-      double slDist = MathAbs(m_activeEntry - finalSL);
-      double tpDist = MathAbs(finalTP - m_activeEntry);
+      double slDist = MathAbs(finalEntry - finalSL);
+      double tpDist = MathAbs(finalTP - finalEntry);
       
       hud += " 📌 ACTIVE PLAN : " + m_activePlanTitle + "\n";
       hud += " 📊 ORDER TYPE  : " + m_activePlanType + "\n";
-      hud += " 🎯 ENTRY TARGET: $" + DoubleToString(m_activeEntry, 2) + "\n";
-      hud += " 🔴 STOP LOSS   : $" + DoubleToString(finalSL, 2) + " (Risk: $" + DoubleToString(slDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom Override]" : "") + "\n";
-      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(finalTP, 2) + " (Reward: $" + DoubleToString(tpDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom Override]" : "") + "\n";
+      hud += " 🎯 ENTRY TARGET: $" + DoubleToString(finalEntry, 2) + (InpEntryOffsetDist > 0 ? " [Offset: $" + DoubleToString(InpEntryOffsetDist, 2) + " deeper]" : "") + "\n";
+      hud += " 🔴 STOP LOSS   : $" + DoubleToString(finalSL, 2) + " (Risk: $" + DoubleToString(slDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom]" : "") + "\n";
+      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(finalTP, 2) + " (Reward: $" + DoubleToString(tpDist, 2) + ")" + (InpUseCustomTPSL ? " [Custom]" : "") + "\n";
    }
    else
    {
@@ -137,7 +149,8 @@ void UpdateChartHUD()
    
    hud += "-----------------------------------------------------\n";
    hud += " 🤖 Auto Trading: " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
-   hud += " ⚙️ Custom TP/SL: " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: $" + DoubleToString(InpCustomTPDist, 2) + " / SL: $" + DoubleToString(InpCustomSLDist, 2) + ")" : "⚪ OFF (Using AI Target)") + "\n";
+   hud += " 📐 Entry Offset: " + (InpEntryOffsetDist > 0 ? "🟢 ACTIVE ($" + DoubleToString(InpEntryOffsetDist, 2) + " deeper)" : "⚪ 0.00 (Exact AI Entry)") + "\n";
+   hud += " ⚙️ Custom TP/SL: " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: $" + DoubleToString(InpCustomTPDist, 2) + " / SL: $" + DoubleToString(InpCustomSLDist, 2) + ")" : "⚪ OFF (AI Target)") + "\n";
    hud += " 🔑 Magic Number: " + IntegerToString(InpMagicNumber) + "\n";
    hud += "=====================================================";
    
@@ -303,26 +316,34 @@ void ProcessServerResponse(const string &json)
 }
 
 //+------------------------------------------------------------------+
-//| Smart Order Execution Engine for MetaTrader 5                    |
+//| Smart Order Execution Engine with Entry Offset                   |
 //+------------------------------------------------------------------+
-void ExecuteTradePlan(string planId, string planType, double entry, double sl, double tp)
+void ExecuteTradePlan(string planId, string planType, double rawEntry, double rawSL, double rawTP)
 {
+   bool isBuy = (planType == "BUY" || planType == "BUY_LIMIT" || planType == "BUY_MARKET");
+   
+   // Calculate Adjusted Entry with InpEntryOffsetDist
+   double entry = rawEntry;
+   if(InpEntryOffsetDist > 0)
+   {
+      entry = isBuy ? (rawEntry - InpEntryOffsetDist) : (rawEntry + InpEntryOffsetDist);
+   }
+   
    // Override SL & TP if Custom Override is enabled
-   double finalSL = sl;
-   double finalTP = tp;
+   double finalSL = rawSL;
+   double finalTP = rawTP;
    
    if(InpUseCustomTPSL)
    {
-      if(planType == "BUY" || planType == "BUY_LIMIT" || planType == "BUY_MARKET")
-      {
-         finalSL = entry - InpCustomSLDist;
-         finalTP = entry + InpCustomTPDist;
-      }
-      else if(planType == "SELL" || planType == "SELL_LIMIT" || planType == "SELL_MARKET")
-      {
-         finalSL = entry + InpCustomSLDist;
-         finalTP = entry - InpCustomTPDist;
-      }
+      finalSL = isBuy ? (entry - InpCustomSLDist) : (entry + InpCustomSLDist);
+      finalTP = isBuy ? (entry + InpCustomTPDist) : (entry - InpCustomTPDist);
+   }
+   else if(InpEntryOffsetDist > 0)
+   {
+      double slDist = MathAbs(rawEntry - rawSL);
+      double tpDist = MathAbs(rawTP - rawEntry);
+      finalSL = isBuy ? (entry - slDist) : (entry + slDist);
+      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
    }
 
    // 1. Modify existing pending order if entry/SL/TP changed
@@ -357,7 +378,7 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    
-   if(planType == "BUY_LIMIT" || planType == "BUY" || planType == "BUY_MARKET")
+   if(isBuy)
    {
       if(ask <= entry + 0.50 && ask >= entry - 1.50)
       {
@@ -375,7 +396,7 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
          m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
    }
-   else if(planType == "SELL_LIMIT" || planType == "SELL" || planType == "SELL_MARKET")
+   else
    {
       if(bid >= entry - 0.50 && bid <= entry + 1.50)
       {
