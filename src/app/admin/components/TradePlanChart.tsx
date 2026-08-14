@@ -165,8 +165,10 @@ export default function TradePlanChart({
     if (!values.length) values.push(4300, 4310);
     const rawMax = Math.max(...values);
     const rawMin = Math.min(...values);
-    // Keep generous vertical breathing room so candles do not fill the plot height.
-    const padding = Math.max((rawMax - rawMin) * 0.22, 4);
+    // Keep every important level visible while using more of the vertical canvas.
+    // A tighter domain makes each price step easier to compare without clipping
+    // the plan levels or support/resistance zones included above.
+    const padding = Math.max((rawMax - rawMin) * 0.1, 2);
     const max = rawMax + padding;
     const min = rawMin - padding;
     return { min, max, range: Math.max(max - min, 1) };
@@ -214,7 +216,7 @@ export default function TradePlanChart({
   };
 
   return (
-    <section className="flex h-full min-h-[680px] flex-col rounded-xl border border-[#27313b] bg-[#111820] p-4 xl:p-5">
+    <section className="flex h-full min-h-[780px] flex-col rounded-xl border border-[#27313b] bg-[#111820] p-4 xl:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -287,7 +289,7 @@ export default function TradePlanChart({
         </div>
       </div>
 
-      <div className="relative mt-4 min-h-[500px] flex-1 overflow-hidden rounded-lg border border-[#202a34] bg-[#0b1118]">
+      <div className="relative mt-4 min-h-[600px] flex-1 overflow-hidden rounded-lg border border-[#202a34] bg-[#0b1118] xl:min-h-[640px]">
         {!chartCandles.length && (
           <div className="absolute inset-0 z-20 flex items-center justify-center text-[13px] text-[#77828e]">
             <Activity className="mr-2 h-4 w-4" /> รอข้อมูลแท่งเทียนจาก MT5
@@ -296,7 +298,7 @@ export default function TradePlanChart({
 
         <svg
           ref={chartSvgRef}
-          className="h-full min-h-[500px] w-full"
+          className="h-full min-h-[600px] w-full xl:min-h-[640px]"
           viewBox="0 0 700 470"
           preserveAspectRatio="none"
           role="img"
@@ -364,7 +366,7 @@ export default function TradePlanChart({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[11px] text-[#818c98]">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1"><span>เลื่อนล้อเมาส์บนกราฟเพื่อซูม</span><span className="text-[#596572]">•</span><span>ค่าเริ่มต้น {DEFAULT_VISIBLE_CANDLES[selectedTF]} แท่ง</span></div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1"><span>เลื่อนล้อเมาส์บนกราฟเพื่อซูม</span><span className="text-[#596572]">•</span><span>สเกลราคาอัตโนมัติแบบขยาย</span><span className="text-[#596572]">•</span><span>ค่าเริ่มต้น {DEFAULT_VISIBLE_CANDLES[selectedTF]} แท่ง</span></div>
         <div className="flex gap-4"><span>Asia/Bangkok</span><span>%</span><span>log</span><span className="text-amber-400">auto</span></div>
       </div>
     </section>

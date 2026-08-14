@@ -509,13 +509,13 @@ export async function POST(request: Request) {
           const nowBangkok = new Date(Date.now() + 7 * 60 * 60 * 1000);
           const bangkokTimeStr = `${nowBangkok.getUTCHours().toString().padStart(2, '0')}:${nowBangkok.getUTCMinutes().toString().padStart(2, '0')} น.`;
 
-          if (analysis.overallSignal === 'WAIT') {
-            parsedPlan = null;
-          } else {
-            const targetDir = analysis.overallSignal;
-            const planType = targetDir === 'BUY'
-              ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
-              : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
+          const targetDir = (analysis.overallSignal && analysis.overallSignal !== 'WAIT') 
+            ? analysis.overallSignal 
+            : (analysis.supportLevels[0] && Math.abs(currentPrice - analysis.supportLevels[0].price) < 5.0 ? 'BUY' : 'BUY');
+          
+          const planType = targetDir === 'BUY'
+            ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
+            : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
 
           const freshPlan = {
             id: `qwen-plan-${Date.now()}`,
@@ -566,8 +566,7 @@ export async function POST(request: Request) {
 
           NotificationService.sendNotification(lineMessage).catch(() => {});
 
-            parsedPlan = freshPlan;
-          }
+          parsedPlan = freshPlan;
         }
       }
 
