@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, BarChart3, Bell, Check, CircleDollarSign, Clock3, LineChart, MessageCircle, ShieldCheck, Target } from 'lucide-react';
 import PublicShell from '@/components/PublicShell';
+import DashboardProductPreview from '@/components/DashboardProductPreview';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 const included = [
@@ -23,6 +24,10 @@ export default function PricingPage() {
             <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold leading-tight tracking-[-0.035em] text-ga-text sm:text-5xl">แพ็กเกจเดียว<br /><span className="text-ga-gold">เห็นข้อมูลครบก่อนตัดสินใจ</span></h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-ga-muted">ทดลองใช้งาน Dashboard และการนำเสนอแผนจริงก่อน ไม่มีการรับประกันผลกำไร และระบบอาจเลือกไม่ออกแผนเมื่อคุณภาพไม่ผ่านเกณฑ์</p>
           </div>
+        </section>
+
+        <section className="border-b border-ga-border px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+          <DashboardProductPreview compact />
         </section>
 
         <section className="bg-[#0d141c]">

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import LiveMarketPreview, { type PublicDashboardStats } from '@/components/LiveMarketPreview';
 import PublicShell from '@/components/PublicShell';
+import DashboardProductPreview from '@/components/DashboardProductPreview';
 import { fetchDashboardStats } from '@/lib/dashboard-fetch';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
@@ -69,7 +70,11 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="features" className="border-b border-ga-border bg-[#0d141c]">
+        <section className="border-b border-ga-border bg-[#0d141c] px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+          <DashboardProductPreview />
+        </section>
+
+        <section id="features" className="border-b border-ga-border">
           <div className="mx-auto max-w-[1440px] px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
             <div className="grid gap-6 lg:grid-cols-[0.7fr_1.3fr] lg:items-end">
               <div><span className="public-kicker">ระบบวิเคราะห์</span><h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.025em] text-ga-text sm:text-4xl">ข้อมูลเท่าที่จำเป็น<br />แต่ครบสำหรับวางแผน</h2></div>

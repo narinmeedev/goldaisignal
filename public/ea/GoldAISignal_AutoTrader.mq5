@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.70"
+#property version   "2.80"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -23,6 +23,9 @@ input double   InpLotSize                  = 0.01;                   // Order Lo
 input ulong    InpMagicNumber              = 888999;                 // Magic Number for EA Orders
 input ulong    InpSlippage                 = 30;                     // Slippage in Points
 input int      InpSyncIntervalSec          = 3;                      // Candle & Price Sync Interval (Seconds)
+
+input group "--- Visual Chart Lines (วาดเส้นแผนบนกราฟ) ---"
+input bool     InpDrawChartLines           = true;                   // Draw Visual Entry, SL, and TP Lines on Chart (true = วาดเส้นแนวบนกราฟ, false = ไม่วาด)
 
 input group "--- Direction Flip & Position Management ---"
 input bool     InpAutoCloseOnFlip          = true;                   // Auto-Close Old Opposite Position when AI Flips Direction (true = เปิดปิดให้อัตโนมัติ, false = ปิด)
@@ -60,6 +63,39 @@ double GetPointValue()
 }
 
 //+------------------------------------------------------------------+
+//| Helper: Draw Visual Horizontal Line on MT5 Chart                |
+//+------------------------------------------------------------------+
+void DrawChartLine(string name, double price, color col, ENUM_LINE_STYLE style, int width, string label)
+{
+   if(price <= 0) return;
+   
+   if(ObjectFind(0, name) < 0)
+   {
+      ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+   }
+   else
+   {
+      ObjectMove(0, name, 0, 0, price);
+   }
+   
+   ObjectSetInteger(0, name, OBJPROP_COLOR, col);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetString(0, name, OBJPROP_TEXT, label);
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Clear Visual Chart Lines                                 |
+//+------------------------------------------------------------------+
+void ClearChartLines()
+{
+   ObjectDelete(0, "GoldAI_Line_Entry");
+   ObjectDelete(0, "GoldAI_Line_SL");
+   ObjectDelete(0, "GoldAI_Line_TP");
+}
+
+//+------------------------------------------------------------------+
 //| Expert Initialization Function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -68,7 +104,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized v2.70 successfully. AutoCloseOnFlip: ", InpAutoCloseOnFlip ? "ON" : "OFF");
+   Print("[GoldAISignal EA] Initialized v2.80 successfully. Visual Chart Lines: ", InpDrawChartLines ? "ON" : "OFF");
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -82,6 +118,7 @@ void OnDeinit(const int reason)
 {
    EventKillTimer();
    Comment(""); // Clear chart HUD
+   ClearChartLines(); // Clear visual lines
    Print("[GoldAISignal EA] Deinitialized. Reason: ", reason);
 }
 
@@ -105,7 +142,7 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
-//| Render On-Screen HUD Panel on MT5 Chart                          |
+//| Render On-Screen HUD Panel & Visual Lines on MT5 Chart           |
 //+------------------------------------------------------------------+
 void UpdateChartHUD()
 {
@@ -116,7 +153,7 @@ void UpdateChartHUD()
    double customSLDist = InpCustomSLPoints * pointVal;
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.70)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.80)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
@@ -159,14 +196,28 @@ void UpdateChartHUD()
       hud += " 🎯 ENTRY TARGET: $" + DoubleToString(finalEntry, 2) + (InpEntryOffsetPoints > 0 ? " [Offset: " + IntegerToString(InpEntryOffsetPoints) + " จุด]" : "") + "\n";
       hud += " 🔴 STOP LOSS   : $" + DoubleToString(finalSL, 2) + " (" + IntegerToString((int)MathRound(slPoints)) + " จุด)" + (InpUseCustomTPSL ? " [Custom Points]" : "") + "\n";
       hud += " 🟢 TAKE PROFIT : $" + DoubleToString(finalTP, 2) + " (" + IntegerToString((int)MathRound(tpPoints)) + " จุด)" + (InpUseCustomTPSL ? " [Custom Points]" : "") + "\n";
+      
+      // Plot Visual Chart Lines
+      if(InpDrawChartLines)
+      {
+         DrawChartLine("GoldAI_Line_Entry", finalEntry, clrDeepSkyBlue, STYLE_SOLID, 2, "🎯 GoldAI ENTRY $" + DoubleToString(finalEntry, 2));
+         DrawChartLine("GoldAI_Line_SL", finalSL, clrCrimson, STYLE_SOLID, 2, "🔴 GoldAI SL $" + DoubleToString(finalSL, 2));
+         DrawChartLine("GoldAI_Line_TP", finalTP, clrLimeGreen, STYLE_SOLID, 2, "🟢 GoldAI TP $" + DoubleToString(finalTP, 2));
+      }
+      else
+      {
+         ClearChartLines();
+      }
    }
    else
    {
       hud += " 📌 ACTIVE PLAN : ⏳ Synchronizing & Calculating Live AI Setup...\n";
+      ClearChartLines();
    }
    
    hud += "-----------------------------------------------------\n";
    hud += " 🤖 Auto Trading  : " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
+   hud += " 📈 Visual Lines  : " + (InpDrawChartLines ? "🟢 DRAWN ON CHART" : "🔴 OFF") + "\n";
    hud += " 🔄 Flip Auto-Close: " + (InpAutoCloseOnFlip ? "🟢 ON (Close Opposite Position)" : "🔴 OFF (Keep Old Position)") + "\n";
    hud += " 🛠️ Modify Orders : " + (InpAutoModifyExistingOrders ? "🟢 ON (Auto-Update Active Orders)" : "🔴 OFF (Keep Original Orders)") + "\n";
    hud += " 📐 Entry Offset  : " + (InpEntryOffsetPoints > 0 ? "🟢 ACTIVE (" + IntegerToString(InpEntryOffsetPoints) + " จุด / $" + DoubleToString(entryOffsetDist, 2) + ")" : "⚪ 0 จุด (Exact AI Entry)") + "\n";
@@ -328,8 +379,19 @@ void ProcessServerResponse(const string &json)
             m_activeSL        = 0;
             m_activeTP        = 0;
             CancelEAPendingOrders();
+            ClearChartLines();
          }
       }
+   }
+   else
+   {
+      m_activePlanTitle = "Waiting for Market Setup";
+      m_activePlanType  = "";
+      m_activeEntry     = 0;
+      m_activeSL        = 0;
+      m_activeTP        = 0;
+      CancelEAPendingOrders();
+      ClearChartLines();
    }
    
    UpdateChartHUD();
