@@ -219,9 +219,9 @@ export class QwenLocalAiService {
         }
       }
 
-      // Dynamic Whipsaw Protection SL distance ($6.8 - $8.5) and Scalp TP ($16.5 - $22.5, RR >= 1:2.5)
-      const targetSlDist = Math.max(6.80, Math.min(8.50, (input.atr14 || 5.0) * 1.5));
-      const targetTpDist = Math.max(16.50, targetSlDist * 2.5);
+      // Tight Scalp SL Guard ($3.50 - $4.80) and TP ($9.50 - $14.50, RR >= 1:2.5)
+      const targetSlDist = Math.max(3.50, Math.min(4.80, (input.atr14 || 3.5) * 1.2));
+      const targetTpDist = Math.max(9.50, targetSlDist * 2.5);
 
       let refinedSL = direction === 'BUY'
         ? Number((refinedEntry - targetSlDist).toFixed(2))

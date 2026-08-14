@@ -150,6 +150,60 @@ export class SmartTrendStructureService {
   }
 
   /**
+   * Detects M5 Multiple Top Rejection (Double Top / Triple Top) or Bottom Rejection (Double Bottom)
+   */
+  private static detectM5Exhaustion(candles: Candle[], currentPrice: number) {
+    if (candles.length < 15) {
+      return { isTopExhaustion: false, isBottomExhaustion: false, peakPrice: 0, troughPrice: 0, tag: '' };
+    }
+
+    const recent = candles.slice(-20);
+    const swingHighs: number[] = [];
+    const swingLows: number[] = [];
+
+    for (let i = 2; i < recent.length - 2; i++) {
+      if (recent[i].high >= recent[i - 1].high && recent[i].high >= recent[i - 2].high &&
+          recent[i].high >= recent[i + 1].high && recent[i].high >= recent[i + 2].high) {
+        swingHighs.push(recent[i].high);
+      }
+      if (recent[i].low <= recent[i - 1].low && recent[i].low <= recent[i - 2].low &&
+          recent[i].low <= recent[i + 1].low && recent[i].low <= recent[i + 2].low) {
+        swingLows.push(recent[i].low);
+      }
+    }
+
+    let isTopExhaustion = false;
+    let isBottomExhaustion = false;
+    let peakPrice = 0;
+    let troughPrice = 0;
+    let tag = '';
+
+    // Check Multiple Top Rejection near highs
+    if (swingHighs.length >= 2) {
+      const p1 = swingHighs[swingHighs.length - 2];
+      const p2 = swingHighs[swingHighs.length - 1];
+      if (Math.abs(p1 - p2) <= 1.80 && p2 >= currentPrice - 3.50) {
+        isTopExhaustion = true;
+        peakPrice = Math.max(p1, p2);
+        tag = `[M5 Double/Triple Top Rejection] ขึ้นสูงติดจุดสูงสุด $${peakPrice.toFixed(2)} 2-3 ครั้งไม่ผ่าน เสี่ยงกลับตัวลงระยะสั้น-ยาว`;
+      }
+    }
+
+    // Check Multiple Bottom Support near lows
+    if (swingLows.length >= 2) {
+      const b1 = swingLows[swingLows.length - 2];
+      const b2 = swingLows[swingLows.length - 1];
+      if (Math.abs(b1 - b2) <= 1.80 && b2 <= currentPrice + 3.50) {
+        isBottomExhaustion = true;
+        troughPrice = Math.min(b1, b2);
+        tag = `[M5 Double/Triple Bottom Support] ลงต่ำติดจุดต่ำสุด $${troughPrice.toFixed(2)} 2-3 ครั้งไม่หลุด เสี่ยงดีดกลับขึ้นระยะสั้น-ยาว`;
+      }
+    }
+
+    return { isTopExhaustion, isBottomExhaustion, peakPrice, troughPrice, tag };
+  }
+
+  /**
    * Main Analysis Engine combining MQL5 SmartTrendStructure logic with AI Scalping
    */
   public static analyze(data: {
@@ -169,6 +223,9 @@ export class SmartTrendStructureService {
     const m15Bias = this.computeTimeframeBias(m15, 'M15');
     const h1Bias = this.computeTimeframeBias(h1, 'H1');
 
+    // Detect M5 Top & Bottom Exhaustion Patterns
+    const exhaustion = this.detectM5Exhaustion(m5, currentPrice);
+
     // Strict Multi-Timeframe Score & H1 Alignment Filter (Anti-Counter-Trend & Choppy Market Filter)
     let score = 0;
     if (m5Bias.signal === 'BUY') score++;
@@ -187,6 +244,15 @@ export class SmartTrendStructureService {
       overallSignal = 'BUY';
     } else if (score <= -2 && h1Bias.bias !== 'BULLISH') {
       overallSignal = 'SELL';
+    }
+
+    // OVERRIDE if M5 Top Rejection or Bottom Support is active!
+    if (exhaustion.isTopExhaustion) {
+      if (overallSignal === 'BUY') overallSignal = 'WAIT'; // Never BUY into a Double/Triple Top Exhaustion!
+      else overallSignal = 'SELL'; // Switch to SELL if structure confirms exhaustion
+    } else if (exhaustion.isBottomExhaustion) {
+      if (overallSignal === 'SELL') overallSignal = 'WAIT'; // Never SELL into a Double/Triple Bottom Support!
+      else overallSignal = 'BUY'; // Switch to BUY if structure confirms support
     }
 
     // Extract Support / Resistance Swing Levels for M5, M15, H1
@@ -252,43 +318,54 @@ export class SmartTrendStructureService {
     const validSupports = supportLevels.filter((s) => s.price < currentPrice).map((s) => s.price);
     const validResistances = resistanceLevels.filter((r) => r.price > currentPrice).map((r) => r.price);
 
-    const nearestSup = validSupports.length > 0 ? Math.max(...validSupports) : currentPrice - 4.5;
-    const nearestRes = validResistances.length > 0 ? Math.min(...validResistances) : currentPrice + 4.5;
+    const nearestSup = validSupports.length > 0 ? Math.max(...validSupports) : currentPrice - 3.5;
+    const nearestRes = validResistances.length > 0 ? Math.min(...validResistances) : currentPrice + 3.5;
 
     // Calculate ATR for dynamic SL buffer
-    let atr = 4.5;
+    let atr = 3.5;
     if (m15.length >= 14) {
       const trs = m15.slice(-14).map((c) => c.high - c.low);
       atr = trs.reduce((a, b) => a + b, 0) / 14;
     }
 
-    // Dynamic Anti-Wick-Hunt SL distance ($6.80 - $8.50)
-    const slBuffer = Math.max(6.80, Math.min(8.50, atr * 1.6));
-    const tpDistance = Math.max(16.50, slBuffer * 2.5); // Minimum 1:2.5 RR Ratio
+    // TIGHT SCALP SL GUARD: $3.50 - $4.80 Maximum Stop Loss Distance
+    const slBuffer = Math.max(3.50, Math.min(4.80, atr * 1.2));
+    const tpDistance = Math.max(9.50, slBuffer * 2.5); // Minimum 1:2.5 RR Ratio
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;
     let takeProfitTarget = currentPrice;
 
-    if (overallSignal === 'BUY') {
+    if (exhaustion.isTopExhaustion) {
+      // Entry near peak resistance with tight SL just above peak
+      entryTarget = Number((currentPrice + 0.80).toFixed(2));
+      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.20, entryTarget + 3.50)).toFixed(2));
+      takeProfitTarget = Number((entryTarget - (stopLossTarget - entryTarget) * 2.5).toFixed(2));
+    } else if (exhaustion.isBottomExhaustion) {
+      // Entry near trough support with tight SL just below trough
+      entryTarget = Number((currentPrice - 0.80).toFixed(2));
+      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.20, entryTarget - 3.50)).toFixed(2));
+      takeProfitTarget = Number((entryTarget + (entryTarget - stopLossTarget) * 2.5).toFixed(2));
+    } else if (overallSignal === 'BUY') {
       // Entry deep at Support or Discount Zone (never buy at market price or resistance)
-      entryTarget = nearestSup > currentPrice - 2.5 ? Number((currentPrice - 4.5).toFixed(2)) : nearestSup;
+      entryTarget = nearestSup > currentPrice - 1.5 ? Number((currentPrice - 2.5).toFixed(2)) : nearestSup;
       stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
     } else if (overallSignal === 'SELL') {
       // Entry high at Resistance or Premium Zone (never sell at market price or support)
-      entryTarget = nearestRes < currentPrice + 2.5 ? Number((currentPrice + 4.5).toFixed(2)) : nearestRes;
+      entryTarget = nearestRes < currentPrice + 1.5 ? Number((currentPrice + 2.5).toFixed(2)) : nearestRes;
       stopLossTarget = Number((entryTarget + slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
     } else {
-      // Wait / Range mode: High precision Limit Orders with wide buffers
-      entryTarget = Number((currentPrice - 4.5).toFixed(2));
+      // Wait / Range mode: High precision Limit Orders with tight SL
+      entryTarget = Number((currentPrice - 2.5).toFixed(2));
       stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
     }
 
     const confidence = overallSignal !== 'WAIT' ? (Math.abs(score) >= 3 ? 96 : 90) : 78;
-    const reason = `[SmartTrendStructure Engine]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${lastStructureEvent?.tag || 'กำลังสะสมพลัง'} | SL Buffer $${slBuffer.toFixed(2)} (กันไส้เทียนสะบัด)`;
+    const structureTag = exhaustion.tag || lastStructureEvent?.tag || 'กำลังสะสมพลัง';
+    const reason = `[SmartTrendStructure Engine]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${structureTag} | SL Tight $${slBuffer.toFixed(2)} (กระชับความเสี่ยง)`;
 
     return {
       overallSignal,
