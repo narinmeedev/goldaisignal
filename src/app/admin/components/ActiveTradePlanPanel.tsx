@@ -106,6 +106,14 @@ export default function ActiveTradePlanPanel({
   const rr = plan.riskReward && Number.isFinite(plan.riskReward)
     ? plan.riskReward
     : Math.abs((plan.takeProfit - plan.entry) / Math.max(Math.abs(plan.entry - plan.stopLoss), 0.01));
+  const displayedCurrentPrice = typeof currentPrice === 'number' && Number.isFinite(currentPrice)
+    ? currentPrice
+    : plan.entry;
+  const priceLevels = [
+    { kind: 'profit' as const, price: plan.takeProfit },
+    { kind: 'market' as const, price: displayedCurrentPrice },
+    { kind: 'loss' as const, price: plan.stopLoss },
+  ].sort((a, b) => b.price - a.price);
 
   return (
     <section id="active-plan" className="flex h-full min-h-[720px] flex-col rounded-xl border border-[#27313b] bg-[#111820] p-5 xl:p-6">
@@ -129,24 +137,51 @@ export default function ActiveTradePlanPanel({
 
       <p className="mt-3 max-w-md text-[15px] leading-7 text-[#f0f2f4]">{instruction}</p>
 
-      <div className="relative mt-4 border-y border-[#29323c] py-1 before:absolute before:bottom-5 before:left-[7px] before:top-5 before:w-px before:bg-[#53606c]">
-        <PlanLevel label="เป้าหมาย" value={plan.takeProfit} helper="เป้าหมายทำกำไร โซนแนวต้านถัดไป" tone="profit" />
+      <div
+        className="relative mt-4 border-y border-[#29323c] py-1 before:absolute before:bottom-5 before:left-[7px] before:top-5 before:w-px before:bg-[#53606c]"
+        aria-label="ระดับราคาเรียงจากราคาสูงไปต่ำ"
+      >
+        {priceLevels.map((level) => {
+          if (level.kind === 'profit') {
+            return (
+              <PlanLevel
+                key={level.kind}
+                label="เป้าหมาย"
+                value={plan.takeProfit}
+                helper={isBuy ? 'เป้าหมายทำกำไร โซนแนวต้านถัดไป' : 'เป้าหมายทำกำไร โซนแนวรับถัดไป'}
+                tone="profit"
+              />
+            );
+          }
 
-        <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 border-y border-dashed border-amber-400/45 py-3">
-          <div className="relative z-10 mt-1 h-4 w-4 rounded-full border-2 border-amber-400 bg-[#111820]" />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="font-mono text-[17px] font-semibold tabular-nums text-amber-400">{formatPrice(currentPrice)}</p>
-              <p className="text-[11px] text-[#8f99a5]">ราคาปัจจุบัน</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[13px] font-medium text-amber-400">จุดเข้า</p>
-              <p className="font-mono text-[21px] font-semibold tabular-nums text-amber-400">{formatPrice(plan.entry)}</p>
-            </div>
-          </div>
-        </div>
+          if (level.kind === 'loss') {
+            return (
+              <PlanLevel
+                key={level.kind}
+                label="จุดหยุดขาดทุน"
+                value={plan.stopLoss}
+                helper="หากราคาถึงระดับนี้ แผนจะไม่เป็นไปตามคาด"
+                tone="loss"
+              />
+            );
+          }
 
-        <PlanLevel label="จุดหยุดขาดทุน" value={plan.stopLoss} helper="หากราคาหลุดโซนนี้ แผนจะไม่เป็นไปตามคาด" tone="loss" />
+          return (
+            <div key={level.kind} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 border-y border-dashed border-amber-400/45 py-3">
+              <div className="relative z-10 mt-1 h-4 w-4 rounded-full border-2 border-amber-400 bg-[#111820]" />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-mono text-[17px] font-semibold tabular-nums text-amber-400">{formatPrice(currentPrice)}</p>
+                  <p className="text-[11px] text-[#8f99a5]">ราคาปัจจุบัน</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[13px] font-medium text-amber-400">จุดเข้า</p>
+                  <p className="font-mono text-[21px] font-semibold tabular-nums text-amber-400">{formatPrice(plan.entry)}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-5">

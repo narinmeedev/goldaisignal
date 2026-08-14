@@ -149,22 +149,22 @@ export default function TradePlanChart({
     return (
       <g key={`${tone}-${zone.id ?? index}`}>
         <rect x="0" y={y} width={plotWidth} height={height} fill={stroke} fillOpacity={support ? 0.14 : 0.12} stroke={stroke} strokeOpacity="0.62" />
-        <text x="8" y={y + Math.min(height - 3, 15)} fill={support ? '#63d9ad' : '#ef9ba7'} fontSize="10" fontWeight="500">
+        <text x={support ? 108 : 8} y={y + Math.min(height - 3, 15)} fill={support ? '#63d9ad' : '#ef9ba7'} fontSize="10" fontWeight="500">
           {label} {formatPrice(lower)}–{formatPrice(upper)}
         </text>
       </g>
     );
   };
 
-  const renderLevel = (value: number | undefined, label: string, color: string, dash = '5 4') => {
+  const renderLevel = (value: number | undefined, label: string, color: string, dash = '5 4', tagOffset = 0) => {
     if (!value || !Number.isFinite(value)) return null;
     const y = getY(value);
     return (
       <g>
         <line x1="0" y1={y} x2={plotWidth} y2={y} stroke={color} strokeWidth="1.2" strokeDasharray={dash} />
         <text x="8" y={y - 6} fill={color} fontSize="10" fontWeight="600">{label}</text>
-        <rect x="612" y={y - 10} width="84" height="20" rx="3" fill={color} />
-        <text x="654" y={y + 4} fill="#071018" fontSize="10" fontWeight="700" textAnchor="middle">{formatPrice(value)}</text>
+        <rect x="612" y={y - 10 + tagOffset} width="84" height="20" rx="3" fill={color} />
+        <text x="654" y={y + 4 + tagOffset} fill="#071018" fontSize="10" fontWeight="700" textAnchor="middle">{formatPrice(value)}</text>
       </g>
     );
   };
@@ -260,9 +260,9 @@ export default function TradePlanChart({
           })}
 
           {renderLevel(plan?.takeProfit, 'Take Profit', '#20bd87')}
-          {renderLevel(plan?.entry, 'Entry', '#e2b72f', '')}
-          {renderLevel(plan?.stopLoss, 'Stop Loss', '#ef4e61')}
-          {renderLevel(currentPrice ?? undefined, '', '#e3b52d', '2 3')}
+          {renderLevel(plan?.entry, 'Entry', '#e2b72f', '', 2)}
+          {renderLevel(plan?.stopLoss, 'Stop Loss', '#ef4e61', '5 4', 12)}
+          {renderLevel(currentPrice ?? undefined, '', '#e3b52d', '2 3', -8)}
 
           {maxVolume > 0 && <text x="8" y="375" fill="#909aa6" fontSize="10">Volume</text>}
 

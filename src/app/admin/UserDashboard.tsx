@@ -110,7 +110,7 @@ interface DashboardStats {
     nearestSupport: Zone[];
     nearestResistance: Zone[];
     activeOrderPlan?: TradePlan | null;
-    timeframeBiases?: { D1?: string; H1?: string; M15?: string; M5?: string };
+    timeframeBiases?: { D1?: string; H4?: string; H1?: string; M15?: string; M5?: string };
     marketSession?: string;
     candles?: any[];
     m5Candles?: any[];
@@ -615,7 +615,13 @@ export default function UserDashboard() {
             plan={plan}
             currentPrice={market?.currentPrice ?? null}
             direction={direction}
-            instruction={plan ? getEntryInstruction(plan, isOpen) : 'รอข้อมูลตลาดและแผนที่ผ่านเกณฑ์'}
+            instruction={plan
+              ? isOpen
+                ? 'แผนเริ่มวัดผลแล้ว ให้ติดตาม Take Profit และ Stop Loss ตามแผนเดิม'
+                : direction === 'SELL'
+                  ? `รอราคาเข้าใกล้ ${formatPrice(plan.entry)} และดูแรงขายก่อนเข้า — ไม่ควรไล่ราคา`
+                  : `รอราคาเข้าใกล้ ${formatPrice(plan.entry)} และดูแรงรับก่อนเข้า — ไม่ควรไล่ราคา`
+              : 'รอข้อมูลตลาดและแผนที่ผ่านเกณฑ์'}
             timeframeBiases={market?.timeframeBiases}
             hasSupport={supportZones.length > 0}
           />
