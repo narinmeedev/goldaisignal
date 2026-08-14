@@ -262,7 +262,7 @@ export default function CheckoutPage() {
             เริ่มใช้งาน Gold AI <span className="text-ga-gold">PRO</span>
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
-            สิทธิ์ทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วันแรก และต่ออายุช่วงโปรโมชัน {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน จากราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)}
+            ราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)}/เดือน · สิทธิ์พิเศษจำนวนจำกัด {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน
           </p>
         </div>
 
@@ -445,6 +445,7 @@ export default function CheckoutPage() {
             <div className="text-center space-y-2 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
               <p className="text-neutral-400 text-sm">ชื่อบัญชี: <span className="text-neutral-100 font-medium">{ACCOUNT_NAME}</span></p>
               <p className="text-neutral-400 text-sm">ยอดที่ต้องชำระ: <span className="text-amber-500 font-bold text-lg">฿{AMOUNT}</span></p>
+              <p className="border-t border-neutral-800 pt-3 text-xs leading-5 text-neutral-400">เมื่อยอดชำระได้รับอนุมัติ ระบบจะล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือนไว้กับบัญชีนี้ตลอดไป</p>
             </div>
 
             {errorMsg && (
@@ -535,7 +536,7 @@ export default function CheckoutPage() {
                   </h2>
                   <p className="text-xs text-neutral-400 leading-relaxed px-4">
                     ระบบได้ตรวจสอบสลิปโอนเงินพร้อมเพย์อัตโนมัติเสร็จเรียบร้อย <br/>
-                    บัญชีของคุณได้รับการเปิดสิทธิ์ **PRO** และสามารถใช้งานสัญญาณเทรดสดทั้งหมดได้ทันทีครับ!
+                    บัญชีของคุณได้รับการเปิดสิทธิ์ PRO และล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือนแล้ว สามารถใช้งานสัญญาณเทรดสดทั้งหมดได้ทันทีครับ
                   </p>
                 </div>
 
@@ -560,7 +561,7 @@ export default function CheckoutPage() {
                   <p className="text-xs text-neutral-400 leading-relaxed">
                     ระบบได้รับสลิปโอนเงินของคุณแล้ว <br/>
                     เนื่องจากต้องรอตรวจสอบโดยแอดมินด้วยตนเองเพื่อตรวจสอบความถูกต้อง <br/>
-                    แอดมินจะดำเนินการอนุมัติวันใช้งานให้คุณใน 1-3 ชั่วโมงครับ
+                    เมื่ออนุมัติแล้ว ระบบจะเปิดวันใช้งานและล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือนให้คุณครับ
                   </p>
                 </div>
 

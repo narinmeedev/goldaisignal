@@ -15,7 +15,7 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
-import { PAID_DURATION_DAYS, PROMOTIONAL_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
+import { PAID_DURATION_DAYS, TRIAL_DURATION_DAYS, formatBaht, getMonthlyPriceThb } from '@/lib/billing';
 
 interface Payment {
   id: string;
@@ -30,6 +30,8 @@ interface Subscription {
   plan: string;
   status: string;
   endsAt: string | null;
+  lockedMonthlyPrice: number | null;
+  priceLockedAt: string | null;
 }
 
 export default function BillingPage() {
@@ -124,6 +126,7 @@ export default function BillingPage() {
   const daysRemaining = subscription ? getRemainingDays(subscription.endsAt) : 0;
   const progressPercent = subscription ? getProgressPercentage(subscription.endsAt, subscription.plan) : 0;
   const statusConfig = subscription ? getStatusConfig(subscription.status, subscription.endsAt) : null;
+  const monthlyPrice = getMonthlyPriceThb(subscription?.lockedMonthlyPrice);
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 font-sans text-neutral-200 px-4 py-5 sm:px-6 lg:px-8 pb-12">
@@ -248,12 +251,15 @@ export default function BillingPage() {
 
               {/* Renew CTA Button */}
               <div className="pt-2">
+                {subscription?.lockedMonthlyPrice && (
+                  <p className="mb-3 text-center text-xs leading-5 text-emerald-400">ล็อกราคาสมาชิกแล้ว {formatBaht(subscription.lockedMonthlyPrice)}/เดือน สำหรับบัญชีนี้ตลอดไป</p>
+                )}
                 <button
                   onClick={() => router.push('/checkout')}
                   className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-black text-sm rounded-2xl transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 group"
                 >
                   <Sparkles className="h-4 w-4 shrink-0" />
-                  ต่ออายุการใช้งาน PRO ({formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน)
+                  ต่ออายุการใช้งาน PRO ({formatBaht(monthlyPrice)}/เดือน)
                   <ArrowRight className="h-4 w-4 shrink-0 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>

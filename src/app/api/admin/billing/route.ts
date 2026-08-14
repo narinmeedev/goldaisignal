@@ -31,6 +31,8 @@ export async function GET() {
         subscriptionPlan: true,
         subscriptionStatus: true,
         subscriptionEndsAt: true,
+        lockedMonthlyPrice: true,
+        priceLockedAt: true,
       }
     });
 
@@ -60,6 +62,8 @@ export async function GET() {
         plan: user.subscriptionPlan,
         status: currentStatus,
         endsAt: user.subscriptionEndsAt ? user.subscriptionEndsAt.toISOString() : null,
+        lockedMonthlyPrice: user.lockedMonthlyPrice,
+        priceLockedAt: user.priceLockedAt ? user.priceLockedAt.toISOString() : null,
       },
       payments: payments.map(p => ({
         id: p.id,

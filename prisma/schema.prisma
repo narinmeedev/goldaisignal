@@ -1,5 +1,5 @@
 datasource db {
-  provider  = "mysql"
+  provider = "mysql"
 }
 
 generator client {
@@ -7,13 +7,15 @@ generator client {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
+  id                 String        @id @default(uuid())
+  email              String        @unique
+  passwordHash       String
   role               String        @default("admin") // admin | viewer
   subscriptionPlan   String        @default("trial") // trial | monthly
   subscriptionStatus String        @default("pending") // active | pending | expired
-  subscriptionEndsAt DateTime? 
+  subscriptionEndsAt DateTime?
+  lockedMonthlyPrice Float?
+  priceLockedAt      DateTime?
   lineId             String?       @unique
   displayName        String?
   pictureUrl         String?
@@ -27,14 +29,14 @@ model User {
   activityLogs       ActivityLog[]
 
   // Affiliate System
-  isAffiliate        Boolean       @default(false)
-  referralCode       String        @default("")
-  referredById       String?
-  referredBy         User?         @relation("Referrals", fields: [referredById], references: [id])
-  referees           User[]        @relation("Referrals")
-  affiliateRate      Float         @default(0.35)
+  isAffiliate   Boolean @default(false)
+  referralCode  String  @default("")
+  referredById  String?
+  referredBy    User?   @relation("Referrals", fields: [referredById], references: [id])
+  referees      User[]  @relation("Referrals")
+  affiliateRate Float   @default(0.35)
 
-  commissions        AffiliateCommission[] @relation("ReferrerCommissions")
+  commissions         AffiliateCommission[] @relation("ReferrerCommissions")
   referredCommissions AffiliateCommission[] @relation("ReferredCommissions")
 }
 
@@ -42,7 +44,7 @@ model ActivityLog {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action    String   // REGISTER, LOGIN, SUBMIT_PAYMENT, PAYMENT_APPROVED, PAYMENT_REJECTED
+  action    String // REGISTER, LOGIN, SUBMIT_PAYMENT, PAYMENT_APPROVED, PAYMENT_REJECTED
   details   String?  @db.Text // JSON string or extra info
   ipAddress String?
   createdAt DateTime @default(now())
@@ -57,15 +59,15 @@ model SystemSetting {
 }
 
 model Payment {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  amount      Float
-  slipUrl     String
-  status      String   @default("pending") // pending | approved | rejected
-  notes       String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  slipUrl   String
+  status    String   @default("pending") // pending | approved | rejected
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   commissions AffiliateCommission[]
 }
@@ -102,7 +104,7 @@ model WebhookEvent {
 model Candle {
   id        String   @id @default(uuid())
   symbol    String
-  timeframe String   // M15 | H1 | H4
+  timeframe String // M15 | H1 | H4
   time      DateTime // The candle open timestamp
   open      Float
   high      Float
@@ -117,8 +119,8 @@ model Candle {
 model Zone {
   id            String   @id @default(uuid())
   symbol        String
-  timeframe     String   // e.g., H1 | H4
-  type          String   // SUPPORT | RESISTANCE | LIQUIDITY
+  timeframe     String // e.g., H1 | H4
+  type          String // SUPPORT | RESISTANCE | LIQUIDITY
   priceMin      Float
   priceMax      Float
   strength      Int      @default(1)
@@ -132,7 +134,7 @@ model Signal {
   id              String       @id @default(uuid())
   symbol          String
   timeframe       String
-  direction       String       // BUY | SELL | NO_TRADE
+  direction       String // BUY | SELL | NO_TRADE
   entry           Float
   stopLoss        Float
   takeProfit1     Float
@@ -141,13 +143,13 @@ model Signal {
   riskReward      Float
   confidence      Int          @default(0)
   status          String       @default("pending") // pending | active | win | loss | cancelled
-  bias            String       @default("Wait")    // Buy | Sell | Wait
+  bias            String       @default("Wait") // Buy | Sell | Wait
   entryZone       String?
-  riskLevel       String?      // Low | Medium | High
+  riskLevel       String? // Low | Medium | High
   marketCondition String?
   result          String       @default("Pending") // Win | Loss | BE | Pending
   screenshotUrl   String?
-  reason          String       @db.Text      // JSON string details of setup filters
+  reason          String       @db.Text // JSON string details of setup filters
   fakeoutScore    Int          @default(0)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -158,25 +160,25 @@ model Signal {
 }
 
 model PaperTrade {
-  id                   String    @id @default(uuid())
-  signalId             String?
-  signal               Signal?   @relation(fields: [signalId], references: [id])
-  symbol               String
-  direction            String    // BUY | SELL
-  entry                Float
-  stopLoss             Float
-  takeProfit1          Float
-  takeProfit2          Float
-  exitPrice            Float?
-  result               String    @default("OPEN") // PLAN | OPEN | WIN | LOSS | BE | CANCELLED
-  rrResult             Float     @default(0.0)    // Final R-multiple result
-  openedAt             DateTime  @default(now())
-  closedAt             DateTime?
-  notes                String?   @db.Text
-  screenshotBeforeUrl  String?
-  screenshotAfterUrl   String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  signalId            String?
+  signal              Signal?   @relation(fields: [signalId], references: [id])
+  symbol              String
+  direction           String // BUY | SELL
+  entry               Float
+  stopLoss            Float
+  takeProfit1         Float
+  takeProfit2         Float
+  exitPrice           Float?
+  result              String    @default("OPEN") // PLAN | OPEN | WIN | LOSS | BE | CANCELLED
+  rrResult            Float     @default(0.0) // Final R-multiple result
+  openedAt            DateTime  @default(now())
+  closedAt            DateTime?
+  notes               String?   @db.Text
+  screenshotBeforeUrl String?
+  screenshotAfterUrl  String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([result])
   @@index([symbol, result, openedAt])

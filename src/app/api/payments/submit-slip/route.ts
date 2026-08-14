@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { minisaas } from '@/lib/minisaas';
 import { createCommissionFromPayment } from '@/lib/services/affiliate';
-import { PROMOTIONAL_MONTHLY_PRICE_THB, getPaidDurationDays } from '@/lib/billing';
+import { getMonthlyPriceThb, getPaidDurationDays } from '@/lib/billing';
 import { getJwtSecretKey } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
@@ -28,6 +28,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const userDb = await prisma.user.findUnique({ where: { id: user.userId } });
+    if (!userDb) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const amountStr = formData.get('amount') as string;
@@ -45,9 +50,9 @@ export async function POST(req: Request) {
     }
 
     const submittedAmount = parseFloat(amountStr);
-    const amount = PROMOTIONAL_MONTHLY_PRICE_THB;
+    const amount = getMonthlyPriceThb(userDb.lockedMonthlyPrice);
     if (!Number.isFinite(submittedAmount) || submittedAmount < amount) {
-      return NextResponse.json({ error: `ยอดชำระไม่ถูกต้อง โปรโมชันปัจจุบันคือ ฿${amount}/เดือน` }, { status: 400 });
+      return NextResponse.json({ error: `ยอดชำระไม่ถูกต้อง ราคาสมาชิกของคุณคือ ฿${amount}/เดือน` }, { status: 400 });
     }
     
     // Check if bucket exists, if not, try to create it (Admin key required usually, but we will try)
@@ -179,8 +184,6 @@ export async function POST(req: Request) {
       }
     });
 
-    const userDb = await prisma.user.findUnique({ where: { id: user.userId } });
-
     if (localApproved) {
       // Fetch extension days setting
       const paidSetting = await prisma.systemSetting.findUnique({
@@ -202,6 +205,8 @@ export async function POST(req: Request) {
           subscriptionStatus: 'active',
           subscriptionPlan: 'monthly',
           subscriptionEndsAt: newEndDate,
+          lockedMonthlyPrice: userDb.lockedMonthlyPrice ?? payment.amount,
+          priceLockedAt: userDb.priceLockedAt ?? now,
         }
       });
 

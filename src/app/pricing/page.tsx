@@ -34,14 +34,15 @@ export default function PricingPage() {
           <div className="mx-auto grid max-w-[1200px] gap-6 px-4 py-12 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:px-8 lg:py-20">
             <div className="public-panel overflow-hidden">
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ga-border p-6 sm:p-8">
-                <div><p className="font-mono text-xs uppercase tracking-[0.14em] text-ga-muted">Pro monthly</p><h2 className="mt-2 text-2xl font-semibold text-ga-text">สมาชิก PRO รายเดือน</h2></div>
-                <span className="rounded-md border border-emerald-500/25 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-400">ทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน</span>
+                <div><p className="font-mono text-xs uppercase tracking-[0.14em] text-ga-muted">Founding member</p><h2 className="mt-2 text-2xl font-semibold text-ga-text">สมาชิก PRO รายเดือน</h2></div>
+                <span className="rounded-md border border-ga-gold/30 bg-ga-gold/8 px-3 py-1.5 text-xs font-medium text-ga-gold">สิทธิ์จำนวนจำกัด</span>
               </div>
               <div className="p-6 sm:p-8">
                 <div className="flex flex-wrap items-end gap-x-3 gap-y-1"><span className="font-mono text-5xl font-semibold tracking-tight text-ga-gold">{formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}</span><span className="pb-2 text-sm text-ga-muted">ต่อเดือน</span></div>
-                <p className="mt-2 text-sm text-ga-muted">ราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span> · ราคาพิเศษช่วงเปิดตัว</p>
-                <Link href="/checkout" className="public-button-primary mt-7 min-h-14 w-full px-6 text-base">เริ่มทดลองใช้งาน <ArrowRight className="h-4 w-4" /></Link>
-                <p className="mt-3 text-center text-xs text-ga-muted">เริ่มทดลองโดยไม่ผูกบัตร · ชำระผ่าน PromptPay เมื่อต้องการต่ออายุ</p>
+                <p className="mt-2 text-sm text-ga-muted">จากราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span></p>
+                <div className="mt-5 rounded-lg border border-ga-gold/20 bg-ga-gold/6 p-4"><p className="text-sm font-semibold text-ga-text">ชำระวันนี้ ล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน</p><p className="mt-1 text-xs leading-5 text-ga-muted">เมื่อยอดชำระได้รับอนุมัติ ราคานี้จะถูกล็อกไว้กับบัญชีของคุณตลอดไป</p></div>
+                <Link href="/checkout" className="public-button-primary mt-7 min-h-14 w-full px-6 text-base">รับสิทธิ์ราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)} <ArrowRight className="h-4 w-4" /></Link>
+                <p className="mt-3 text-center text-xs leading-5 text-ga-muted">ทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วันโดยไม่ผูกบัตร · การทดลองฟรีเพียงอย่างเดียวยังไม่ล็อกราคา</p>
                 <div className="my-7 border-t border-ga-border" />
                 <h3 className="text-sm font-semibold text-ga-text">สิ่งที่รวมในแพ็กเกจ</h3>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">

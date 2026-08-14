@@ -102,6 +102,8 @@ export async function POST(req: Request) {
           subscriptionStatus: 'active',
           subscriptionPlan: 'monthly',
           subscriptionEndsAt: newEndDate,
+          lockedMonthlyPrice: user?.lockedMonthlyPrice ?? payment.amount,
+          priceLockedAt: user?.priceLockedAt ?? now,
           role: user?.role === 'admin' ? 'admin' : 'viewer' // keep existing role
         }
       });
@@ -261,6 +263,8 @@ export async function POST(req: Request) {
             subscriptionStatus: 'active',
             subscriptionPlan: 'monthly',
             subscriptionEndsAt: newEndDate,
+            lockedMonthlyPrice: user?.lockedMonthlyPrice ?? payment.amount,
+            priceLockedAt: user?.priceLockedAt ?? now,
           }
         });
 

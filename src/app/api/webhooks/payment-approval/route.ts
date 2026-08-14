@@ -72,6 +72,8 @@ export async function POST(req: Request) {
           subscriptionStatus: 'active',
           subscriptionPlan: 'monthly',
           subscriptionEndsAt: newEndDate,
+          lockedMonthlyPrice: payment.user.lockedMonthlyPrice ?? payment.amount,
+          priceLockedAt: payment.user.priceLockedAt ?? now,
         }
       });
 
