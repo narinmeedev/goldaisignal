@@ -7,8 +7,14 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), 'public', 'ea', 'GoldAISignal_AutoTrader.mq5');
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const primaryPath = path.join(process.cwd(), 'public', 'ea', 'GoldAISignal_AutoTrader.mq5');
+    let fileContent = '';
+    if (fs.existsSync(primaryPath)) {
+      fileContent = fs.readFileSync(primaryPath, 'utf-8');
+    } else {
+      const altPath = path.join(process.cwd(), '.next', 'standalone', 'public', 'ea', 'GoldAISignal_AutoTrader.mq5');
+      fileContent = fs.readFileSync(altPath, 'utf-8');
+    }
 
     return new NextResponse(fileContent, {
       status: 200,
