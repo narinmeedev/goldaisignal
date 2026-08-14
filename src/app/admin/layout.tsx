@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
@@ -251,7 +252,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-20 flex-col border-r border-[#252e38] bg-[#0c1219] lg:flex">
         <Link href="/admin" aria-label="Gold AI Signal" className="flex h-[76px] items-center justify-center border-b border-[#252e38]">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-400/70 bg-amber-400/5 font-mono text-[18px] font-bold text-amber-400">GA</span>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-400/60 bg-[#0b0e14]"><Image src="/brand/ga-mark-flat.svg" alt="" width={35} height={35} priority /></span>
         </Link>
         <nav className="flex flex-1 flex-col py-3" aria-label="เมนูหลัก">
           {navItems.map((item) => {
@@ -337,7 +338,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/70" />
           <aside className="relative h-full w-[min(320px,86vw)] overflow-y-auto border-r border-[#29323c] bg-[#0c1219] p-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#29323c] pb-4">
-              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/60 font-mono font-bold text-amber-400">GA</span><span className="text-[16px] font-semibold">Gold AI Signal</span></div>
+              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/60 bg-[#0b0e14]"><Image src="/brand/ga-mark-flat.svg" alt="" width={32} height={32} /></span><span className="text-[16px] font-semibold">Gold AI Signal</span></div>
               <button type="button" onClick={() => setMobileOpen(false)} aria-label="ปิดเมนู" className="flex h-11 w-11 items-center justify-center rounded-lg text-[#9ca6b1] hover:bg-[#19222c]"><X className="h-5 w-5" /></button>
             </div>
             <nav className="mt-4 space-y-1" aria-label="เมนูมือถือ">

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 import PublicShell from '@/components/PublicShell';
 
@@ -127,8 +128,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Brand header */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-gold/10 font-mono text-lg font-black text-ga-gold">
-            GA
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-canvas">
+            <Image src="/brand/ga-mark-flat.svg" alt="Gold AI Signal" width={38} height={38} priority />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-ga-text">
             Gold AI Signal

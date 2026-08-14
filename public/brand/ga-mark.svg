@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Gold AI Signal GA mark</title>
+  <desc id="desc">A geometric GA monogram combining a G ring, an A, and a disciplined data signal.</desc>
+  <defs>
+    <linearGradient id="gold" x1="112" y1="88" x2="408" y2="424" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6D778"/>
+      <stop offset="0.48" stop-color="#E3B52D"/>
+      <stop offset="1" stop-color="#B98612"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#gold)" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M392 126A176 176 0 1 0 398 386" stroke-width="42"/>
+    <path d="M344 266H430V354" stroke-width="42"/>
+    <path d="M150 390 256 124 362 390" stroke-width="38"/>
+    <path d="M190 304H222L244 282 274 326 298 304H330" stroke-width="22"/>
+  </g>
+</svg>

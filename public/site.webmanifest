@@ -1,0 +1,17 @@
+{
+  "name": "Gold AI Signal",
+  "short_name": "GA Signal",
+  "description": "XAUUSD decision intelligence and explainable trading plans.",
+  "start_url": "/admin",
+  "display": "standalone",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

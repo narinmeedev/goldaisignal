@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, LayoutDashboard, LogIn, MessageCircle } from 'lucide-react';
 import { TRIAL_DURATION_DAYS } from '@/lib/billing';
 
@@ -7,8 +8,8 @@ export function PublicHeader() {
     <header className="sticky top-0 z-50 border-b border-ga-border/90 bg-ga-canvas/90 backdrop-blur-xl">
       <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex min-h-11 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-gold/10 font-mono text-lg font-black text-ga-gold shadow-[0_0_24px_rgba(227,181,45,0.08)]">
-            GA
+          <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-canvas shadow-[0_0_24px_rgba(227,181,45,0.08)]">
+            <Image src="/brand/ga-mark-flat.svg" alt="" width={34} height={34} priority />
           </span>
           <span className="hidden sm:block">
             <strong className="block text-[15px] font-semibold tracking-tight text-ga-text">Gold AI Signal</strong>
@@ -46,7 +47,7 @@ export function PublicFooter() {
       <div className="mx-auto grid max-w-[1440px] gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1fr_auto] lg:px-8">
         <div className="max-w-3xl">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-sm font-black text-ga-gold">GA</span>
+            <Image src="/brand/ga-mark-flat.svg" alt="" width={24} height={24} />
             <strong className="text-sm font-semibold text-ga-text">Gold AI Signal</strong>
           </div>
           <p className="mt-3 text-sm leading-6 text-ga-muted">
