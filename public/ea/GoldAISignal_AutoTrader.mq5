@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.10"
+#property version   "2.20"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -46,7 +46,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized successfully. Sync interval: ", InpSyncIntervalSec, " seconds.");
+   Print("[GoldAISignal EA] Initialized v2.20 successfully. Sync interval: ", InpSyncIntervalSec, " seconds.");
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -90,7 +90,7 @@ void UpdateChartHUD()
    string lastTimeStr = (m_lastSyncTime > 0) ? TimeToString(m_lastSyncTime, TIME_DATE|TIME_SECONDS) : "Waiting for first sync...";
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.10)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.20)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
@@ -126,9 +126,11 @@ void UpdateChartHUD()
 //+------------------------------------------------------------------+
 string FormatCandleJSON(datetime time, double open, double high, double low, double close, long volume)
 {
-   // Send Unix seconds so broker-local wall-clock time is never mistaken for UTC.
-   return StringFormat("{\"time\":%I64d,\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
-                       (long)time, open, high, low, close, volume);
+   string timeStr = TimeToString(time, TIME_DATE|TIME_SECONDS);
+   StringReplace(timeStr, ".", "-");
+   
+   return StringFormat("{\"time\":\"%s\",\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
+                       timeStr, open, high, low, close, volume);
 }
 
 //+------------------------------------------------------------------+
@@ -264,7 +266,7 @@ void ProcessServerResponse(const string &json)
          }
          else
          {
-            m_activePlanTitle = "No Active Plan (Waiting for Market Setup)";
+            m_activePlanTitle = "Waiting for Market Setup";
             m_activePlanType  = "";
             m_activeEntry     = 0;
             m_activeSL        = 0;
@@ -278,10 +280,11 @@ void ProcessServerResponse(const string &json)
 }
 
 //+------------------------------------------------------------------+
-//| Execute Order on MetaTrader 5                                    |
+//| Smart Order Execution Engine for MetaTrader 5                    |
 //+------------------------------------------------------------------+
 void ExecuteTradePlan(string planId, string planType, double entry, double sl, double tp)
 {
+   // 1. Modify existing pending order if entry/SL/TP changed
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       ulong ticket = OrderGetTicket(i);
@@ -300,23 +303,61 @@ void ExecuteTradePlan(string planId, string planType, double entry, double sl, d
       }
    }
    
+   // 2. Skip if active position already open for this magic number
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
       {
-         return; // Position already open
+         return; // Position active
       }
    }
    
-   ENUM_ORDER_TYPE orderType;
-   if(planType == "BUY_LIMIT")       orderType = ORDER_TYPE_BUY_LIMIT;
-   else if(planType == "SELL_LIMIT") orderType = ORDER_TYPE_SELL_LIMIT;
-   else if(planType == "BUY_STOP")   orderType = ORDER_TYPE_BUY_STOP;
-   else if(planType == "SELL_STOP")  orderType = ORDER_TYPE_SELL_STOP;
-   else return;
+   // 3. Smart execution: Handle Limit vs Market Order based on current Ask/Bid
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    
-   Print("[GoldAISignal EA] Placing New Order: ", planType, " Entry: ", entry, " SL: ", sl, " TP: ", tp);
-   m_trade.OrderOpen(_Symbol, orderType, InpLotSize, entry, entry, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+   if(planType == "BUY_LIMIT" || planType == "BUY" || planType == "BUY_MARKET")
+   {
+      if(ask <= entry + 0.50 && ask >= entry - 1.50)
+      {
+         // Price is at or passed entry -> Execute Market Buy
+         Print("[GoldAISignal EA] Executing Market BUY at Ask: ", ask, " SL: ", sl, " TP: ", tp);
+         m_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, "GoldAI: " + planId);
+      }
+      else if(ask > entry)
+      {
+         // Price is above entry -> Place Limit Order below market
+         Print("[GoldAISignal EA] Placing BUY_LIMIT at ", entry, " Ask: ", ask);
+         m_trade.BuyLimit(InpLotSize, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      }
+      else
+      {
+         // Price dropped far below entry -> Execute Market Buy
+         Print("[GoldAISignal EA] Price dropped below entry. Executing Market BUY at Ask: ", ask);
+         m_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, "GoldAI: " + planId);
+      }
+   }
+   else if(planType == "SELL_LIMIT" || planType == "SELL" || planType == "SELL_MARKET")
+   {
+      if(bid >= entry - 0.50 && bid <= entry + 1.50)
+      {
+         // Price is at or passed entry -> Execute Market Sell
+         Print("[GoldAISignal EA] Executing Market SELL at Bid: ", bid, " SL: ", sl, " TP: ", tp);
+         m_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, "GoldAI: " + planId);
+      }
+      else if(bid < entry)
+      {
+         // Price is below entry -> Place Limit Order above market
+         Print("[GoldAISignal EA] Placing SELL_LIMIT at ", entry, " Bid: ", bid);
+         m_trade.SellLimit(InpLotSize, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      }
+      else
+      {
+         // Price surged far above entry -> Execute Market Sell
+         Print("[GoldAISignal EA] Price surged above entry. Executing Market SELL at Bid: ", bid);
+         m_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, "GoldAI: " + planId);
+      }
+   }
 }
 
 //+------------------------------------------------------------------+

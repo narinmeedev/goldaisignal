@@ -455,11 +455,11 @@ export async function POST(request: Request) {
       const planAgeMs = parsedPlan?.lockedAt ? Date.now() - new Date(parsedPlan.lockedAt).getTime() : 999999999;
       const priceDistance = parsedPlan?.entry ? Math.abs(currentPrice - parsedPlan.entry) : 999;
 
-      // Auto-refresh if active plan is older than 30 minutes OR price moved > $8.00 away from entry
-      const isStale = planAgeMs > 30 * 60 * 1000 || priceDistance > 8.0;
+      // Auto-refresh if active plan is closed, older than 30 minutes, or price moved > $8.00 away from entry
+      const isStale = !parsedPlan || Boolean(parsedPlan.isClosed) || planAgeMs > 30 * 60 * 1000 || priceDistance > 8.0;
 
-      if (isStale || !parsedPlan) {
-        console.log(`[MT5 SYNC] Active plan is stale (Age: ${Math.round(planAgeMs / 60000)}m, Dist: $${priceDistance.toFixed(2)}). Generating fresh live plan...`);
+      if (isStale) {
+        console.log(`[MT5 SYNC] Active plan is missing/closed/stale (Closed: ${Boolean(parsedPlan?.isClosed)}, Age: ${Math.round(planAgeMs / 60000)}m, Dist: $${priceDistance.toFixed(2)}). Generating fresh live plan...`);
 
         const xauSymbolsFilter = {
           in: [
