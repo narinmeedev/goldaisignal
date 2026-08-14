@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -14,6 +15,8 @@ export async function GET() {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Content-Disposition': 'attachment; filename="GoldAISignal_AutoTrader.mq5"',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
       },
     });
   } catch (err: any) {
