@@ -77,6 +77,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
+      ok: true,
       message: 'รีเซ็ตสถิติการเทรดและประวัติสัญญาณทั้งหมดเรียบร้อยแล้ว พร้อมวัดผลใหม่ 100%',
       deletedTrades: deletedTrades.count,
       deletedSignals: deletedSignals.count,

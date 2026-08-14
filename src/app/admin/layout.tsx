@@ -101,11 +101,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     try {
       const res = await fetch('/api/admin/trades', { method: 'DELETE' });
       const data = await res.json();
-      if (data.ok) {
+      if (res.ok && (data.success || data.ok)) {
         alert('🔄 รีเซ็ตสถิติวัดผลเรียบร้อยแล้ว! หน้าจอจะเริ่มนับ win rate 0/0 ใหม่');
         window.location.reload();
       } else {
-        alert(`⚠️ เกิดข้อผิดพลาด: ${data.message || 'ไม่สามารถรีเซ็ตสถิติได้'}`);
+        alert(`⚠️ เกิดข้อผิดพลาด: ${data.error || data.message || 'ไม่สามารถรีเซ็ตสถิติได้'}`);
       }
     } catch (err: any) {
       alert(`⚠️ เกิดข้อผิดพลาด: ${err.message}`);
