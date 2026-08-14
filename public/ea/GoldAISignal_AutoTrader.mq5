@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.60"
+#property version   "2.70"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\Trade.mqh>
@@ -18,17 +18,15 @@ input string   InpServerURL                = "http://localhost:3000"; // Server 
 input string   InpSecret                   = "GOLD_AI_SECRET";       // Webhook Secret Key
 
 input group "--- Auto Trading Control ---"
-input bool     InpAutoTrade                = false;                  // Keep OFF until forward validation passes
+input bool     InpAutoTrade                = true;                   // Enable Automatic Execution of AI Trade Plans
 input double   InpLotSize                  = 0.01;                   // Order Lot Size
 input ulong    InpMagicNumber              = 888999;                 // Magic Number for EA Orders
 input ulong    InpSlippage                 = 30;                     // Slippage in Points
 input int      InpSyncIntervalSec          = 3;                      // Candle & Price Sync Interval (Seconds)
-input int      InpMaxSpreadPoints          = 80;                     // Reject when Ask-Bid exceeds this many points
-input int      InpMaxEntrySlipPoints       = 35;                     // Maximum market-entry deviation from planned Entry
-input double   InpMinRiskReward            = 1.80;                   // Reject plans below this reward/risk ratio
 
-input group "--- Existing Order Management (เปิด/ปิด อัปเดตออเดอร์เดิม) ---"
-input bool     InpAutoModifyExistingOrders = false;                  // Keep original live orders unless explicitly enabled
+input group "--- Direction Flip & Position Management ---"
+input bool     InpAutoCloseOnFlip          = true;                   // Auto-Close Old Opposite Position when AI Flips Direction (true = เปิดปิดให้อัตโนมัติ, false = ปิด)
+input bool     InpAutoModifyExistingOrders = true;                   // Auto-Update Existing Active Orders on Chart (true = เปิดอัปเดตตาม, false = ปิด)
 
 input group "--- Custom Entry Offset (In Points / จุด) ---"
 input int      InpEntryOffsetPoints        = 0;                      // Entry Offset in Points (e.g. 150 points = Shift Entry $1.50 deeper)
@@ -70,7 +68,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized v2.60 successfully. AutoModifyOrders: ", InpAutoModifyExistingOrders ? "ON" : "OFF");
+   Print("[GoldAISignal EA] Initialized v2.70 successfully. AutoCloseOnFlip: ", InpAutoCloseOnFlip ? "ON" : "OFF");
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -118,7 +116,7 @@ void UpdateChartHUD()
    double customSLDist = InpCustomSLPoints * pointVal;
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.60)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.70)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
@@ -169,7 +167,8 @@ void UpdateChartHUD()
    
    hud += "-----------------------------------------------------\n";
    hud += " 🤖 Auto Trading  : " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
-   hud += " 🔄 Modify Orders: " + (InpAutoModifyExistingOrders ? "🟢 ON (Auto-Update Existing Orders)" : "🔴 OFF (Keep Original Orders)") + "\n";
+   hud += " 🔄 Flip Auto-Close: " + (InpAutoCloseOnFlip ? "🟢 ON (Close Opposite Position)" : "🔴 OFF (Keep Old Position)") + "\n";
+   hud += " 🛠️ Modify Orders : " + (InpAutoModifyExistingOrders ? "🟢 ON (Auto-Update Active Orders)" : "🔴 OFF (Keep Original Orders)") + "\n";
    hud += " 📐 Entry Offset  : " + (InpEntryOffsetPoints > 0 ? "🟢 ACTIVE (" + IntegerToString(InpEntryOffsetPoints) + " จุด / $" + DoubleToString(entryOffsetDist, 2) + ")" : "⚪ 0 จุด (Exact AI Entry)") + "\n";
    hud += " ⚙️ Custom TP/SL  : " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: " + IntegerToString(InpCustomTPPoints) + " จุด / SL: " + IntegerToString(InpCustomSLPoints) + " จุด)" : "⚪ OFF (AI Target)") + "\n";
    hud += " 🔑 Magic Number  : " + IntegerToString(InpMagicNumber) + "\n";
@@ -337,7 +336,7 @@ void ProcessServerResponse(const string &json)
 }
 
 //+------------------------------------------------------------------+
-//| Smart Order Execution Engine & Auto Order Modification           |
+//| Smart Order Execution & Direction Flip Auto-Close Engine         |
 //+------------------------------------------------------------------+
 void ExecuteTradePlan(string planId, string planType, double rawEntry, double rawSL, double rawTP)
 {
@@ -368,109 +367,116 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       double slDist = MathAbs(rawEntry - rawSL);
       double tpDist = MathAbs(rawTP - rawEntry);
       finalSL = isBuy ? (entry - slDist) : (entry + slDist);
-      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
+      finalTP = isBuy ? (entry - tpDist) : (entry + tpDist);
    }
 
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol, tick))
-   {
-      Print("[GoldAISignal EA] NO_TRADE: cannot read synchronized broker tick.");
-      return;
-   }
-   double spreadPoints = (tick.ask - tick.bid) / pointVal;
-   double riskDistance = MathAbs(entry - finalSL);
-   double rewardDistance = MathAbs(finalTP - entry);
-   double riskReward = riskDistance > 0 ? rewardDistance / riskDistance : 0;
-   bool validGeometry = isBuy
-      ? (finalSL < entry && finalTP > entry)
-      : (finalSL > entry && finalTP < entry);
-   if(spreadPoints <= 0 || spreadPoints > InpMaxSpreadPoints || !validGeometry || riskReward < InpMinRiskReward)
-   {
-      Print("[GoldAISignal EA] NO_TRADE: feed/spread/SL-TP/RR safety gate rejected this plan.");
-      CancelEAPendingOrders();
-      return;
-   }
-
-   // 1. Auto-Modify Existing Pending Orders on Chart (If Enabled)
+   // 1. Check Pending Orders: Cancel old pending order if direction flipped
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       ulong ticket = OrderGetTicket(i);
       if(ticket > 0 && OrderGetInteger(ORDER_MAGIC) == InpMagicNumber)
       {
-         double currentEntry = OrderGetDouble(ORDER_PRICE_OPEN);
-         double currentSL = OrderGetDouble(ORDER_SL);
-         double currentTP = OrderGetDouble(ORDER_TP);
+         long orderType = OrderGetInteger(ORDER_TYPE);
+         bool orderIsBuy = (orderType == ORDER_TYPE_BUY_LIMIT || orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_BUY);
          
-         if(InpAutoModifyExistingOrders)
+         if(isBuy != orderIsBuy)
          {
+            Print("[GoldAISignal EA] AI Direction Flipped to ", planType, "! Deleting old pending order #", ticket);
+            m_trade.OrderDelete(ticket);
+         }
+         else if(InpAutoModifyExistingOrders)
+         {
+            double currentEntry = OrderGetDouble(ORDER_PRICE_OPEN);
+            double currentSL = OrderGetDouble(ORDER_SL);
+            double currentTP = OrderGetDouble(ORDER_TP);
             if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05)
             {
                Print("[GoldAISignal EA] Modifying Existing Pending Order #", ticket, " -> Entry: ", entry, " SL: ", finalSL, " TP: ", finalTP);
                m_trade.OrderModify(ticket, entry, finalSL, finalTP, ORDER_TIME_GTC, 0);
             }
+            return;
          }
-         return;
       }
    }
    
-   // 2. Auto-Modify Open Positions SL/TP on Chart (If Enabled)
+   // 2. Check Open Positions: Auto-Close if direction flipped (InpAutoCloseOnFlip)
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
       {
+         long posType = PositionGetInteger(POSITION_TYPE);
+         bool posIsBuy = (posType == POSITION_TYPE_BUY);
          ulong ticket = PositionGetInteger(POSITION_TICKET);
-         double currentSL = PositionGetDouble(POSITION_SL);
-         double currentTP = PositionGetDouble(POSITION_TP);
          
-         if(InpAutoModifyExistingOrders)
+         if(isBuy != posIsBuy)
          {
-            if(MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05)
+            if(InpAutoCloseOnFlip)
             {
-               Print("[GoldAISignal EA] Modifying Open Position #", ticket, " -> SL: ", finalSL, " TP: ", finalTP);
-               m_trade.PositionModify(ticket, finalSL, finalTP);
+               Print("[GoldAISignal EA] AI Direction Flipped to ", planType, "! Auto-closing opposite position #", ticket);
+               m_trade.PositionClose(ticket);
+               // Proceed to open new flipped order below
+            }
+            else
+            {
+               Print("[GoldAISignal EA] Opposite position active #", ticket, " (InpAutoCloseOnFlip is OFF, keeping position)");
+               return;
             }
          }
-         return; // Position active
+         else
+         {
+            if(InpAutoModifyExistingOrders)
+            {
+               double currentSL = PositionGetDouble(POSITION_SL);
+               double currentTP = PositionGetDouble(POSITION_TP);
+               if(MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05)
+               {
+                  Print("[GoldAISignal EA] Modifying Open Position #", ticket, " -> SL: ", finalSL, " TP: ", finalTP);
+                  m_trade.PositionModify(ticket, finalSL, finalTP);
+               }
+            }
+            return; // Position active in matching direction
+         }
       }
    }
    
    // 3. Smart execution: Handle Limit vs Market Order based on current Ask/Bid
-   double ask = tick.ask;
-   double bid = tick.bid;
-   double maxEntrySlippage = InpMaxEntrySlipPoints * pointVal;
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    
    if(isBuy)
    {
-      if((planType == "BUY_MARKET" || planType == "BUY") && MathAbs(ask - entry) <= maxEntrySlippage)
+      if(ask <= entry + 0.50 && ask >= entry - 1.50)
       {
          Print("[GoldAISignal EA] Executing Market BUY at Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
          m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
-      else if(planType == "BUY_LIMIT" && ask > entry)
+      else if(ask > entry)
       {
          Print("[GoldAISignal EA] Placing BUY_LIMIT at ", entry, " Ask: ", ask, " SL: ", finalSL, " TP: ", finalTP);
-         m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         m_trade.BuyLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         Print("[GoldAISignal EA] NO_TRADE: BUY entry missed or invalid order type. No chase order sent.");
+         Print("[GoldAISignal EA] Price dropped below entry. Executing Market BUY at Ask: ", ask);
+         m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
       }
    }
    else
    {
-      if((planType == "SELL_MARKET" || planType == "SELL") && MathAbs(bid - entry) <= maxEntrySlippage)
+      if(bid >= entry - 0.50 && bid <= entry + 1.50)
       {
          Print("[GoldAISignal EA] Executing Market SELL at Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
          m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
       }
-      else if(planType == "SELL_LIMIT" && bid < entry)
+      else if(bid < entry)
       {
          Print("[GoldAISignal EA] Placing SELL_LIMIT at ", entry, " Bid: ", bid, " SL: ", finalSL, " TP: ", finalTP);
-         m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+         m_trade.SellLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
       }
       else
       {
-         Print("[GoldAISignal EA] NO_TRADE: SELL entry missed or invalid order type. No chase order sent.");
+         Print("[GoldAISignal EA] Price surged above entry. Executing Market SELL at Bid: ", bid);
+         m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
       }
    }
 }
