@@ -468,7 +468,7 @@ export async function POST(request: Request) {
       // Auto-refresh if active plan is closed, older than 30 minutes, or price moved > $8.00 away from entry
       const isStale = !parsedPlan || Boolean(parsedPlan.isClosed) || planAgeMs > 30 * 60 * 1000 || priceDistance > 8.0;
 
-      if (isStale && process.env.LEGACY_SMART_PLAN_AUTO_APPLY === 'true') {
+      if (isStale) {
         console.log(`[MT5 SYNC] Active plan is missing/closed/stale (Closed: ${Boolean(parsedPlan?.isClosed)}, Age: ${Math.round(planAgeMs / 60000)}m, Dist: $${priceDistance.toFixed(2)}). Generating fresh live plan...`);
 
         const xauSymbolsFilter = {
