@@ -32,11 +32,14 @@ input string   InpServerURL         = "http://localhost:3000";
 input string   InpSecret            = "GOLD_AI_SECRET";
 
 input group "--- Auto Trading Control ---"
-input bool     InpAutoTrade         = true;
+input bool     InpAutoTrade         = false;
 input double   InpLotSize           = 0.01;
 input ulong    InpMagicNumber       = 888999;
 input ulong    InpSlippage          = 30;
 input int      InpSyncIntervalSec   = 3;
+input int      InpMaxSpreadPoints   = 80;
+input int      InpMaxEntrySlipPoints= 35;
+input double   InpMinRiskReward     = 1.80;
 
 input group "--- Custom Entry Offset (In Points / จุด) ---"
 input int      InpEntryOffsetPoints = 0;
@@ -237,7 +240,19 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       double slDist = MathAbs(rawEntry - rawSL);
       double tpDist = MathAbs(rawTP - rawEntry);
       finalSL = isBuy ? (entry - slDist) : (entry + slDist);
-      finalTP = isBuy ? (entry - tpDist) : (entry + tpDist);
+      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
+   }
+
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick)) return;
+   double spreadPoints = (tick.ask - tick.bid) / pointVal;
+   double riskDistance = MathAbs(entry - finalSL);
+   double rewardDistance = MathAbs(finalTP - entry);
+   double riskReward = riskDistance > 0 ? rewardDistance / riskDistance : 0;
+   bool validGeometry = isBuy ? (finalSL < entry && finalTP > entry) : (finalSL > entry && finalTP < entry);
+   if(spreadPoints <= 0 || spreadPoints > InpMaxSpreadPoints || !validGeometry || riskReward < InpMinRiskReward) {
+      CancelEAPendingOrders();
+      return;
    }
 
    for(int i = OrdersTotal() - 1; i >= 0; i--) {
@@ -257,17 +272,16 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber) return;
    }
    
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = tick.ask;
+   double bid = tick.bid;
+   double maxEntrySlippage = InpMaxEntrySlipPoints * pointVal;
    
    if(isBuy) {
-      if(ask <= entry + 0.50 && ask >= entry - 1.50) m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
-      else if(ask > entry) m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
-      else m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
+      if((planType == "BUY_MARKET" || planType == "BUY") && MathAbs(ask - entry) <= maxEntrySlippage) m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
+      else if(planType == "BUY_LIMIT" && ask > entry) m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
    } else {
-      if(bid >= entry - 0.50 && bid <= entry + 1.50) m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
-      else if(bid < entry) m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
-      else m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
+      if((planType == "SELL_MARKET" || planType == "SELL") && MathAbs(bid - entry) <= maxEntrySlippage) m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
+      else if(planType == "SELL_LIMIT" && bid < entry) m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
    }
 }
 
