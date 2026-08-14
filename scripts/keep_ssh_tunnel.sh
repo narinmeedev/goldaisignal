@@ -3,7 +3,8 @@
 echo "[SSH Tunnel Manager] Starting SSH tunnel auto-healer on port 3307..."
 
 while true; do
-  sshpass -p "@oibomiN42#" ssh -N -L 3307:127.0.0.1:3306 -p 65002 \
+  : "${GOLDAI_SSH_PASSWORD:?Set GOLDAI_SSH_PASSWORD before starting the tunnel}"
+  SSHPASS="$GOLDAI_SSH_PASSWORD" sshpass -e ssh -N -L 3307:127.0.0.1:3306 -p 65002 \
     -o ServerAliveInterval=10 \
     -o ServerAliveCountMax=3 \
     -o ExitOnForwardFailure=yes \
