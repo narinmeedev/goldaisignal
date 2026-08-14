@@ -8,10 +8,13 @@ export function createPrismaClient() {
   const defaultPort = isProd ? '3306' : '3307';
 
   const configuredDatabaseUrl = process.env.DATABASE_URL;
-  if (!configuredDatabaseUrl) {
+  const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build';
+  if (!configuredDatabaseUrl && !isNextProductionBuild) {
     throw new Error('DATABASE_URL is required. Database credentials must not be embedded in source code.');
   }
-  let connectionString = configuredDatabaseUrl;
+  // Next evaluates route modules while collecting build metadata. This URL is
+  // deliberately non-secret and must never be used outside that build phase.
+  let connectionString = configuredDatabaseUrl || 'mysql://build:build@127.0.0.1:3306/build';
   
   // On local development, route through SSH Tunnel on port 3307 to access Cloud MySQL
   if (!isProd && connectionString.includes('127.0.0.1:3306')) {
