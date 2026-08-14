@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Activity, CandlestickChart, Expand, SlidersHorizontal } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, Minus, Plus, RotateCcw } from 'lucide-react';
 
 export interface Candle {
   time: string;
@@ -67,6 +67,18 @@ const formatTime = (value: string) => {
   });
 };
 
+type ChartTimeframe = 'M5' | 'M15' | 'H1';
+
+const DEFAULT_VISIBLE_CANDLES: Record<ChartTimeframe, number> = {
+  M5: 60,
+  M15: 60,
+  H1: 48,
+};
+
+const MIN_VISIBLE_CANDLES = 12;
+const MAX_VISIBLE_CANDLES = 96;
+const ZOOM_STEP = 6;
+
 export default function TradePlanChart({
   plan,
   currentPrice,
@@ -78,21 +90,24 @@ export default function TradePlanChart({
   resistanceZones = [],
 }: TradePlanChartProps) {
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
-  const [selectedTF, setSelectedTF] = useState<'M5' | 'M15' | 'H1'>('M15');
+  const [selectedTF, setSelectedTF] = useState<ChartTimeframe>('M15');
+  const [visibleCandleCount, setVisibleCandleCount] = useState(DEFAULT_VISIBLE_CANDLES.M15);
+  const chartSvgRef = useRef<SVGSVGElement>(null);
 
-  const chartCandles = useMemo(() => {
-    const source = selectedTF === 'M5' && m5Candles.length
+  const sourceCandles = useMemo(() => {
+    return selectedTF === 'M5' && m5Candles.length
       ? m5Candles
       : selectedTF === 'H1' && h1Candles.length
         ? h1Candles
         : m15Candles.length
           ? m15Candles
           : candles;
+  }, [candles, h1Candles, m15Candles, m5Candles, selectedTF]);
 
-    const limit = selectedTF === 'H1' ? 24 : 36;
-    const mapped = [...source]
+  const chartCandles = useMemo(() => {
+    const mapped = [...sourceCandles]
       .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-      .slice(-limit)
+      .slice(-visibleCandleCount)
       .map((candle) => ({ ...candle, time: formatTime(candle.time) }));
 
     if (currentPrice && mapped.length) {
@@ -107,7 +122,35 @@ export default function TradePlanChart({
     }
 
     return mapped;
-  }, [candles, currentPrice, h1Candles, m15Candles, m5Candles, selectedTF]);
+  }, [currentPrice, sourceCandles, visibleCandleCount]);
+
+  const maxVisibleCandleCount = Math.min(Math.max(sourceCandles.length, MIN_VISIBLE_CANDLES), MAX_VISIBLE_CANDLES);
+  const canZoomIn = chartCandles.length > MIN_VISIBLE_CANDLES;
+  const canZoomOut = visibleCandleCount < maxVisibleCandleCount;
+
+  const zoomChart = useCallback((direction: 'in' | 'out') => {
+    setVisibleCandleCount((current) => {
+      if (direction === 'in') return Math.max(MIN_VISIBLE_CANDLES, current - ZOOM_STEP);
+      return Math.min(maxVisibleCandleCount, current + ZOOM_STEP);
+    });
+  }, [maxVisibleCandleCount]);
+
+  useEffect(() => {
+    const chart = chartSvgRef.current;
+    if (!chart) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoomChart(event.deltaY < 0 ? 'in' : 'out');
+    };
+
+    chart.addEventListener('wheel', handleWheel, { passive: false });
+    return () => chart.removeEventListener('wheel', handleWheel);
+  }, [zoomChart]);
+
+  const resetZoom = (timeframe = selectedTF) => {
+    setVisibleCandleCount(DEFAULT_VISIBLE_CANDLES[timeframe]);
+  };
 
   const latestCandle = chartCandles.at(-1) ?? null;
   const visibleSupport = supportZones.slice(0, 2);
@@ -122,7 +165,8 @@ export default function TradePlanChart({
     if (!values.length) values.push(4300, 4310);
     const rawMax = Math.max(...values);
     const rawMin = Math.min(...values);
-    const padding = Math.max((rawMax - rawMin) * 0.1, 2.5);
+    // Keep generous vertical breathing room so candles do not fill the plot height.
+    const padding = Math.max((rawMax - rawMin) * 0.22, 4);
     const max = rawMax + padding;
     const min = rawMin - padding;
     return { min, max, range: Math.max(max - min, 1) };
@@ -133,7 +177,7 @@ export default function TradePlanChart({
   const plotWidth = 610;
   const getY = (price: number) => priceTop + ((priceMetrics.max - price) / priceMetrics.range) * (priceBottom - priceTop);
   const candleGap = plotWidth / Math.max(chartCandles.length, 1);
-  const candleWidth = Math.max(5, Math.min(11, candleGap * 0.58));
+  const candleWidth = Math.max(2.5, Math.min(9, candleGap * 0.52));
   const maxVolume = Math.max(...chartCandles.map((candle) => candle.volume ?? 0), 0);
   const priceTicks = Array.from({ length: 6 }, (_, index) => priceMetrics.max - (priceMetrics.range * index) / 5);
 
@@ -196,19 +240,49 @@ export default function TradePlanChart({
               <button
                 key={timeframe}
                 type="button"
-                onClick={() => setSelectedTF(timeframe)}
+                onClick={() => {
+                  setSelectedTF(timeframe);
+                  resetZoom(timeframe);
+                }}
                 className={`min-h-10 min-w-14 rounded-md px-3 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${selectedTF === timeframe ? 'border border-amber-400/70 bg-amber-400/5 text-amber-400' : 'text-[#a5aeb9] hover:bg-[#1a222c] hover:text-white'}`}
               >
                 {timeframe}
               </button>
             ))}
           </div>
-          <div className="hidden overflow-hidden rounded-lg border border-[#2a3440] bg-[#0d131a] md:flex">
-            {[{ icon: CandlestickChart, label: 'รูปแบบแท่งเทียน' }, { icon: SlidersHorizontal, label: 'ตั้งค่ากราฟ' }, { icon: Expand, label: 'ขยายกราฟ' }].map(({ icon: Icon, label }) => (
-              <button key={label} type="button" aria-label={label} className="flex h-10 w-11 items-center justify-center border-r border-[#2a3440] text-[#87929e] last:border-r-0 hover:bg-[#1a222c] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400">
-                <Icon className="h-4 w-4" />
-              </button>
-            ))}
+          <div className="flex items-center overflow-hidden rounded-lg border border-[#2a3440] bg-[#0d131a]">
+            <button
+              type="button"
+              onClick={() => zoomChart('out')}
+              disabled={!canZoomOut}
+              aria-label="ซูมออกเพื่อดูแท่งเทียนมากขึ้น"
+              title="ซูมออก"
+              className="flex h-11 w-11 items-center justify-center border-r border-[#2a3440] text-[#a3adb8] transition-colors hover:bg-[#1a222c] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="min-w-[70px] px-2 text-center font-mono text-[10px] text-[#8f9aa6]" aria-live="polite">
+              {chartCandles.length} แท่ง
+            </span>
+            <button
+              type="button"
+              onClick={() => zoomChart('in')}
+              disabled={!canZoomIn}
+              aria-label="ซูมเข้าเพื่อดูแท่งเทียนใหญ่ขึ้น"
+              title="ซูมเข้า"
+              className="flex h-11 w-11 items-center justify-center border-x border-[#2a3440] text-[#a3adb8] transition-colors hover:bg-[#1a222c] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => resetZoom()}
+              aria-label="คืนค่าขนาดกราฟเริ่มต้น"
+              title="คืนค่ามุมมอง"
+              className="flex h-11 w-11 items-center justify-center text-[#a3adb8] transition-colors hover:bg-[#1a222c] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
@@ -220,7 +294,14 @@ export default function TradePlanChart({
           </div>
         )}
 
-        <svg className="h-full min-h-[500px] w-full" viewBox="0 0 700 470" preserveAspectRatio="none" role="img" aria-label={`กราฟแท่งเทียน XAUUSD ${selectedTF} พร้อมแนวรับ แนวต้าน Entry Take Profit และ Stop Loss`}>
+        <svg
+          ref={chartSvgRef}
+          className="h-full min-h-[500px] w-full"
+          viewBox="0 0 700 470"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`กราฟแท่งเทียน XAUUSD ${selectedTF} พร้อมแนวรับ แนวต้าน Entry Take Profit และ Stop Loss`}
+        >
           {priceTicks.map((price, index) => {
             const y = getY(price);
             return (
@@ -283,7 +364,7 @@ export default function TradePlanChart({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[11px] text-[#818c98]">
-        <div className="flex gap-4"><span>1D</span><span>5D</span><span>1M</span><span>3M</span><span>6M</span><span>YTD</span><span>1Y</span></div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1"><span>เลื่อนล้อเมาส์บนกราฟเพื่อซูม</span><span className="text-[#596572]">•</span><span>ค่าเริ่มต้น {DEFAULT_VISIBLE_CANDLES[selectedTF]} แท่ง</span></div>
         <div className="flex gap-4"><span>Asia/Bangkok</span><span>%</span><span>log</span><span className="text-amber-400">auto</span></div>
       </div>
     </section>

@@ -2553,7 +2553,7 @@ export async function GET(request?: Request) {
         marketSession,
         fundamentalBias,
         fundamentalWarning,
-        candles: (m15Candles || []).slice(0, 30).reverse().map((c) => ({
+        candles: (m15Candles || []).slice(0, 80).reverse().map((c) => ({
           time: new Date(c.time).toISOString(),
           open: roundPrice(c.open),
           high: roundPrice(c.high),
@@ -2561,7 +2561,7 @@ export async function GET(request?: Request) {
           close: roundPrice(c.close),
           volume: c.volume || 100,
         })),
-        m5Candles: (m5Candles || []).slice(0, 30).reverse().map((c) => ({
+        m5Candles: (m5Candles || []).slice(0, 80).reverse().map((c) => ({
           time: new Date(c.time).toISOString(),
           open: roundPrice(c.open),
           high: roundPrice(c.high),
@@ -2569,7 +2569,7 @@ export async function GET(request?: Request) {
           close: roundPrice(c.close),
           volume: c.volume || 100,
         })),
-        m15Candles: (m15Candles || []).slice(0, 30).reverse().map((c) => ({
+        m15Candles: (m15Candles || []).slice(0, 80).reverse().map((c) => ({
           time: new Date(c.time).toISOString(),
           open: roundPrice(c.open),
           high: roundPrice(c.high),
@@ -2577,7 +2577,7 @@ export async function GET(request?: Request) {
           close: roundPrice(c.close),
           volume: c.volume || 100,
         })),
-        h1Candles: (h1Candles || []).slice(0, 30).reverse().map((c) => ({
+        h1Candles: (h1Candles || []).slice(0, 80).reverse().map((c) => ({
           time: new Date(c.time).toISOString(),
           open: roundPrice(c.open),
           high: roundPrice(c.high),
