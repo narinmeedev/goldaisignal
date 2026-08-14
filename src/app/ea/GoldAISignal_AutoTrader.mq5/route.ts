@@ -14,7 +14,7 @@ export async function GET() {
     }
   } catch {}
 
-  if (!fileContent || !fileContent.includes('2.50')) {
+  if (!fileContent || !fileContent.includes('2.60')) {
     fileContent = `//+------------------------------------------------------------------+
 //|                                  GoldAISignal_AutoTrader.mq5    |
 //|                        Copyright 2026, Gold AI Signal Lab       |
@@ -22,32 +22,32 @@ export async function GET() {
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.50"
+#property version   "2.60"
 #property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
 
 #include <Trade\\Trade.mqh>
 
 input group "--- Server Connection ---"
-input string   InpServerURL         = "http://localhost:3000";
-input string   InpSecret            = "GOLD_AI_SECRET";
+input string   InpServerURL                = "http://localhost:3000";
+input string   InpSecret                   = "GOLD_AI_SECRET";
 
 input group "--- Auto Trading Control ---"
-input bool     InpAutoTrade         = false;
-input double   InpLotSize           = 0.01;
-input ulong    InpMagicNumber       = 888999;
-input ulong    InpSlippage          = 30;
-input int      InpSyncIntervalSec   = 3;
-input int      InpMaxSpreadPoints   = 80;
-input int      InpMaxEntrySlipPoints= 35;
-input double   InpMinRiskReward     = 1.80;
+input bool     InpAutoTrade                = true;
+input double   InpLotSize                  = 0.01;
+input ulong    InpMagicNumber              = 888999;
+input ulong    InpSlippage                 = 30;
+input int      InpSyncIntervalSec          = 3;
+
+input group "--- Existing Order Management (เปิด/ปิด อัปเดตออเดอร์เดิม) ---"
+input bool     InpAutoModifyExistingOrders = true;
 
 input group "--- Custom Entry Offset (In Points / จุด) ---"
-input int      InpEntryOffsetPoints = 0;
+input int      InpEntryOffsetPoints        = 0;
 
 input group "--- Custom Risk & Reward (In Points / จุด) ---"
-input bool     InpUseCustomTPSL     = false;
-input int      InpCustomTPPoints    = 450;
-input int      InpCustomSLPoints    = 350;
+input bool     InpUseCustomTPSL            = false;
+input int      InpCustomTPPoints           = 450;
+input int      InpCustomSLPoints           = 350;
 
 CTrade         m_trade;
 datetime       m_lastSyncTime = 0;
@@ -90,7 +90,7 @@ void UpdateChartHUD() {
    double customSLDist = InpCustomSLPoints * pointVal;
    
    string hud = "=====================================================\\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.50)     \\n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.60)     \\n";
    hud += "=====================================================\\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\\n";
@@ -123,10 +123,11 @@ void UpdateChartHUD() {
    }
    
    hud += "-----------------------------------------------------\\n";
-   hud += " 🤖 Auto Trading: " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\\n";
-   hud += " 📐 Entry Offset: " + (InpEntryOffsetPoints > 0 ? "🟢 ACTIVE (" + IntegerToString(InpEntryOffsetPoints) + " จุด / $" + DoubleToString(entryOffsetDist, 2) + ")" : "⚪ 0 จุด (Exact AI Entry)") + "\\n";
-   hud += " ⚙️ Custom TP/SL: " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: " + IntegerToString(InpCustomTPPoints) + " จุด / SL: " + IntegerToString(InpCustomSLPoints) + " จุด)" : "⚪ OFF (AI Target)") + "\\n";
-   hud += " 🔑 Magic Number: " + IntegerToString(InpMagicNumber) + "\\n";
+   hud += " 🤖 Auto Trading  : " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\\n";
+   hud += " 🔄 Modify Orders: " + (InpAutoModifyExistingOrders ? "🟢 ON (Auto-Update Existing Orders)" : "🔴 OFF (Keep Original Orders)") + "\\n";
+   hud += " 📐 Entry Offset  : " + (InpEntryOffsetPoints > 0 ? "🟢 ACTIVE (" + IntegerToString(InpEntryOffsetPoints) + " จุด / $" + DoubleToString(entryOffsetDist, 2) + ")" : "⚪ 0 จุด (Exact AI Entry)") + "\\n";
+   hud += " ⚙️ Custom TP/SL  : " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: " + IntegerToString(InpCustomTPPoints) + " จุด / SL: " + IntegerToString(InpCustomSLPoints) + " จุด)" : "⚪ OFF (AI Target)") + "\\n";
+   hud += " 🔑 Magic Number  : " + IntegerToString(InpMagicNumber) + "\\n";
    hud += "=====================================================";
    
    Comment(hud);
@@ -240,19 +241,7 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       double slDist = MathAbs(rawEntry - rawSL);
       double tpDist = MathAbs(rawTP - rawEntry);
       finalSL = isBuy ? (entry - slDist) : (entry + slDist);
-      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
-   }
-
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol, tick)) return;
-   double spreadPoints = (tick.ask - tick.bid) / pointVal;
-   double riskDistance = MathAbs(entry - finalSL);
-   double rewardDistance = MathAbs(finalTP - entry);
-   double riskReward = riskDistance > 0 ? rewardDistance / riskDistance : 0;
-   bool validGeometry = isBuy ? (finalSL < entry && finalTP > entry) : (finalSL > entry && finalTP < entry);
-   if(spreadPoints <= 0 || spreadPoints > InpMaxSpreadPoints || !validGeometry || riskReward < InpMinRiskReward) {
-      CancelEAPendingOrders();
-      return;
+      finalTP = isBuy ? (entry - tpDist) : (entry + tpDist);
    }
 
    for(int i = OrdersTotal() - 1; i >= 0; i--) {
@@ -261,27 +250,40 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
          double currentEntry = OrderGetDouble(ORDER_PRICE_OPEN);
          double currentSL = OrderGetDouble(ORDER_SL);
          double currentTP = OrderGetDouble(ORDER_TP);
-         if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05) {
-            m_trade.OrderModify(ticket, entry, finalSL, finalTP, ORDER_TIME_GTC, 0);
+         if(InpAutoModifyExistingOrders) {
+            if(MathAbs(currentEntry - entry) > 0.05 || MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05) {
+               m_trade.OrderModify(ticket, entry, finalSL, finalTP, ORDER_TIME_GTC, 0);
+            }
          }
          return;
       }
    }
    
    for(int i = PositionsTotal() - 1; i >= 0; i--) {
-      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber) return;
+      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber) {
+         ulong ticket = PositionGetInteger(POSITION_TICKET);
+         double currentSL = PositionGetDouble(POSITION_SL);
+         double currentTP = PositionGetDouble(POSITION_TP);
+         if(InpAutoModifyExistingOrders) {
+            if(MathAbs(currentSL - finalSL) > 0.05 || MathAbs(currentTP - finalTP) > 0.05) {
+               m_trade.PositionModify(ticket, finalSL, finalTP);
+            }
+         }
+         return;
+      }
    }
    
-   double ask = tick.ask;
-   double bid = tick.bid;
-   double maxEntrySlippage = InpMaxEntrySlipPoints * pointVal;
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    
    if(isBuy) {
-      if((planType == "BUY_MARKET" || planType == "BUY") && MathAbs(ask - entry) <= maxEntrySlippage) m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
-      else if(planType == "BUY_LIMIT" && ask > entry) m_trade.BuyLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      if(ask <= entry + 0.50 && ask >= entry - 1.50) m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
+      else if(ask > entry) m_trade.BuyLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      else m_trade.Buy(InpLotSize, _Symbol, ask, finalSL, finalTP, "GoldAI: " + planId);
    } else {
-      if((planType == "SELL_MARKET" || planType == "SELL") && MathAbs(bid - entry) <= maxEntrySlippage) m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
-      else if(planType == "SELL_LIMIT" && bid < entry) m_trade.SellLimit(InpLotSize, entry, _Symbol, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      if(bid >= entry - 0.50 && bid <= entry + 1.50) m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
+      else if(bid < entry) m_trade.SellLimit(InpLotSize, entry, finalSL, finalTP, ORDER_TIME_GTC, 0, "GoldAI: " + planId);
+      else m_trade.Sell(InpLotSize, _Symbol, bid, finalSL, finalTP, "GoldAI: " + planId);
    }
 }
 
