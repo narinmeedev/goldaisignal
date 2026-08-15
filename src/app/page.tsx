@@ -53,9 +53,9 @@ export default function LandingPage() {
           <div aria-hidden="true" className="absolute left-[10%] top-0 h-72 w-72 rounded-full bg-ga-gold/5 blur-[110px]" />
           <div className="relative mx-auto grid max-w-[1440px] gap-10 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:gap-14 lg:px-8 lg:py-24">
             <div>
-              <span className="public-kicker"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> XAUUSD · MT5 Decision Support</span>
-              <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[1.14] tracking-[-0.035em] text-ga-text sm:text-5xl lg:text-[52px]">เห็นแผนเทรดทองคำ<br /><span className="text-ga-gold">ชัดเจนก่อนตัดสินใจ</span></h1>
-              <p className="mt-6 max-w-xl text-base leading-8 text-ga-muted">Gold AI Signal จัดโครงสร้างข้อมูลตลาดให้เป็นแผนที่อ่านง่าย พร้อม Entry, Stop Loss, Take Profit, Risk/Reward และเหตุผลประกอบ โดยไม่สร้างแผนเมื่อข้อมูลหรือคุณภาพไม่ผ่านเกณฑ์</p>
+              <span className="public-kicker"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Gold Signal · สัญญาณเทรดทองคำ XAUUSD</span>
+              <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[1.14] tracking-[-0.035em] text-ga-text sm:text-5xl lg:text-[52px]">Gold Signal สัญญาณเทรดทองคำ<br /><span className="text-ga-gold">วิเคราะห์โซนแนวรับแนวต้านแม่นยำ</span></h1>
+              <p className="mt-6 max-w-xl text-base leading-8 text-ga-muted">Gold Signal ช่วยยกระดับการเทรดทองคำ XAUUSD ด้วยการจัดโครงสร้างข้อมูลตลาดให้เป็นสัญญาณและแผนเทรดทองคำที่อ่านง่าย พร้อม Entry, Stop Loss, Take Profit, Risk/Reward และวิเคราะห์โซนราคาชัดเจน</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link href="/pricing" className="public-button-primary min-h-13 px-6 text-base">เริ่มทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" /></Link>
                 <Link href="/login" className="public-button-secondary min-h-13 px-6 text-base">เปิด Dashboard <ChevronRight className="h-4 w-4" /></Link>
