@@ -16,6 +16,13 @@ const formatPrice = (value?: number) => typeof value === 'number' && value > 0
   ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'รอข้อมูล';
 const biasLabel: Record<string, string> = { BULLISH: 'ขาขึ้น', BEARISH: 'ขาลง', NEUTRAL: 'เป็นกลาง', WAIT_AND_SEE: 'รอดูทิศทาง' };
 
+const isWeekend = () => {
+  const now = new Date();
+  const bangkokTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+  const day = bangkokTime.getUTCDay();
+  return day === 0 || day === 6;
+};
+
 export default function LiveMarketPreview({ stats: suppliedStats, loading: suppliedLoading }: LiveMarketPreviewProps) {
   const [localStats, setLocalStats] = useState<PublicDashboardStats | null>(null);
   const [localLoading, setLocalLoading] = useState(true);
@@ -36,12 +43,36 @@ export default function LiveMarketPreview({ stats: suppliedStats, loading: suppl
 
   if (loading) return <div className="public-panel flex min-h-[430px] items-center justify-center text-sm text-ga-muted"><Loader2 className="mr-2 h-5 w-5 animate-spin text-ga-gold" />กำลังอ่านสถานะตลาดทองคำ</div>;
   const market = stats?.marketIntelligence?.XAUUSD;
-  if (!market) return <div className="public-panel flex min-h-[300px] flex-col items-center justify-center p-8 text-center"><AlertTriangle className="h-7 w-7 text-ga-gold" /><h3 className="mt-4 font-semibold text-ga-text">ยังรับข้อมูลตลาดไม่ได้</h3><p className="mt-2 max-w-md text-sm leading-6 text-ga-muted">ระบบจะไม่สร้างราคาและแผนสมมติ กรุณากลับมาตรวจอีกครั้งเมื่อ MT5 เชื่อมต่อ</p></div>;
+  if (!market) {
+    const closed = isWeekend();
+    return (
+      <div className="public-panel flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
+        {closed ? (
+          <>
+            <Clock3 className="h-7 w-7 text-ga-gold" />
+            <h3 className="mt-4 font-semibold text-ga-text">ขณะนี้ตลาดปิด</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-ga-muted">
+              ตลาดทองคำ (XAUUSD) ปิดทำการช่วงวันเสาร์-อาทิตย์ ระบบจะกลับมาอัปเดตราคาและวิเคราะห์สัญญาณสดอีกครั้งเมื่อตลาดเปิดทำการ
+            </p>
+          </>
+        ) : (
+          <>
+            <AlertTriangle className="h-7 w-7 text-ga-gold" />
+            <h3 className="mt-4 font-semibold text-ga-text">ขณะนี้รับข้อมูลจากตลาดไม่ได้</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-ga-muted">
+              รอการ sync ใหม่สักครู่ (ระบบกำลังรอเชื่อมต่อข้อมูลราคาสดและแท่ง M5 จาก MT5)
+            </p>
+          </>
+        )}
+      </div>
+    );
+  }
 
   const realtime = stats?.mt5Connection?.realtimeStatus;
   const isLive = realtime?.state === 'LIVE';
   const marketBias = market.bias ?? 'NEUTRAL';
   const bullish = marketBias === 'BULLISH';
+  const marketClosed = isWeekend();
 
   return (
     <section className="public-panel overflow-hidden">
@@ -61,7 +92,7 @@ export default function LiveMarketPreview({ stats: suppliedStats, loading: suppl
             <span className="absolute bottom-3 left-3 font-mono text-[10px] text-ga-muted">ภาพประกอบแนวโน้ม · ไม่ใช่กราฟราคาเต็ม</span>
           </div>
 
-          {!isLive && <p className="mt-4 flex gap-2 rounded-lg border border-ga-gold/25 bg-ga-gold/8 p-3 text-xs leading-5 text-[#dbc77e]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{realtime?.message || 'ระบบกำลังรอราคาสดและแท่ง M5 จาก MT5'}</p>}
+          {!isLive && <p className="mt-4 flex gap-2 rounded-lg border border-ga-gold/25 bg-ga-gold/8 p-3 text-xs leading-5 text-[#dbc77e]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{marketClosed ? 'ขณะนี้ตลาดปิดทำการช่วงวันเสาร์-อาทิตย์' : (realtime?.message || 'ขณะนี้รับข้อมูลจากตลาดไม่ได้ รอการ sync ใหม่สักครู่')}</p>}
         </div>
 
         <div className="flex flex-col p-5 sm:p-6">
