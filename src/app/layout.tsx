@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   title: "Gold AI Signal | แผนเทรดทองคำ XAUUSD",
   description: "ผู้ช่วยวิเคราะห์และวางแผนเทรดทองคำ XAUUSD พร้อม Entry, Stop Loss, Take Profit และความเสี่ยงที่อธิบายชัดเจน",
   manifest: "/site.webmanifest",
+  verification: {
+    google: "wdB0sLLPD7hb7VAuPUAs2vsQBbdmucYxIqyFZxXpR-I",
+  },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
