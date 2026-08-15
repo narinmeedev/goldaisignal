@@ -104,6 +104,82 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section id="gold-trading-guide" className="border-b border-ga-border bg-[#0a0f14] px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+          <div className="mx-auto max-w-[1440px]">
+            <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-14">
+              <div>
+                <span className="public-kicker">
+                  <span className="h-1.5 w-1.5 rounded-full bg-ga-gold" /> คู่มือ & ระบบสำหรับสายเทรดทองคำ
+                </span>
+                <h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.025em] text-ga-text sm:text-4xl">
+                  ระบบช่วยวางแผนสำหรับ<br />
+                  <span className="text-ga-gold">สายเทรดทอง Forex & เทรดทองออนไลน์</span>
+                </h2>
+                <p className="mt-5 text-base leading-8 text-ga-muted">
+                  การ <strong className="font-normal text-ga-text">เทรดทอง Forex</strong> และการ <strong className="font-normal text-ga-text">เทรดทองออนไลน์ (XAUUSD)</strong> มีความผันผวนสูง การมีระบบ <strong className="font-normal text-ga-gold">Gold Signal</strong> ที่ช่วยคัดกรองโซนแนวรับแนวต้าน และคำนวณอัตราความเสี่ยง Risk/Reward จะช่วยให้คุณวางแผนการเทรดทองคำได้อย่างมีสติและรัดกุมยิ่งขึ้น
+                </p>
+
+                <div className="mt-8 space-y-4">
+                  <div className="public-panel p-5">
+                    <h3 className="text-base font-semibold text-ga-text">
+                      📊 1. เทรดทอง Forex อย่างมืออาชีพ ด้วยระบบวิเคราะห์โซนราคา
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-ga-muted">
+                      การ <strong className="font-normal text-ga-text">เทรดทอง Forex</strong> จำเป็นต้องอ่านโครงสร้างตลาดหลายกรอบเวลา (Multi-Timeframe Analysis) ตั้งแต่ H1, M15 ถึง M5 เพื่อหาจุดเข้าสเกลป์หรือรันเทรนด์ที่แม่นยำ Gold Signal ช่วยคำนวณจุด Entry, Stop Loss และ Take Profit เพื่อลดอารมณ์ในการเทรดทองคำ
+                    </p>
+                  </div>
+
+                  <div className="public-panel p-5">
+                    <h3 className="text-base font-semibold text-ga-text">
+                      📱 2. เทรดทองออนไลน์ สะดวก รับแจ้งเตือนผ่าน LINE 24 ชั่วโมง
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-ga-muted">
+                      ตอบโจทย์ผู้ที่ <strong className="font-normal text-ga-text">เทรดทองออนไลน์</strong> ผ่านคอมพิวเตอร์หรือมือถือ ระบบส่งการแจ้งเตือนสัญญาณเทรดทองคำที่ผ่านเกณฑ์คุณภาพสูงไปยัง LINE ทันที พร้อมเหตุผลประกอบวิเคราะห์ เพื่อให้คุณวางแผนเข้าออเดอร์ได้อย่างมั่นใจ
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="public-panel space-y-6 p-6 sm:p-8">
+                <div className="border-b border-ga-border pb-6">
+                  <h3 className="text-xl font-semibold text-ga-text">ข้อดีของ Gold Signal สำหรับนักเทรดทองคำ</h3>
+                  <p className="mt-2 text-sm text-ga-muted">ออกแบบขึ้นเพื่อยกระดับการเทรดทอง Forex และเทรดทองออนไลน์อย่างเป็นระบบ</p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border border-ga-border bg-[#0f161e] p-4">
+                    <p className="font-mono text-xs font-semibold text-ga-gold">01. SMART STRUCTURE</p>
+                    <h4 className="mt-2 text-sm font-semibold text-ga-text">วิเคราะห์โครงสร้างแนวรับแนวต้าน</h4>
+                    <p className="mt-1 text-xs leading-5 text-ga-muted">ระบุโซนราคาสำคัญสำหรับการเทรดทอง Forex โดยไม่ใช้ตัวชี้วัดที่ล่าช้า</p>
+                  </div>
+
+                  <div className="rounded-lg border border-ga-border bg-[#0f161e] p-4">
+                    <p className="font-mono text-xs font-semibold text-emerald-400">02. RISK/REWARD RATIO</p>
+                    <h4 className="mt-2 text-sm font-semibold text-ga-text">ควบคุมความเสี่ยงอย่างรัดกุม</h4>
+                    <p className="mt-1 text-xs leading-5 text-ga-muted">คัดกรองเฉพาะสัญญาณเทรดทองคำที่มีอัตรา Risk/Reward เหมาะสม</p>
+                  </div>
+
+                  <div className="rounded-lg border border-ga-border bg-[#0f161e] p-4">
+                    <p className="font-mono text-xs font-semibold text-violet-400">03. LINE NOTIFICATION</p>
+                    <h4 className="mt-2 text-sm font-semibold text-ga-text">แจ้งเตือนสายเทรดทองออนไลน์</h4>
+                    <p className="mt-1 text-xs leading-5 text-ga-muted">ไม่พลาดทุกจังหวะสำคัญเมื่อสัญญาณเทรดทองคำผ่านเกณฑ์ความปลอดภัย</p>
+                  </div>
+
+                  <div className="rounded-lg border border-ga-border bg-[#0f161e] p-4">
+                    <p className="font-mono text-xs font-semibold text-amber-400">04. MT5 AUTO SYNC</p>
+                    <h4 className="mt-2 text-sm font-semibold text-ga-text">เชื่อมต่อ MT5 EA อัตโนมัติ</h4>
+                    <p className="mt-1 text-xs leading-5 text-ga-muted">รองรับการดึงข้อมูลและส่งแผนสำหรับผู้เทรดทอง Forex บนโปรแกรม MT5</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-ga-border bg-ga-canvas p-4 text-xs leading-6 text-ga-muted">
+                  💡 <strong className="font-medium text-ga-text">คำแนะนำสำหรับผู้เทรดทองออนไลน์:</strong> ควรบริหารจัดการความเสี่ยง (Money Management) และคำนวณขนาด Lot Size ให้เหมาะสมกับเงินทุนเสมอ การเทรดทองคำมีความผันผวนสูง ควรใช้ระบบ Gold Signal เป็นเครื่องมือช่วยตัดสินใจอย่างมีสติ
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="bg-[#0d141c]">
           <div className="mx-auto grid max-w-[1200px] gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8 lg:py-24">
             <div>

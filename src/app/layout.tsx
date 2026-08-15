@@ -17,13 +17,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL('https://goldaisig.com'),
   title: {
-    default: 'Gold Signal | สัญญาณเทรดทองคำ XAUUSD แม่นยำ วิเคราะห์แนวรับแนวต้าน',
-    template: '%s | Gold Signal สัญญาณเทรดทองคำ',
+    default: 'Gold Signal | สัญญาณเทรดทองคำ เทรดทอง Forex เทรดทองออนไลน์ XAUUSD',
+    template: '%s | Gold Signal สัญญาณเทรดทองคำ Forex',
   },
-  description: 'Gold Signal ระบบสัญญาณเทรดทองคำ XAUUSD แม่นยำ วิเคราะห์โซนแนวรับแนวต้าน คัดสรรแผนเทรดทองคำคุณภาพสูง พร้อมเป้าหมาย Entry, Stop Loss, Take Profit และการจัดการความเสี่ยง',
+  description: 'Gold Signal ระบบช่วยวางแผนและสัญญาณเทรดทองคำ XAUUSD สำหรับสายเทรดทอง Forex และเทรดทองออนไลน์ วิเคราะห์โซนแนวรับแนวต้าน คัดสรรแผนเทรดคุณภาพสูง พร้อมเป้าหมาย Entry, Stop Loss, Take Profit',
   keywords: [
     'Gold Signal',
     'เทรดทองคำ',
+    'เทรดทอง forex',
+    'เทรดทองออนไลน์',
     'สัญญาณเทรดทองคำ',
     'วิเคราะห์ทองคำ',
     'XAUUSD',
