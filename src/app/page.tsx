@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Activity, ArrowRight, BarChart3, Bell, CheckCircle2, ChevronRight,
+  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, CheckCircle2, ChevronRight,
   Database, Gauge, LineChart, MessageCircle, Radar, ShieldCheck, Target,
 } from 'lucide-react';
 import LiveMarketPreview, { type PublicDashboardStats } from '@/components/LiveMarketPreview';
@@ -117,6 +117,66 @@ export default function LandingPage() {
               <div className="py-6"><div className="flex items-end gap-2"><span className="font-mono text-4xl font-semibold text-ga-gold">{formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}</span><span className="pb-1 text-sm text-ga-muted">/ เดือน</span></div><p className="mt-2 text-xs text-ga-muted">จากราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span></p><p className="mt-3 text-sm font-medium leading-6 text-ga-text">ชำระวันนี้และผ่านการอนุมัติ ล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือนไว้ตลอดอายุสมาชิก</p></div>
               <ul className="space-y-3 border-t border-ga-border pt-6">{['Dashboard แผนหลักพร้อม Entry / SL / TP', 'กราฟพร้อมแนวรับแนวต้านหลายกรอบเวลา', 'คะแนนความเสี่ยง เหตุผล และ Risk/Reward', 'แจ้งเตือนแผนที่ผ่านเกณฑ์ผ่าน LINE'].map((item) => <li key={item} className="flex gap-3 text-sm text-[#c7ced5]"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />{item}</li>)}</ul>
               <Link href="/checkout" className="public-button-primary mt-7 min-h-13 w-full px-5">รับสิทธิ์ราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)} <ArrowRight className="h-4 w-4" /></Link><p className="mt-3 text-center text-xs leading-5 text-ga-muted">ทดลองฟรี {TRIAL_DURATION_DAYS} วันโดยไม่ผูกบัตร · สิทธิ์ล็อกราคาเริ่มเมื่อชำระเงินผ่านการอนุมัติ</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="disclaimer" className="border-t border-ga-border bg-[#0a0f14] px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+          <div className="mx-auto max-w-[1200px]">
+            <div className="public-panel border-amber-500/25 bg-amber-500/5 p-6 sm:p-8 lg:p-10">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-amber-500/20 pb-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
+                    <AlertTriangle className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-lg font-semibold text-ga-text sm:text-xl">ข้อตกลงการใช้งาน & คำเตือนความเสี่ยงการลงทุน</h2>
+                    <p className="mt-1 text-xs text-ga-muted">โปรดอ่านและทำความเข้าใจเงื่อนไขก่อนเริ่มต้นใช้งานระบบ</p>
+                  </div>
+                </div>
+                <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs font-medium text-amber-400">
+                  TERMS & DISCLAIMER
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-lg border border-ga-border bg-[#0f161e] p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ga-text">
+                    <ShieldCheck className="h-4 w-4 text-amber-400" />
+                    <span>เครื่องมือช่วยวิเคราะห์ข้อมูลเท่านั้น</span>
+                  </div>
+                  <p className="mt-3 text-xs leading-6 text-ga-muted">
+                    Gold AI Signal เป็นซอฟต์แวร์ช่วยจัดโครงสร้างและวิเคราะห์ข้อมูลตลาดทองคำเท่านั้น <strong className="font-normal text-ga-text">ไม่ใช่เครื่องมือเทรดอัตโนมัติที่ไม่ต้องดูแล ไม่ใช่นายหน้า และไม่ใช่คำแนะนำทางการเงิน</strong>
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-ga-border bg-[#0f161e] p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ga-text">
+                    <Activity className="h-4 w-4 text-amber-400" />
+                    <span>การตัดสินใจและบริหารทุนเป็นของผู้เทรด 100%</span>
+                  </div>
+                  <p className="mt-3 text-xs leading-6 text-ga-muted">
+                    การตัดสินใจซื้อขาย การเปิด-ปิดออเดอร์ และการบริหารความเสี่ยง (Money Management) เป็นหน้าที่และความรับผิดชอบของผู้เทรดเองเท่านั้น โปรดเทรดด้วยสติและรอบคอบ
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-ga-border bg-[#0f161e] p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ga-text">
+                    <Gauge className="h-4 w-4 text-amber-400" />
+                    <span>ไม่มีระบบใดชนะตลาดได้ตลอดเวลา</span>
+                  </div>
+                  <p className="mt-3 text-xs leading-6 text-ga-muted">
+                    บนโลกนี้ไม่มีซอฟต์แวร์หรือระบบใดที่ชนะตลาดได้ 100% ตลอดเวลา ตลาดทองคำมีความผันผวนสูง การลงทุนมีความเสี่ยงผู้ลงทุนควรศึกษาข้อมูลอย่างถี่ถ้วนด้วยตัวเอง
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-lg border border-amber-500/20 bg-ga-canvas/80 p-5 text-xs leading-6 text-ga-muted">
+                <p className="font-semibold text-amber-300">📌 ข้อตกลงและปฏิเสธความรับผิดชอบ (Terms & Liability Disclaimer):</p>
+                <p className="mt-2">
+                  ทางเรา<strong className="text-ga-text font-medium">ไม่ได้มีการระดมทุน ไม่ได้ขายคอร์สเรียน</strong> และไม่มีการรับประกันผลตอบแทนใดๆ ทั้งสิ้น หากเกิดความเสียหายหรือผลขาดทุนใดๆ จากการนำข้อมูลไปใช้งาน จะถือเป็นการตัดสินใจและการยอมรับความเสี่ยงของผู้เทรดเอง 100% โดยไม่อยู่ในความรับผิดชอบของระบบหรือทีมงานผู้พัฒนาทุกกรณี
+                </p>
+              </div>
             </div>
           </div>
         </section>
