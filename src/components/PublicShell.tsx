@@ -1,13 +1,20 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, LayoutDashboard, LogIn, MessageCircle } from 'lucide-react';
+import { ArrowRight, LayoutDashboard, LogIn, Menu, MessageCircle, X } from 'lucide-react';
 import { TRIAL_DURATION_DAYS } from '@/lib/billing';
 
 export function PublicHeader() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const closeMenu = () => setMobileMenuOpen(false);
+
   return (
     <header className="sticky top-0 z-50 border-b border-ga-border/90 bg-ga-canvas/90 backdrop-blur-xl">
       <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex min-h-11 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold">
+        <Link href="/" onClick={closeMenu} className="flex min-h-11 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold">
           <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ga-gold/35 bg-ga-canvas shadow-[0_0_24px_rgba(227,181,45,0.08)]">
             <Image src="/brand/ga-mark-flat.svg" alt="" width={34} height={34} priority />
           </span>
@@ -22,6 +29,7 @@ export function PublicHeader() {
           <Link href="/#overview" className="public-nav-link">ภาพรวม</Link>
           <Link href="/#features" className="public-nav-link">ระบบวิเคราะห์</Link>
           <Link href="/#workflow" className="public-nav-link">วิธีทำงาน</Link>
+          <Link href="/#gold-trading-guide" className="public-nav-link">คู่มือเทรดทอง</Link>
           <Link href="/pricing" className="public-nav-link">แพ็กเกจ</Link>
         </nav>
 
@@ -32,11 +40,39 @@ export function PublicHeader() {
           <Link href="/login" aria-label="เข้าสู่ระบบ" title="เข้าสู่ระบบ" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-ga-muted transition-colors hover:bg-ga-surface hover:text-ga-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ga-gold">
             <LogIn className="h-4 w-4" /> <span className="hidden sm:inline">เข้าสู่ระบบ</span>
           </Link>
-          <Link href="/pricing" className="public-button-primary min-h-11 px-4 text-sm">
-            ทดลอง {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" />
+          <Link href="/checkout" className="public-button-primary min-h-11 px-4 text-sm">
+            ทดลองฟรี {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" />
           </Link>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-ga-border bg-ga-surface text-ga-muted transition-colors hover:bg-ga-elevated hover:text-ga-text lg:hidden"
+            aria-label="เปิดเมนู"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Drawer */}
+      {mobileMenuOpen && (
+        <div className="border-b border-ga-border bg-ga-canvas px-4 py-4 lg:hidden">
+          <nav className="flex flex-col gap-2 font-medium">
+            <Link href="/#overview" onClick={closeMenu} className="public-nav-link w-full py-2.5">ภาพรวม</Link>
+            <Link href="/#features" onClick={closeMenu} className="public-nav-link w-full py-2.5">ระบบวิเคราะห์</Link>
+            <Link href="/#workflow" onClick={closeMenu} className="public-nav-link w-full py-2.5">วิธีทำงาน</Link>
+            <Link href="/#gold-trading-guide" onClick={closeMenu} className="public-nav-link w-full py-2.5">คู่มือเทรดทอง</Link>
+            <Link href="/pricing" onClick={closeMenu} className="public-nav-link w-full py-2.5">แพ็กเกจราคา</Link>
+            <div className="my-2 border-t border-ga-border" />
+            <Link href="/login" onClick={closeMenu} className="flex min-h-11 items-center gap-2 rounded-lg bg-ga-surface px-4 text-sm font-medium text-ga-text">
+              <LogIn className="h-4 w-4" /> เข้าสู่ระบบ
+            </Link>
+            <Link href="/checkout" onClick={closeMenu} className="public-button-primary min-h-11 px-4 text-sm">
+              สมัครทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" />
+            </Link>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

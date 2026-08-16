@@ -57,7 +57,7 @@ export default function LandingPage() {
               <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[1.14] tracking-[-0.035em] text-ga-text sm:text-5xl lg:text-[52px]">Gold Signal สัญญาณเทรดทองคำ<br /><span className="text-ga-gold">วิเคราะห์โซนแนวรับแนวต้านแม่นยำ</span></h1>
               <p className="mt-6 max-w-xl text-base leading-8 text-ga-muted">Gold Signal ช่วยยกระดับการเทรดทองคำ XAUUSD ด้วยการจัดโครงสร้างข้อมูลตลาดให้เป็นสัญญาณและแผนเทรดทองคำที่อ่านง่าย พร้อม Entry, Stop Loss, Take Profit, Risk/Reward และวิเคราะห์โซนราคาชัดเจน</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/pricing" className="public-button-primary min-h-13 px-6 text-base">เริ่มทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" /></Link>
+                <Link href="/checkout" className="public-button-primary min-h-13 px-6 text-base">เริ่มทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วัน <ArrowRight className="h-4 w-4" /></Link>
                 <Link href="/login" className="public-button-secondary min-h-13 px-6 text-base">เปิด Dashboard <ChevronRight className="h-4 w-4" /></Link>
               </div>
               <div className="mt-8 grid max-w-xl grid-cols-3 divide-x divide-ga-border border-y border-ga-border py-4">
