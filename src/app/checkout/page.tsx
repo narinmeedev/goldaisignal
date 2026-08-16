@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { QrCode, UploadCloud, AlertCircle, ArrowLeft, CheckCircle2, Download } from 'lucide-react';
+import { QrCode, UploadCloud, AlertCircle, ArrowLeft, CheckCircle2, Download, Flame, Sparkles } from 'lucide-react';
 import generatePayload from 'promptpay-qr';
 import { QRCodeSVG } from 'qrcode.react';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
@@ -257,12 +257,23 @@ export default function CheckoutPage() {
         )}
         
         {/* Header */}
-        <div className="p-6 border-b border-neutral-800 bg-neutral-900/50">
-          <h1 className="text-xl font-bold text-neutral-100 flex items-center gap-2">
-            เริ่มใช้งาน Gold AI <span className="text-ga-gold">PRO</span>
+        <div className="p-6 border-b border-neutral-800 bg-neutral-900/80 text-center space-y-3">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-xs font-bold text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.25)] animate-pulse">
+              <Flame className="h-4 w-4 text-rose-500 animate-bounce" />
+              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+              🔥 ด่วนจำนวนจำกัด!
+            </span>
+          </div>
+
+          <h1 className="text-lg font-bold text-neutral-100 sm:text-xl leading-snug">
+            ขณะนี้คุณได้สิทธิ์พิเศษราคา <br />
+            <span className="text-ga-gold text-3xl font-extrabold sm:text-4xl tabular-nums drop-shadow-[0_0_15px_rgba(227,181,45,0.4)]">฿199</span>
+            <span className="text-base font-bold text-ga-gold"> / เดือน</span>
           </h1>
-          <p className="text-sm text-neutral-400 mt-1">
-            ราคาปกติ {formatBaht(REGULAR_MONTHLY_PRICE_THB)}/เดือน · สิทธิ์พิเศษจำนวนจำกัด {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน
+
+          <p className="text-sm text-neutral-300">
+            จากราคาปกติ <span className="text-rose-500 line-through font-extrabold text-xl sm:text-2xl tabular-nums ml-1">฿599</span> <span className="text-xs text-neutral-400 font-medium">ต่อเดือน</span>
           </p>
         </div>
 
@@ -444,7 +455,10 @@ export default function CheckoutPage() {
             
             <div className="text-center space-y-2 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
               <p className="text-neutral-400 text-sm">ชื่อบัญชี: <span className="text-neutral-100 font-medium">{ACCOUNT_NAME}</span></p>
-              <p className="text-neutral-400 text-sm">ยอดที่ต้องชำระ: <span className="text-amber-500 font-bold text-lg">฿{AMOUNT}</span></p>
+              <p className="text-neutral-300 text-sm">
+                ยอดที่ต้องชำระ: <span className="text-ga-gold font-extrabold text-2xl tabular-nums ml-1">฿{AMOUNT}</span> <span className="text-xs text-ga-gold font-bold">/เดือน</span>
+                <span className="ml-2 text-rose-500 line-through font-extrabold text-base tabular-nums">฿599</span>
+              </p>
               <p className="border-t border-neutral-800 pt-3 text-xs leading-5 text-neutral-400">เมื่อยอดชำระได้รับอนุมัติ ระบบจะล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือนไว้กับบัญชีนี้ตลอดไป</p>
             </div>
 
