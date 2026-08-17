@@ -39,6 +39,7 @@ export interface SmartTrendStructureResult {
   entryTarget: number;
   stopLossTarget: number;
   takeProfitTarget: number;
+  takeProfitTarget2?: number;
   confidence: number;
   reason: string;
 }
@@ -335,48 +336,56 @@ export class SmartTrendStructureService {
       atr = trs.reduce((a, b) => a + b, 0) / 14;
     }
 
-    // TIGHT SCALP SL & QUICK SCALP TP GUARD for High Win-Rate
-    const slBuffer = Math.max(3.00, Math.min(4.20, atr * 1.0));
-    const tpDistance = Math.min(6.80, Math.max(4.50, slBuffer * 1.5)); // Quick Scalp 1:1.5 RR Ratio for High Win-Rate
+    // SAFE SCALPING RISK/REWARD GUARD for High Win-Rate (Win-Rate Focused)
+    // Dynamic SL placed safely beyond structure ($2.80 - $3.80)
+    // Quick Scalp TP ($2.50 - $3.20 / 25-32 pips) easily hit on support/resistance bounces before reversal
+    const slBuffer = Math.max(2.80, Math.min(3.80, atr * 0.9));
+    const tpDistance = Math.max(2.50, Math.min(3.20, slBuffer * 0.95)); // Safe Scalp target ($2.50 - $3.20)
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;
     let takeProfitTarget = currentPrice;
+    let takeProfitTarget2 = currentPrice;
 
     if (overallSignal === 'SELL' && exhaustion.isTopExhaustion) {
       // Entry near peak resistance with tight SL just above peak
-      entryTarget = Number((currentPrice + 0.80).toFixed(2));
-      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.20, entryTarget + 3.20)).toFixed(2));
-      takeProfitTarget = Number((entryTarget - (stopLossTarget - entryTarget) * 1.5).toFixed(2));
+      entryTarget = Number((currentPrice + 0.50).toFixed(2));
+      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.00, entryTarget + 2.80)).toFixed(2));
+      takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget - Math.min(5.50, tpDistance * 1.7)).toFixed(2));
     } else if (overallSignal === 'BUY' && exhaustion.isBottomExhaustion) {
       // Entry near trough support with tight SL just below trough
-      entryTarget = Number((currentPrice - 0.80).toFixed(2));
-      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.20, entryTarget - 3.20)).toFixed(2));
-      takeProfitTarget = Number((entryTarget + (entryTarget - stopLossTarget) * 1.5).toFixed(2));
+      entryTarget = Number((currentPrice - 0.50).toFixed(2));
+      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.00, entryTarget - 2.80)).toFixed(2));
+      takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget + Math.min(5.50, tpDistance * 1.7)).toFixed(2));
     } else if (overallSignal === 'BUY') {
-      // Entry deep at Support or Discount Zone (never buy at market price or resistance)
-      entryTarget = nearestSup > currentPrice - 1.5 ? Number((currentPrice - 2.5).toFixed(2)) : nearestSup;
+      // Entry at nearest support or conservative limit zone
+      entryTarget = nearestSup > currentPrice - 1.50 ? Number((currentPrice - 1.80).toFixed(2)) : nearestSup;
       stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget + Math.min(5.50, tpDistance * 1.7)).toFixed(2));
     } else if (overallSignal === 'SELL') {
-      // Entry high at Resistance or Premium Zone (never sell at market price or support)
-      entryTarget = nearestRes < currentPrice + 1.5 ? Number((currentPrice + 2.5).toFixed(2)) : nearestRes;
+      // Entry at nearest resistance or conservative limit zone
+      entryTarget = nearestRes < currentPrice + 1.50 ? Number((currentPrice + 1.80).toFixed(2)) : nearestRes;
       stopLossTarget = Number((entryTarget + slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget - Math.min(5.50, tpDistance * 1.7)).toFixed(2));
     } else {
       // WAIT is a real no-trade state. Neutral levels prevent downstream code
       // from accidentally turning an undecided market into a BUY plan.
       entryTarget = Number(currentPrice.toFixed(2));
       stopLossTarget = Number(currentPrice.toFixed(2));
       takeProfitTarget = Number(currentPrice.toFixed(2));
+      takeProfitTarget2 = Number(currentPrice.toFixed(2));
     }
 
     const alignedTimeframes = [m5Bias, m15Bias, h1Bias].filter((bias) => bias.signal === overallSignal).length;
     const confidence = overallSignal === 'WAIT'
       ? 0
-      : Math.min(82, 52 + Math.abs(score) * 6 + alignedTimeframes * 2);
+      : Math.min(85, 55 + Math.abs(score) * 6 + alignedTimeframes * 2);
     const structureTag = exhaustion.tag || lastStructureEvent?.tag || 'กำลังสะสมพลัง';
-    const reason = `[SmartTrendStructure Engine]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${structureTag} | SL Tight $${slBuffer.toFixed(2)} (กระชับความเสี่ยง)`;
+    const reason = `[SmartTrendStructure Safe Scalp]: M5: ${m5Bias.bias} (${m5Bias.rsi} RSI) | M15: ${m15Bias.bias} (${m15Bias.rsi} RSI) | H1: ${h1Bias.bias} (${h1Bias.rsi} RSI) | โครงสร้าง: ${structureTag} | TP1: $${takeProfitTarget.toFixed(2)} ($${tpDistance.toFixed(2)}) | SL: $${stopLossTarget.toFixed(2)} ($${slBuffer.toFixed(2)})`;
 
     return {
       overallSignal,
@@ -388,6 +397,7 @@ export class SmartTrendStructureService {
       entryTarget,
       stopLossTarget,
       takeProfitTarget,
+      takeProfitTarget2,
       confidence,
       reason,
     };

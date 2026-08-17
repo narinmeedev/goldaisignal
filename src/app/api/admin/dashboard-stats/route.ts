@@ -648,10 +648,10 @@ const getOpenTrackingPlan = async (
 const hasPlanFinishedOrFailed = (plan: RecommendationPlan, currentPrice: number) => {
   const direction = getPlanDirection(plan);
   if (direction === 'BUY') {
-    return currentPrice <= plan.stopLoss || currentPrice >= plan.takeProfit || currentPrice <= plan.entry - 1.8;
+    return currentPrice <= plan.stopLoss || currentPrice >= plan.takeProfit;
   }
   if (direction === 'SELL') {
-    return currentPrice >= plan.stopLoss || currentPrice <= plan.takeProfit || currentPrice >= plan.entry + 1.8;
+    return currentPrice >= plan.stopLoss || currentPrice <= plan.takeProfit;
   }
   return true;
 };
@@ -661,12 +661,10 @@ const getPlanFinishReason = (plan: RecommendationPlan, currentPrice: number) => 
   if (direction === 'BUY') {
     if (currentPrice >= plan.takeProfit) return 'TP_HIT';
     if (currentPrice <= plan.stopLoss) return 'SL_HIT';
-    if (currentPrice <= plan.entry - 1.8) return 'PASSED_ENTRY';
   }
   if (direction === 'SELL') {
     if (currentPrice <= plan.takeProfit) return 'TP_HIT';
     if (currentPrice >= plan.stopLoss) return 'SL_HIT';
-    if (currentPrice >= plan.entry + 1.8) return 'PASSED_ENTRY';
   }
   return null;
 };

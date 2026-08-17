@@ -517,18 +517,23 @@ export async function POST(request: Request) {
             ? (analysis.entryTarget < currentPrice ? 'BUY_LIMIT' : 'BUY_MARKET')
             : (analysis.entryTarget > currentPrice ? 'SELL_LIMIT' : 'SELL_MARKET');
 
+          const tp1Dist = Math.abs(analysis.takeProfitTarget - analysis.entryTarget);
+          const tp2Target = analysis.takeProfitTarget2 || analysis.takeProfitTarget;
+
           const freshPlan = {
             id: `qwen-plan-${Date.now()}`,
             type: planType,
-            title: `[M15 Live Sync] ${targetDir === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${analysis.entryTarget.toFixed(2)} (เป้าเก็บส่วนต่าง $4.50-$6.80)`,
+            title: `[M15 Safe Scalp] ${targetDir === 'BUY' ? 'BUY แนวรับสำคัญ' : 'SELL แนวต้านสำคัญ'} $${analysis.entryTarget.toFixed(2)} (เป้าสเกลป์ $${tp1Dist.toFixed(2)} / ${Math.round(tp1Dist * 100)} จุด)`,
             entry: analysis.entryTarget,
             entry1: analysis.entryTarget,
             stopLoss: analysis.stopLossTarget,
             takeProfit: analysis.takeProfitTarget,
+            takeProfit1: analysis.takeProfitTarget,
+            takeProfit2: tp2Target,
             reason: `[ซิงค์สด ${bangkokTimeStr}] ${analysis.reason}`,
             timeframe: 'M15',
             confidence: analysis.confidence,
-            strategyLabel: 'SmartTrendStructure Auto-Engine (Live MT5 Sync)',
+            strategyLabel: 'SmartTrendStructure Safe Scalp (Live MT5 Sync)',
             planTime: bangkokTimeStr,
             createdAtThailand: `${bangkokTimeStr} (เวลาไทย)`,
             lockedAt: new Date().toISOString(),
@@ -554,15 +559,15 @@ export async function POST(request: Request) {
               direction: targetDir,
               entry: freshPlan.entry,
               stopLoss: freshPlan.stopLoss,
-              takeProfit1: freshPlan.takeProfit,
-              takeProfit2: freshPlan.takeProfit,
+              takeProfit1: freshPlan.takeProfit1,
+              takeProfit2: freshPlan.takeProfit2,
               result: 'PLAN',
               notes: freshPlan.reason,
             }
           });
 
           // Dispatch LINE notification
-          const lineMessage = `⚡ [ Gold AI Signal สัญญาณอัปเดตใหม่ ] ⚡\n\n🕒 เวลาที่ปรับแผน: ${bangkokTimeStr} (เวลาไทย)\n📌 แผน: ${freshPlan.title}\n📊 ประเภท: ${freshPlan.type}\n🎯 จุดเข้า (Entry Target): $${freshPlan.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${freshPlan.stopLoss.toFixed(2)}\n🟢 Take Profit (TP): $${freshPlan.takeProfit.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${freshPlan.reason}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
+          const lineMessage = `⚡ [ Gold AI Signal สัญญาณอัปเดตใหม่ (Safe Scalp) ] ⚡\n\n🕒 เวลาที่ปรับแผน: ${bangkokTimeStr} (เวลาไทย)\n📌 แผน: ${freshPlan.title}\n📊 ประเภท: ${freshPlan.type}\n🎯 จุดเข้า (Entry Target): $${freshPlan.entry.toFixed(2)}\n🔴 Stop Loss (SL): $${freshPlan.stopLoss.toFixed(2)}\n🟢 Take Profit (TP1 สเกลป์): $${freshPlan.takeProfit.toFixed(2)}\n🟢 Take Profit (TP2 รันเทรนด์): $${freshPlan.takeProfit2.toFixed(2)}\n\n💡 เหตุผลวิเคราะห์:\n${freshPlan.reason}\n\n👉 ดูรายละเอียดเพิ่มเติมและกราฟสดได้ที่ goldaisig.com`;
 
           NotificationService.sendNotification(lineMessage).catch(() => {});
 

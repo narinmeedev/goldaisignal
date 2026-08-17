@@ -5,8 +5,8 @@
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
 #property link      "https://goldaisig.com"
-#property version   "2.80"
-#property description "Expert Advisor for MetaTrader 5 - Syncs Live Gold Candles & Auto-Executes AI Trade Plans"
+#property version   "2.90"
+#property description "Expert Advisor for MetaTrader 5 - Safe Scalp Engine with Auto Break-Even & Trailing Stop"
 
 #include <Trade\Trade.mqh>
 
@@ -34,10 +34,20 @@ input bool     InpAutoModifyExistingOrders = true;                   // Auto-Upd
 input group "--- Custom Entry Offset (In Points / จุด) ---"
 input int      InpEntryOffsetPoints        = 0;                      // Entry Offset in Points (e.g. 150 points = Shift Entry $1.50 deeper)
 
-input group "--- Custom Risk & Reward (In Points / จุด) ---"
+input group "--- Custom Risk & Scalp Targets (In Points / จุด) ---"
 input bool     InpUseCustomTPSL            = false;                  // Enable Custom TP / SL Override (true = Use Custom Points, false = Use AI Target)
-input int      InpCustomTPPoints           = 450;                    // Custom TP Distance in Points (e.g. 450 points = $4.50 / 45 pips)
-input int      InpCustomSLPoints           = 350;                    // Custom SL Distance in Points (e.g. 350 points = $3.50 / 35 pips)
+input int      InpCustomTPPoints           = 280;                    // Custom Safe Scalp TP in Points (e.g. 280 points = $2.80 / 28 pips)
+input int      InpCustomSLPoints           = 300;                    // Custom Safe SL in Points (e.g. 300 points = $3.00 / 30 pips)
+
+input group "--- Auto Break-Even (ล็อคหน้าทุนอัตโนมัติ) ---"
+input bool     InpEnableBreakEven          = true;                   // Enable Auto Break-Even (ขยับ SL บังหน้าทุนเมื่อกำไรถึงเป้า)
+input int      InpBreakEvenTriggerPoints   = 150;                    // Break-Even Trigger in Points (กำไรบวก 150 จุด = $1.50 ให้เริ่มล็อค)
+input int      InpBreakEvenLockPoints      = 20;                     // Profit to Lock in Points (ล็อคกำไรขั้นต่ำ 20 จุด = $0.20 กันตกรถ)
+
+input group "--- Trailing Stop (เลื่อน SL ล็อคกำไรตามเทรนด์) ---"
+input bool     InpEnableTrailing           = true;                   // Enable Trailing Stop (เลื่อน SL ตามราคากำไรอัตโนมัติ)
+input int      InpTrailingStartPoints      = 200;                    // Trailing Start in Points (เริ่มเลื่อนเมื่อกำไรบวก 200 จุด = $2.00)
+input int      InpTrailingDistPoints       = 150;                    // Trailing Distance in Points (รักษาระยะห่าง 150 จุด = $1.50)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                 |
@@ -104,7 +114,7 @@ int OnInit()
    m_trade.SetDeviationInPoints(InpSlippage);
 
    EventSetTimer(InpSyncIntervalSec);
-   Print("[GoldAISignal EA] Initialized v2.80 successfully. Visual Chart Lines: ", InpDrawChartLines ? "ON" : "OFF");
+   Print("[GoldAISignal EA] Initialized v2.90 successfully. Break-Even: ", InpEnableBreakEven ? "ON" : "OFF", " Trailing: ", InpEnableTrailing ? "ON" : "OFF");
    
    UpdateChartHUD();
    SyncCandlesAndFetchPlan();
@@ -135,9 +145,93 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   ManageActivePositions();
+
    if(TimeCurrent() - m_lastSyncTime >= InpSyncIntervalSec)
    {
       SyncCandlesAndFetchPlan();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Position Protection: Auto Break-Even & Trailing Stop Engine      |
+//+------------------------------------------------------------------+
+void ManageActivePositions()
+{
+   if(!InpEnableBreakEven && !InpEnableTrailing) return;
+   
+   double pointVal = GetPointValue();
+   double beTriggerDist  = InpBreakEvenTriggerPoints * pointVal;
+   double beLockDist     = InpBreakEvenLockPoints * pointVal;
+   double trailStartDist = InpTrailingStartPoints * pointVal;
+   double trailDist      = InpTrailingDistPoints * pointVal;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
+      {
+         ulong  ticket       = PositionGetInteger(POSITION_TICKET);
+         long   posType      = PositionGetInteger(POSITION_TYPE);
+         double openPrice    = PositionGetDouble(POSITION_PRICE_OPEN);
+         double currentSL    = PositionGetDouble(POSITION_SL);
+         double currentTP    = PositionGetDouble(POSITION_TP);
+         double currentPrice = (posType == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         
+         if(posType == POSITION_TYPE_BUY)
+         {
+            double profitDist = currentPrice - openPrice;
+            
+            // 1. Auto Break-Even Check
+            if(InpEnableBreakEven && profitDist >= beTriggerDist)
+            {
+               double targetSL = openPrice + beLockDist;
+               if(currentSL < targetSL - 0.01)
+               {
+                  Print("[GoldAISignal EA] 🛡️ Auto Break-Even Triggered! Moving BUY #", ticket, " SL to $", targetSL);
+                  m_trade.PositionModify(ticket, targetSL, currentTP);
+                  currentSL = targetSL;
+               }
+            }
+            
+            // 2. Trailing Stop Check
+            if(InpEnableTrailing && profitDist >= trailStartDist)
+            {
+               double targetSL = currentPrice - trailDist;
+               if(targetSL > currentSL + 0.10)
+               {
+                  Print("[GoldAISignal EA] 📈 Trailing Stop: Moving BUY #", ticket, " SL to $", targetSL);
+                  m_trade.PositionModify(ticket, targetSL, currentTP);
+               }
+            }
+         }
+         else if(posType == POSITION_TYPE_SELL)
+         {
+            double profitDist = openPrice - currentPrice;
+            
+            // 1. Auto Break-Even Check
+            if(InpEnableBreakEven && profitDist >= beTriggerDist)
+            {
+               double targetSL = openPrice - beLockDist;
+               if(currentSL > targetSL + 0.01 || currentSL == 0)
+               {
+                  Print("[GoldAISignal EA] 🛡️ Auto Break-Even Triggered! Moving SELL #", ticket, " SL to $", targetSL);
+                  m_trade.PositionModify(ticket, targetSL, currentTP);
+                  currentSL = targetSL;
+               }
+            }
+            
+            // 2. Trailing Stop Check
+            if(InpEnableTrailing && profitDist >= trailStartDist)
+            {
+               double targetSL = currentPrice + trailDist;
+               if(targetSL < currentSL - 0.10 || currentSL == 0)
+               {
+                  Print("[GoldAISignal EA] 📉 Trailing Stop: Moving SELL #", ticket, " SL to $", targetSL);
+                  m_trade.PositionModify(ticket, targetSL, currentTP);
+               }
+            }
+         }
+      }
    }
 }
 
@@ -153,11 +247,13 @@ void UpdateChartHUD()
    double customSLDist = InpCustomSLPoints * pointVal;
    
    string hud = "=====================================================\n";
-   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.80)     \n";
+   hud += "       🏆 GOLD AI SIGNAL - AUTO TRADER EA (v2.90)     \n";
    hud += "=====================================================\n";
    hud += " 🌐 Server URL  : " + InpServerURL + "\n";
    hud += " ⚡ Live Status : " + m_lastStatus + "\n";
    hud += " 🕒 Last Sync   : " + lastTimeStr + " (Total: " + IntegerToString(m_totalSyncCount) + " syncs)\n";
+   hud += " 🛡️ Break-Even  : " + (InpEnableBreakEven ? ("ON (+" + IntegerToString(InpBreakEvenTriggerPoints) + " pts)") : "OFF") + "\n";
+   hud += " 📈 Trailing    : " + (InpEnableTrailing ? ("ON (+" + IntegerToString(InpTrailingStartPoints) + " pts)") : "OFF") + "\n";
    hud += "-----------------------------------------------------\n";
    
    if(m_activePlanType != "" && m_activeEntry > 0)
@@ -182,27 +278,30 @@ void UpdateChartHUD()
       }
       else if(InpEntryOffsetPoints > 0)
       {
-         double originalSLDist = MathAbs(m_activeEntry - m_activeSL);
-         double originalTPDist = MathAbs(m_activeTP - m_activeEntry);
-         finalSL = isBuy ? (finalEntry - originalSLDist) : (finalEntry + originalSLDist);
-         finalTP = isBuy ? (finalEntry + originalTPDist) : (finalEntry - originalTPDist);
+         double slDist = MathAbs(m_activeEntry - m_activeSL);
+         double tpDist = MathAbs(m_activeTP - m_activeEntry);
+         finalSL = isBuy ? (finalEntry - slDist) : (finalEntry + slDist);
+         finalTP = isBuy ? (finalEntry - tpDist) : (finalEntry + tpDist);
       }
+
+      hud += " 📌 Active Plan : " + m_activePlanTitle + "\n";
+      hud += " 📊 Plan Type   : " + m_activePlanType + "\n";
+      hud += " 🎯 Entry Target: $" + DoubleToString(finalEntry, 2);
+      if(InpEntryOffsetPoints > 0) hud += " (Offset: -" + IntegerToString(InpEntryOffsetPoints) + " pts)";
+      hud += "\n";
+      hud += " 🔴 Stop Loss   : $" + DoubleToString(finalSL, 2);
+      if(InpUseCustomTPSL) hud += " (Custom: " + IntegerToString(InpCustomSLPoints) + " pts)";
+      hud += "\n";
+      hud += " 🟢 Take Profit : $" + DoubleToString(finalTP, 2);
+      if(InpUseCustomTPSL) hud += " (Custom: " + IntegerToString(InpCustomTPPoints) + " pts)";
+      hud += "\n";
       
-      double slPoints = MathAbs(finalEntry - finalSL) / pointVal;
-      double tpPoints = MathAbs(finalTP - finalEntry) / pointVal;
-      
-      hud += " 📌 ACTIVE PLAN : " + m_activePlanTitle + "\n";
-      hud += " 📊 ORDER TYPE  : " + m_activePlanType + "\n";
-      hud += " 🎯 ENTRY TARGET: $" + DoubleToString(finalEntry, 2) + (InpEntryOffsetPoints > 0 ? " [Offset: " + IntegerToString(InpEntryOffsetPoints) + " จุด]" : "") + "\n";
-      hud += " 🔴 STOP LOSS   : $" + DoubleToString(finalSL, 2) + " (" + IntegerToString((int)MathRound(slPoints)) + " จุด)" + (InpUseCustomTPSL ? " [Custom Points]" : "") + "\n";
-      hud += " 🟢 TAKE PROFIT : $" + DoubleToString(finalTP, 2) + " (" + IntegerToString((int)MathRound(tpPoints)) + " จุด)" + (InpUseCustomTPSL ? " [Custom Points]" : "") + "\n";
-      
-      // Plot Visual Chart Lines
+      // Draw Real-Time Visual Lines on Chart
       if(InpDrawChartLines)
       {
-         DrawChartLine("GoldAI_Line_Entry", finalEntry, clrDeepSkyBlue, STYLE_SOLID, 2, "🎯 GoldAI ENTRY $" + DoubleToString(finalEntry, 2));
-         DrawChartLine("GoldAI_Line_SL", finalSL, clrCrimson, STYLE_SOLID, 2, "🔴 GoldAI SL $" + DoubleToString(finalSL, 2));
-         DrawChartLine("GoldAI_Line_TP", finalTP, clrLimeGreen, STYLE_SOLID, 2, "🟢 GoldAI TP $" + DoubleToString(finalTP, 2));
+         DrawChartLine("GoldAI_Line_Entry", finalEntry, clrDeepSkyBlue, STYLE_SOLID, 2, "GoldAI ENTRY $" + DoubleToString(finalEntry, 2));
+         DrawChartLine("GoldAI_Line_SL", finalSL, clrCrimson, STYLE_DASH, 2, "GoldAI SL $" + DoubleToString(finalSL, 2));
+         DrawChartLine("GoldAI_Line_TP", finalTP, clrLimeGreen, STYLE_SOLID, 2, "GoldAI TP $" + DoubleToString(finalTP, 2));
       }
       else
       {
@@ -211,37 +310,22 @@ void UpdateChartHUD()
    }
    else
    {
-      hud += " 📌 ACTIVE PLAN : ⏳ Synchronizing & Calculating Live AI Setup...\n";
+      hud += " 📌 Active Plan : Waiting for High-Probability Setup\n";
+      hud += " 📊 Strategy    : Multi-Timeframe Trend & Support/Resistance\n";
       ClearChartLines();
    }
    
    hud += "-----------------------------------------------------\n";
-   hud += " 🤖 Auto Trading  : " + (InpAutoTrade ? "🟢 ENABLED (Lot Size: " + DoubleToString(InpLotSize, 2) + ")" : "🔴 DISABLED") + "\n";
-   hud += " 📈 Visual Lines  : " + (InpDrawChartLines ? "🟢 DRAWN ON CHART" : "🔴 OFF") + "\n";
-   hud += " 🔄 Flip Auto-Close: " + (InpAutoCloseOnFlip ? "🟢 ON (Close Opposite Position)" : "🔴 OFF (Keep Old Position)") + "\n";
-   hud += " 🛠️ Modify Orders : " + (InpAutoModifyExistingOrders ? "🟢 ON (Auto-Update Active Orders)" : "🔴 OFF (Keep Original Orders)") + "\n";
-   hud += " 📐 Entry Offset  : " + (InpEntryOffsetPoints > 0 ? "🟢 ACTIVE (" + IntegerToString(InpEntryOffsetPoints) + " จุด / $" + DoubleToString(entryOffsetDist, 2) + ")" : "⚪ 0 จุด (Exact AI Entry)") + "\n";
-   hud += " ⚙️ Custom TP/SL  : " + (InpUseCustomTPSL ? "🟢 ACTIVE (TP: " + IntegerToString(InpCustomTPPoints) + " จุด / SL: " + IntegerToString(InpCustomSLPoints) + " จุด)" : "⚪ OFF (AI Target)") + "\n";
-   hud += " 🔑 Magic Number  : " + IntegerToString(InpMagicNumber) + "\n";
-   hud += "=====================================================";
+   hud += " ⚙️ AutoTrade   : " + (InpAutoTrade ? "ENABLED (Lot: " + DoubleToString(InpLotSize, 2) + ")" : "DISABLED") + "\n";
+   hud += " ⚙️ Flip Close  : " + (InpAutoCloseOnFlip ? "ENABLED (Smart Flip Close)" : "DISABLED") + "\n";
+   hud += " ⚙️ Modify Auto : " + (InpAutoModifyExistingOrders ? "ENABLED (Live Order Adjust)" : "DISABLED") + "\n";
+   hud += "=====================================================\n";
    
    Comment(hud);
 }
 
 //+------------------------------------------------------------------+
-//| Helper: Escape JSON String                                       |
-//+------------------------------------------------------------------+
-string FormatCandleJSON(datetime time, double open, double high, double low, double close, long volume)
-{
-   string timeStr = TimeToString(time, TIME_DATE|TIME_SECONDS);
-   StringReplace(timeStr, ".", "-");
-   
-   return StringFormat("{\"time\":\"%s\",\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%i}",
-                       timeStr, open, high, low, close, volume);
-}
-
-//+------------------------------------------------------------------+
-//| Helper: Simple JSON Value Extractor                              |
+//| Extract Value from Simple JSON string                            |
 //+------------------------------------------------------------------+
 string ExtractJSONValue(const string &json, const string &key)
 {
@@ -253,13 +337,16 @@ string ExtractJSONValue(const string &json, const string &key)
    while(start < StringLen(json) && (StringGetCharacter(json, start) == ' ' || StringGetCharacter(json, start) == '\t'))
       start++;
       
+   if(start >= StringLen(json)) return "";
+   
    ushort firstChar = StringGetCharacter(json, start);
    if(firstChar == '"')
    {
       start++;
       int end = StringFind(json, "\"", start);
-      if(end < 0) return "";
-      return StringSubstr(json, start, end - start);
+      if(end > start)
+         return StringSubstr(json, start, end - start);
+      return "";
    }
    else
    {
@@ -267,7 +354,7 @@ string ExtractJSONValue(const string &json, const string &key)
       while(end < StringLen(json))
       {
          ushort c = StringGetCharacter(json, end);
-         if(c == ',' || c == '}' || c == ']' || c == ' ' || c == '\r' || c == '\n')
+         if(c == ',' || c == '}' || c == ']' || c == '\n' || c == '\r' || c == ' ')
             break;
          end++;
       }
@@ -276,7 +363,7 @@ string ExtractJSONValue(const string &json, const string &key)
 }
 
 //+------------------------------------------------------------------+
-//| Core Function: Sync Candles to Server & Read Active Trade Plan   |
+//| Sync Candles & Fetch Active Plan from Server                     |
 //+------------------------------------------------------------------+
 void SyncCandlesAndFetchPlan()
 {
@@ -284,19 +371,23 @@ void SyncCandlesAndFetchPlan()
    
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
-   int copied = CopyRates(_Symbol, PERIOD_M5, 0, 20, rates);
+   int copied = CopyRates(_Symbol, PERIOD_M5, 0, 30, rates);
    if(copied <= 0)
    {
-      m_lastStatus = "🔴 ERROR: CopyRates failed for " + _Symbol;
+      m_lastStatus = "Error: Failed to copy M5 rates (Code " + IntegerToString(GetLastError()) + ")";
       UpdateChartHUD();
       return;
    }
    
-   // Build JSON Payload
    string candlesArrayStr = "";
    for(int i = copied - 1; i >= 0; i--)
    {
-      string cJson = FormatCandleJSON(rates[i].time, rates[i].open, rates[i].high, rates[i].low, rates[i].close, rates[i].tick_volume);
+      string timeStr = TimeToString(rates[i].time, TIME_DATE|TIME_SECONDS);
+      StringReplace(timeStr, ".", "-");
+      timeStr = StringSubstr(timeStr, 0, 10) + "T" + StringSubstr(timeStr, 11, 8) + "Z";
+      
+      string cJson = StringFormat("{\"time\":\"%s\",\"open\":%.2f,\"high\":%.2f,\"low\":%.2f,\"close\":%.2f,\"volume\":%d}",
+                                  timeStr, rates[i].open, rates[i].high, rates[i].low, rates[i].close, rates[i].tick_volume);
       candlesArrayStr += cJson;
       if(i > 0) candlesArrayStr += ",";
    }
