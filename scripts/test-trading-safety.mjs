@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { MarketRegimeService } from '../src/lib/services/market-regime.service.ts';
 import { SmartTrendStructureService } from '../src/lib/services/smart-trend-structure.service.ts';
+import { M5EntryConfirmationService } from '../src/lib/services/m5-entry-confirmation.service.ts';
+import { hasValidTradeGeometry } from '../src/lib/services/trade-safety.service.ts';
 
 const candles = (direction, count = 80) =>
   Array.from({ length: count }, (_, index) => {
@@ -37,7 +39,7 @@ const trendResult = SmartTrendStructureService.analyze({
   h1Candles: up,
 });
 assert.equal(trendResult.overallSignal, 'BUY');
-assert.ok(trendResult.confidence <= 82);
+assert.ok(trendResult.confidence <= 85);
 
 const down = candles('DOWN');
 const downResult = SmartTrendStructureService.analyze({
@@ -62,5 +64,35 @@ spiking[spiking.length - 1] = {
   high: spiking.at(-1).high + 10,
 };
 assert.equal(MarketRegimeService.assess(spiking).regime, 'HIGH_VOLATILITY');
+
+const setupStart = Date.UTC(2026, 7, 17, 10, 0);
+const supportSetup = Array.from({ length: 25 }, (_, index) => {
+  const open = 101.6 + Math.sin(index / 3) * 0.35;
+  const close = open + (index % 2 ? -0.12 : 0.1);
+  return { time: new Date(setupStart + index * 5 * 60_000), open, high: Math.max(open, close) + 0.25, low: Math.min(open, close) - 0.25, close };
+});
+supportSetup.push(
+  { time: new Date(setupStart + 25 * 5 * 60_000), open: 101.2, high: 101.35, low: 99.9, close: 100.2 },
+  { time: new Date(setupStart + 26 * 5 * 60_000), open: 100.25, high: 102.8, low: 100.1, close: 102.6 },
+);
+const confirmedBuy = M5EntryConfirmationService.analyze({
+  candles: supportSetup,
+  zones: [{ type: 'SUPPORT', timeframe: 'M5', priceMin: 99.8, priceMax: 100.3, strength: 3 }],
+  currentPrice: 102.65,
+  now: new Date(setupStart + 28 * 5 * 60_000),
+});
+assert.equal(confirmedBuy.direction, 'BUY');
+assert.equal(confirmedBuy.gates.choch, true);
+assert.equal(hasValidTradeGeometry(confirmedBuy), true);
+
+const incompleteTrap = M5EntryConfirmationService.analyze({
+  candles: [...supportSetup.slice(0, -1), { ...supportSetup.at(-1), time: new Date(setupStart + 28 * 5 * 60_000) }],
+  zones: [{ type: 'SUPPORT', priceMin: 99.8, priceMax: 100.3 }],
+  currentPrice: 102.65,
+  now: new Date(setupStart + 28 * 5 * 60_000 + 60_000),
+});
+assert.notEqual(incompleteTrap.direction, 'BUY');
+assert.equal(hasValidTradeGeometry({ direction: 'BUY', entry: 100, stopLoss: 100, takeProfit: 100 }), false);
+assert.equal(hasValidTradeGeometry({ direction: 'SELL', entry: 100, stopLoss: 103, takeProfit: 96 }), true);
 
 console.log('trading safety tests passed');

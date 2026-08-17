@@ -1,6 +1,7 @@
 import { prisma } from '../prisma';
 import { StrategyResearchService } from './strategy-research.service';
 import { NotificationService } from './notification.service';
+import { hasValidTradeGeometry } from './trade-safety.service';
 
 export interface OpenTradeParams {
   signalId: string;
@@ -58,6 +59,10 @@ export class PaperTradeService {
    */
   static async openTrade(params: OpenTradeParams) {
     const { signalId, symbol, direction, entry, stopLoss, takeProfit1, takeProfit2, initialResult = 'PLAN', notes } = params;
+
+    if (!hasValidTradeGeometry({ direction, entry, stopLoss, takeProfit: takeProfit2 })) {
+      throw new Error(`Invalid ${direction} trade geometry: SL, Entry and TP are not in a safe price order.`);
+    }
 
     return prisma.paperTrade.create({
       data: {
@@ -218,6 +223,24 @@ export class PaperTradeService {
       let reason = '';
 
       const { direction, entry, stopLoss, takeProfit1, takeProfit2 } = trade;
+      if (!hasValidTradeGeometry({
+        direction: direction === 'SELL' ? 'SELL' : 'BUY',
+        entry,
+        stopLoss,
+        takeProfit: takeProfit2 || takeProfit1,
+      })) {
+        await prisma.paperTrade.updateMany({
+          where: { id: trade.id, result: { in: ['OPEN', 'TESTING'] } },
+          data: {
+            result: 'CANCELLED',
+            closedAt: new Date(),
+            notes: trade.notes ? `${trade.notes} | Safety cancelled: invalid SL/Entry/TP geometry` : 'Safety cancelled: invalid SL/Entry/TP geometry',
+          },
+        });
+        await this.clearActivePlanSetting(trade.symbol, 'INVALID_TRADE_GEOMETRY');
+        closedTradeLogs.push(`Trade ${trade.id.slice(0, 8)} cancelled by geometry safety gate`);
+        continue;
+      }
       const riskDistance = Math.abs(entry - stopLoss);
 
       if (direction === 'BUY') {
@@ -339,6 +362,24 @@ export class PaperTradeService {
     for (const plan of pendingPlans) {
       let isTriggered = false;
       const { direction, entry } = plan;
+      if (!hasValidTradeGeometry({
+        direction: direction === 'SELL' ? 'SELL' : 'BUY',
+        entry,
+        stopLoss: plan.stopLoss,
+        takeProfit: plan.takeProfit2 || plan.takeProfit1,
+      })) {
+        await prisma.paperTrade.updateMany({
+          where: { id: plan.id, result: 'PLAN' },
+          data: {
+            result: 'CANCELLED',
+            closedAt: new Date(),
+            notes: plan.notes ? `${plan.notes} | Safety cancelled: invalid SL/Entry/TP geometry` : 'Safety cancelled: invalid SL/Entry/TP geometry',
+          },
+        });
+        await this.clearActivePlanSetting(plan.symbol, 'INVALID_TRADE_GEOMETRY');
+        triggeredPlanLogs.push(`Plan ${plan.id.slice(0, 8)} cancelled by geometry safety gate`);
+        continue;
+      }
       let planType = '';
       try {
         planType = JSON.parse(plan.signal?.reason || '{}').planType || '';

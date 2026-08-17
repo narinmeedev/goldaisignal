@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { M5EntryConfirmationService } from './m5-entry-confirmation.service';
 
 type Direction = 'BUY' | 'SELL';
 type StrategyMode = 'SCALP' | 'SWING' | 'FOLLOW_TREND';
@@ -571,7 +572,52 @@ export class StrategyResearchService {
       return outcomes;
     });
 
+    const chochVariant: BacktestVariant = {
+      confirmation: 'Closed M5 support/resistance reclaim with CHOCH',
+      riskReward: 2,
+      lookaheadBars: 24,
+    };
+    const testChochDirection = (direction: Direction) => chooseBestVariant([chochVariant], (variant) => {
+      const outcomes: BacktestOutcome[] = [];
+      for (let i = 30; i < m5.length - variant.lookaheadBars; i++) {
+        const current = m5[i];
+        const confirmation = M5EntryConfirmationService.analyze({
+          candles: m5.slice(Math.max(0, i - 48), i + 1),
+          currentPrice: current.close,
+          now: new Date(current.time.getTime() + 5 * 60 * 1000 + 1),
+        });
+        if (confirmation.direction !== direction || confirmation.entry === null || confirmation.stopLoss === null || confirmation.takeProfit === null) continue;
+        const outcome = evaluateOutcome(
+          m5,
+          i,
+          direction,
+          confirmation.entry,
+          confirmation.stopLoss,
+          confirmation.takeProfit,
+          variant.lookaheadBars,
+        );
+        if (outcome) outcomes.push(outcome);
+      }
+      return outcomes;
+    });
+    const supportChochBest = testChochDirection('BUY');
+    const resistanceChochBest = testChochDirection('SELL');
+
     const candidates = [
+      buildCandidate(
+        'support_m5_choch_reclaim',
+        'Buy real support after closed M5 reclaim and CHOCH UP',
+        'SWING',
+        'แตะแนวรับก่อน จากนั้นแท่ง M5 ที่ปิดแล้วต้องยกตัว ปิดเหนือแท่งขายล่าสุด และเบรก lower-high ย่อยก่อนออก BUY',
+        supportChochBest,
+      ),
+      buildCandidate(
+        'resistance_m5_choch_reclaim',
+        'Sell real resistance after closed M5 rejection and CHOCH DOWN',
+        'SWING',
+        'แตะแนวต้านก่อน จากนั้นแท่ง M5 ที่ปิดแล้วต้องกดตัว ปิดต่ำกว่าแท่งซื้อล่าสุด และเบรก higher-low ย่อยก่อนออก SELL',
+        resistanceChochBest,
+      ),
       buildCandidate(
         'support_m5_bullish_engulfing',
         'Buy support base after M5 bullish engulfing',

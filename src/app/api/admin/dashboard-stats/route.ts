@@ -8,6 +8,8 @@ import { PaperTradeService } from '@/lib/services/paper-trade.service';
 import { NotificationService } from '@/lib/services/notification.service';
 import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
 import { MarketRegimeService } from '@/lib/services/market-regime.service';
+import { M5EntryConfirmationService } from '@/lib/services/m5-entry-confirmation.service';
+import { hasValidTradeGeometry } from '@/lib/services/trade-safety.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -544,7 +546,8 @@ const parseStoredOrderPlan = (value?: string | null, currentPrice?: number): Rec
     if (!parsed || !parsed.id || !parsed.type) return null;
     if (parsed.isClosed) return null;
     if (!Number.isFinite(parsed.entry) || !Number.isFinite(parsed.stopLoss) || !Number.isFinite(parsed.takeProfit)) return null;
-    if (!getPlanDirection(parsed)) return null;
+    const direction = getPlanDirection(parsed);
+    if (!direction || !hasValidTradeGeometry({ direction, entry: parsed.entry, stopLoss: parsed.stopLoss, takeProfit: parsed.takeProfit })) return null;
 
     if (parsed.lockedAt) {
       const ageMs = Date.now() - new Date(parsed.lockedAt).getTime();
@@ -591,6 +594,7 @@ const getOpenTrackingPlan = async (
   const direction = openTrade.direction === 'SELL' ? 'SELL' : 'BUY';
   const riskDistance = Math.abs(openTrade.entry - openTrade.stopLoss);
   const takeProfit = openTrade.takeProfit2 || openTrade.takeProfit1;
+  if (!hasValidTradeGeometry({ direction, entry: openTrade.entry, stopLoss: openTrade.stopLoss, takeProfit })) return null;
   const riskReward = riskDistance > 0
     ? Math.abs(takeProfit - openTrade.entry) / riskDistance
     : 0;
@@ -1967,18 +1971,14 @@ export async function GET(request?: Request) {
       const decisionDistance = Math.max(1.8, atr14M5 * 0.9);
       const nearTriggerSupport = supportDecisionDistance >= 0 && supportDecisionDistance <= decisionDistance;
       const nearTriggerResistance = resistanceDecisionDistance >= 0 && resistanceDecisionDistance <= decisionDistance;
-      const currentM5Candle = m5AnalysisCandles[0];
-      const previousM5Candle = m5AnalysisCandles[1];
-      const hasM5BullishEngulfing = !!currentM5Candle && !!previousM5Candle &&
-        previousM5Candle.close < previousM5Candle.open &&
-        currentM5Candle.close > currentM5Candle.open &&
-        currentM5Candle.open <= previousM5Candle.close &&
-        currentM5Candle.close >= previousM5Candle.open;
-      const hasM5BearishEngulfing = !!currentM5Candle && !!previousM5Candle &&
-        previousM5Candle.close > previousM5Candle.open &&
-        currentM5Candle.close < currentM5Candle.open &&
-        currentM5Candle.open >= previousM5Candle.close &&
-        currentM5Candle.close <= previousM5Candle.open;
+      const m5EntryConfirmation = M5EntryConfirmationService.analyze({
+        candles: m5AnalysisCandles,
+        zones: decisionZones,
+        currentPrice,
+        now,
+      });
+      const hasM5BullishEngulfing = m5EntryConfirmation.direction === 'BUY';
+      const hasM5BearishEngulfing = m5EntryConfirmation.direction === 'SELL';
 
       let scalpDirection: 'BUY' | 'SELL' | 'WAIT' = 'WAIT';
       let scalpTitle = 'รอราคาเข้าโซนตัดสินใจ M5/M15';
@@ -2157,14 +2157,14 @@ export async function GET(request?: Request) {
         },
       };
 
-      if (hasM5Mt5Base && triggerSupport && nearTriggerSupport && hasM5BullishEngulfing && m15Bias !== 'BEARISH') {
-        const entry = roundPrice(currentPrice);
-        const stopLoss = roundPrice(entry - fixedSupportSl);
-        const risk = Math.abs(entry - stopLoss);
-        const takeProfit = roundPrice(entry + risk * 2);
+      if (hasM5Mt5Base && hasM5BullishEngulfing && m5EntryConfirmation.entry && m5EntryConfirmation.stopLoss && m5EntryConfirmation.takeProfit && m15Bias !== 'BEARISH') {
+        const entry = m5EntryConfirmation.entry;
+        const stopLoss = m5EntryConfirmation.stopLoss;
+        const takeProfit = m5EntryConfirmation.takeProfit;
+        const confirmedSupport = m5EntryConfirmation.zone!;
         const supportEngulfConfidence = normalizePlanConfidence(
           78 +
-          (triggerSupport.strength || 1) * 3 +
+          (confirmedSupport.strength || 1) * 3 +
           (m15Bias === 'BULLISH' ? 8 : 0) +
           (h1Bias === 'BULLISH' ? 5 : 0) -
           (volatility === 'EXTREME' ? 10 : volatility === 'HIGH' ? 5 : 0),
@@ -2173,20 +2173,20 @@ export async function GET(request?: Request) {
         proactivePlans.push({
           id: `ai-plan-support-engulf-buy-${symbol}`,
           type: 'BUY_MARKET',
-          title: 'ซื้อฐานแนวรับเมื่อ M5 ปิดเขียว Engulfing',
+          title: 'ซื้อแนวรับหลัง M5 ยกตัวและ CHOCH UP',
           entry,
           entry1: entry,
-          entry2: roundPrice(triggerSupport.priceMax),
-          entry3: roundPrice(triggerSupport.priceMin),
+          entry2: roundPrice(confirmedSupport.priceMax),
+          entry3: roundPrice(confirmedSupport.priceMin),
           stopLoss,
           takeProfit,
-          reason: `ราคาอยู่ฐานแนวรับสำคัญ ${triggerSupport.priceMin.toFixed(2)}-${triggerSupport.priceMax.toFixed(2)} และ M5 ปิดแท่งเขียวแบบ Bullish Engulfing แล้ว ใช้ SL 500 จุดและเป้าอย่างน้อย 1:2`,
+          reason: `${m5EntryConfirmation.reason} โดยแนวรับอยู่ที่ ${confirmedSupport.priceMin.toFixed(2)}-${confirmedSupport.priceMax.toFixed(2)} และใช้เป้าขั้นต่ำ 1:2`,
           confidence: supportEngulfConfidence,
-          strategyId: 'support_m5_bullish_engulfing',
+          strategyId: 'support_m5_choch_reclaim',
           strategyMode: 'SWING',
           strategyLabel: 'Swing support bounce',
-          confirmation: 'M5 bullish engulfing close',
-          pointStopLoss: 500,
+          confirmation: `Closed M5 support reclaim + CHOCH UP at ${m5EntryConfirmation.structureBreak?.toFixed(2)}`,
+          pointStopLoss: Math.round(Math.abs(entry - stopLoss) * 100),
           timeframe: 'M5',
         });
       }

@@ -281,7 +281,7 @@ void UpdateChartHUD()
          double slDist = MathAbs(m_activeEntry - m_activeSL);
          double tpDist = MathAbs(m_activeTP - m_activeEntry);
          finalSL = isBuy ? (finalEntry - slDist) : (finalEntry + slDist);
-         finalTP = isBuy ? (finalEntry - tpDist) : (finalEntry + tpDist);
+         finalTP = isBuy ? (finalEntry + tpDist) : (finalEntry - tpDist);
       }
 
       hud += " 📌 Active Plan : " + m_activePlanTitle + "\n";
@@ -520,7 +520,7 @@ void ExecuteTradePlan(string planId, string planType, double rawEntry, double ra
       double slDist = MathAbs(rawEntry - rawSL);
       double tpDist = MathAbs(rawTP - rawEntry);
       finalSL = isBuy ? (entry - slDist) : (entry + slDist);
-      finalTP = isBuy ? (entry - tpDist) : (entry + tpDist);
+      finalTP = isBuy ? (entry + tpDist) : (entry - tpDist);
    }
 
    // 1. Check Pending Orders: Cancel old pending order if direction flipped

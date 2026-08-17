@@ -121,13 +121,13 @@ export class MarketRegimeService {
   static strategyAllowed(regime: MarketRegime, strategyId?: string) {
     if (!strategyId) return false;
     if (regime === 'TREND_UP') {
-      return strategyId === 'follow_trend_ema20_pullback' || strategyId === 'support_m5_bullish_engulfing';
+      return ['follow_trend_ema20_pullback', 'support_m5_bullish_engulfing', 'support_m5_choch_reclaim'].includes(strategyId);
     }
     if (regime === 'TREND_DOWN') {
-      return strategyId === 'follow_trend_ema20_pullback' || strategyId === 'resistance_m5_bearish_engulfing';
+      return ['follow_trend_ema20_pullback', 'resistance_m5_bearish_engulfing', 'resistance_m5_choch_reclaim'].includes(strategyId);
     }
     if (regime === 'RANGE') {
-      return ['support_m5_bullish_engulfing', 'resistance_m5_bearish_engulfing', 'scalp_m5_zone_reversal'].includes(strategyId);
+      return ['support_m5_bullish_engulfing', 'resistance_m5_bearish_engulfing', 'support_m5_choch_reclaim', 'resistance_m5_choch_reclaim', 'scalp_m5_zone_reversal'].includes(strategyId);
     }
     return false;
   }
