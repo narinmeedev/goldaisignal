@@ -41,7 +41,9 @@ const timeframeDurationMs: Record<string, number> = {
   D1: 24 * 60 * 60 * 1000,
 };
 
-const runPlanAutomation = async (request: Request, symbol: string, timeframe: string, latestChanged: boolean) => {
+const getAutomationBaseUrl = () => process.env.APP_URL || 'https://goldaisig.com';
+
+const runPlanAutomation = async (symbol: string, timeframe: string, latestChanged: boolean) => {
   const upperSym = (symbol || '').toUpperCase();
   const isGoldSymbol = upperSym.includes('XAU') || upperSym.includes('GOLD');
   if (!isMarketOpen() || !isGoldSymbol) {
@@ -64,7 +66,7 @@ const runPlanAutomation = async (request: Request, symbol: string, timeframe: st
 
   if (shouldRunQwen) {
     try {
-      const qwenUrl = new URL('/api/admin/qwen-analyze', request.url);
+      const qwenUrl = new URL('/api/admin/qwen-analyze', getAutomationBaseUrl());
       fetch(qwenUrl, {
         method: 'POST',
         cache: 'no-store',
@@ -76,7 +78,7 @@ const runPlanAutomation = async (request: Request, symbol: string, timeframe: st
     }
   }
 
-  const automationUrl = new URL('/api/admin/dashboard-stats', request.url);
+  const automationUrl = new URL('/api/admin/dashboard-stats', getAutomationBaseUrl());
   automationUrl.searchParams.set('asset', 'XAUUSD');
   automationUrl.searchParams.set('public', 'true');
   automationUrl.searchParams.set('automation', 'mt5-m15-sync');
@@ -427,7 +429,7 @@ export async function POST(request: Request) {
     });
 
     // Plan generation must keep running even when nobody has the dashboard open.
-    const planAutomation = await runPlanAutomation(request, symbol, timeframe, latestBarAdvanced);
+    const planAutomation = await runPlanAutomation(symbol, timeframe, latestBarAdvanced);
 
     // Check and consume one-shot MT5 pending command
     let pendingCommand = null;
