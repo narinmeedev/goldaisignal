@@ -17,6 +17,7 @@ import {
   Loader2,
   Pin,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
   Sparkles,
   Target,
@@ -567,12 +568,20 @@ export default function UserDashboard() {
           <div className="flex items-center gap-2">
             <Target className="h-5 w-5 text-amber-400" />
             <h3 className="text-base font-bold text-neutral-100">
-              📋 แผนเทรดสำรอง / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
+              📋 แผนเทรดดัก Pullback / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
             </h3>
           </div>
-          <span className="text-xs text-neutral-400">
-            เรียงเป็นแถวอิสระ สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการให้อยู่ซ้ายสุดได้
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleResetStats}
+              disabled={isResetting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+              title="ล้างประวัติการเทรดและสถิติเดิมทั้งหมดเพื่อเริ่มวัดผลใหม่"
+            >
+              {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              ล้างสถิติเก่า & เริ่มวัดผลใหม่
+            </button>
+          </div>
         </div>
 
             {candidatePlans.length > 0 ? (
