@@ -2471,8 +2471,24 @@ export async function GET(request?: Request) {
         strategyResearch = await ensureResearchUpkeep(symbol, strategyResearch);
       }
       const hasFreshTradeStructure = true;
+      const isBullishMacro = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
+      const isBearishMacro = h1Bias === 'BEARISH' || (m15Bias === 'BEARISH' && d1Bias !== 'BULLISH');
+
+      const trendFilteredPlans = proactivePlans.filter((plan) => {
+        const isBuy = plan.direction === 'BUY' || plan.type?.includes('BUY');
+        const isSell = plan.direction === 'SELL' || plan.type?.includes('SELL');
+
+        if (isBullishMacro && isSell) {
+          return false;
+        }
+        if (isBearishMacro && isBuy) {
+          return false;
+        }
+        return true;
+      });
+
       const eligibleProactivePlans = marketRegime.tradable
-        ? proactivePlans
+        ? trendFilteredPlans
             .filter((plan) => MarketRegimeService.strategyAllowed(marketRegime.regime, plan.strategyId))
             .map((plan) => ({
               ...plan,
