@@ -242,7 +242,7 @@ export class PaperTradeService {
         continue;
       }
       const riskDistance = Math.max(1.5, Math.abs(entry - stopLoss));
-      const beThreshold = 4.50; // In Gold (XAUUSD), +$4.50 to +$5.00 move activates Break-Even
+      const beThreshold = 3.50; // In Gold (XAUUSD), +$3.50 (350 points) gain activates Break-Even
 
       if (direction === 'BUY') {
         // 1. Check Take Profit 2 (Ultimate Target)

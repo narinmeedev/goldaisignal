@@ -340,13 +340,12 @@ export class SmartTrendStructureService {
       atr = trs.reduce((a, b) => a + b, 0) / 14;
     }
 
-    // SAFE RISK/REWARD GUARD for High Win-Rate ($10 - $20 Targets)
-    // Dynamic SL placed safely beyond structure ($5.00 - $6.50)
-    // TP1 ($10.00 - $12.00 / 100-120 pips) for fast profit lock
-    // TP2 ($18.00 - $22.00 / 180-220 pips) for trend runner
-    const slBuffer = Math.max(5.00, Math.min(6.50, atr * 1.4));
-    const tpDistance = Math.max(10.00, Math.min(12.00, slBuffer * 2.0)); // TP1 ($10 - $12)
-    const tp2Distance = Math.max(18.00, Math.min(22.00, slBuffer * 3.5)); // TP2 ($18 - $22)
+    // Fast Scalp & Pullback Targets: 600 - 1000 points ($6.00 - $10.00)
+    // Tight structural SL behind support floor ($3.50 - $4.50)
+    // Quick TP1 ($6.00 - $8.00 / 600-800 points) and TP2 ($10.00 / 1000 points)
+    const slBuffer = Math.max(3.50, Math.min(4.50, atr * 1.0));
+    const tpDistance = Math.max(6.00, Math.min(8.00, slBuffer * 1.8)); // TP1 ($6 - $8 / 600-800 points)
+    const tp2Distance = Math.max(9.00, Math.min(10.00, slBuffer * 2.5)); // TP2 ($9 - $10 / 900-1000 points)
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;

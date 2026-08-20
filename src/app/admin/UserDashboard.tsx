@@ -252,10 +252,6 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
-  const [isApplyingPlan, setIsApplyingPlan] = useState(false);
-  const [qwenData, setQwenData] = useState<any>(null);
-  const [showQwenModal, setShowQwenModal] = useState(false);
   const [pinnedPlanId, setPinnedPlanId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -294,127 +290,10 @@ export default function UserDashboard() {
     }
   };
 
-  const runQwenAnalysis = async () => {
-    setIsQwenAnalyzing(true);
-    setShowQwenModal(true);
-    try {
-      const res = await fetch('/api/admin/qwen-analyze', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setQwenData(data);
-        if (data.appliedPlan) {
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem('GOLDAI_SAVED_QWEN_PLAN', JSON.stringify(data.appliedPlan));
-            } catch {}
-          }
-          setStats((prev) => {
-            if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
-            return {
-              ...prev,
-              marketIntelligence: {
-                ...prev.marketIntelligence,
-                XAUUSD: {
-                  ...prev.marketIntelligence.XAUUSD,
-                  activeOrderPlan: data.appliedPlan,
-                  hasActivePlan: true,
-                },
-              },
-            };
-          });
-        }
-        load(true).catch(() => {});
-      } else {
-        alert(data.error || 'Qwen 3.5-9B ไม่ตอบกลับ');
-      }
-    } catch {
-      alert('ไม่สามารถเชื่อมต่อกับ Qwen 3.5-9B API บนเครื่องได้');
-    } finally {
-      setIsQwenAnalyzing(false);
-    }
-  };
-
-  const applyQwenPlan = async () => {
-    if (!qwenData?.result) return;
-    setIsApplyingPlan(true);
-    try {
-      const planPayload = {
-        action: 'apply',
-        plan: {
-          ...qwenData.result,
-          currentPrice: qwenData.currentPrice,
-        },
-      };
-
-      const res = await fetch('/api/admin/qwen-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(planPayload),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setShowQwenModal(false);
-        if (data.appliedPlan) {
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem('GOLDAI_SAVED_QWEN_PLAN', JSON.stringify(data.appliedPlan));
-            } catch {}
-          }
-          setStats((prev) => {
-            if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
-            return {
-              ...prev,
-              marketIntelligence: {
-                ...prev.marketIntelligence,
-                XAUUSD: {
-                  ...prev.marketIntelligence.XAUUSD,
-                  activeOrderPlan: data.appliedPlan,
-                  hasActivePlan: true,
-                },
-              },
-            };
-          });
-        }
-        alert('✅ บันทึกและนำแผน Qwen 3.5-9B ขึ้นแสดงผลเรียบร้อยแล้ว!');
-        load(true).catch(() => {});
-      } else {
-        alert(data.error || 'ไม่สามารถนำแผนไปใช้ได้');
-      }
-    } catch {
-      alert('เกิดข้อผิดพลาดในการบันทึกแผน Qwen');
-    } finally {
-      setIsApplyingPlan(false);
-    }
-  };
-
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
     try {
       const data = await fetchDashboardStats('XAUUSD', { retries: 1, timeoutMs: 15_000, cacheBust: true });
-      
-      // Fallback: If DB hasn't returned active plan yet, restore from localStorage if applied recently
-      let currentActivePlan = data?.marketIntelligence?.XAUUSD?.activeOrderPlan;
-      if (!currentActivePlan && typeof window !== 'undefined') {
-        try {
-          const cachedPlanStr = localStorage.getItem('GOLDAI_SAVED_QWEN_PLAN');
-          if (cachedPlanStr) {
-            const cachedPlan = JSON.parse(cachedPlanStr);
-            const planAgeMins = (Date.now() - new Date(cachedPlan.lockedAt || Date.now()).getTime()) / (1000 * 60);
-            if (planAgeMins < 20 && !cachedPlan.isClosed) {
-              currentActivePlan = cachedPlan;
-            } else {
-              localStorage.removeItem('GOLDAI_SAVED_QWEN_PLAN');
-            }
-          }
-        } catch {}
-      }
-
-      if (data?.marketIntelligence?.XAUUSD) {
-        data.marketIntelligence.XAUUSD.activeOrderPlan = currentActivePlan;
-        data.marketIntelligence.XAUUSD.hasActivePlan = Boolean(currentActivePlan);
-      }
-
       setStats(data);
       setError(null);
     } catch (loadError) {
@@ -436,37 +315,9 @@ export default function UserDashboard() {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    // 15-minute automatic Qwen AI re-analysis
-    const qwenInterval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetch('/api/admin/qwen-analyze', { method: 'POST' })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success && data.appliedPlan) {
-              setStats((prev) => {
-                if (!prev || !prev.marketIntelligence?.XAUUSD) return prev;
-                return {
-                  ...prev,
-                  marketIntelligence: {
-                    ...prev.marketIntelligence,
-                    XAUUSD: {
-                      ...prev.marketIntelligence.XAUUSD,
-                      activeOrderPlan: data.appliedPlan,
-                      hasActivePlan: true,
-                    },
-                  },
-                };
-              });
-            }
-          })
-          .catch(() => {});
-      }
-    }, 15 * 60 * 1000);
-
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
-      window.clearInterval(qwenInterval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [load]);
@@ -550,93 +401,6 @@ export default function UserDashboard() {
 
   return (
     <div className="w-full max-w-none space-y-4 sm:space-y-6">
-
-
-      {/* Qwen 3.5-9B Analysis Modal */}
-      {showQwenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-purple-500/40 bg-neutral-950 p-6 text-neutral-100 shadow-[0_0_50px_rgba(168,85,247,0.3)]">
-            <div className="flex items-center justify-between border-b border-purple-500/20 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-400">
-                  <Bot className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-purple-200">Qwen 3.5-9B Local AI Analyst</h3>
-                  <p className="text-xs text-neutral-400">ประมวลผลตรงผ่าน LM Studio (127.0.0.1:1234)</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowQwenModal(false)}
-                className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              {isQwenAnalyzing ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-                  <p className="mt-4 font-bold text-neutral-200">กำลังยิงข้อมูลกราฟสดเข้า Qwen 3.5-9B LLM...</p>
-                  <p className="mt-1 text-xs text-neutral-400">วิเคราะห์ราคาปัจจุบัน, RSI, EMA, และแนวรับต้าน</p>
-                </div>
-              ) : qwenData?.result ? (
-                <>
-                  <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-purple-400">แหล่งประมวลผล: {qwenData.result.source}</span>
-                      <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300 border border-emerald-500/30">
-                        ความมั่นใจ {qwenData.result.confidence}%
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-relaxed text-neutral-200">
-                      {qwenData.result.reason}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5 text-center">
-                      <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">จุดเข้าเสนอแนะ (ENTRY)</p>
-                      <p className="mt-1 text-xl font-black text-amber-200">${qwenData.result.refinedEntry?.toFixed(2)}</p>
-                    </div>
-                    <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3.5 text-center">
-                      <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">ตัดขาดทุน (STOP LOSS)</p>
-                      <p className="mt-1 text-xl font-black text-rose-200">${qwenData.result.refinedSL?.toFixed(2)}</p>
-                    </div>
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 text-center">
-                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">ทำกำไร (TAKE PROFIT)</p>
-                      <p className="mt-1 text-xl font-black text-emerald-200">${qwenData.result.refinedTP?.toFixed(2)}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowQwenModal(false)}
-                      className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2 text-xs font-bold text-neutral-300 hover:bg-neutral-800"
-                    >
-                      ปิดหน้าต่าง
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyQwenPlan}
-                      disabled={isApplyingPlan}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)] disabled:opacity-50 transition-all"
-                    >
-                      {isApplyingPlan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      นำแผนไปใช้และอัปเดตหน้าจอ
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p className="text-center py-6 text-neutral-400">ไม่พบผลการวิเคราะห์</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
       {/* MAIN TWO-COLUMN SPLIT SCREEN (LEFT: EXPANDED LIVE CHART, RIGHT: ACTIVE PLAN & MTF TRENDS) */}
       <div className="grid gap-6 lg:grid-cols-12 items-start">
         {/* LEFT COLUMN: EXPANDED LIVE CHART & CANDLE VISUALIZER (8 Cols for Maximum Width) */}
@@ -721,7 +485,7 @@ export default function UserDashboard() {
                     <div className="grid gap-2.5 grid-cols-3">
                       <PriceLevel label="Entry" value={plan.entry} tone="entry" />
                       <PriceLevel label="Stop Loss" value={plan.stopLoss} tone="sl" />
-                      <PriceLevel label="TP1 ($10-12)" value={plan.takeProfit} tone="tp" />
+                      <PriceLevel label="TP (600-800 จุด)" value={plan.takeProfit} tone="tp" />
                     </div>
 
                     <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-xs">
@@ -729,7 +493,7 @@ export default function UserDashboard() {
                         🛡️ Break-Even Protection:
                       </span>
                       <span className="text-neutral-300 font-medium">
-                        เมื่อราคาบวก +$5.00 เลื่อน SL บังทุนทันที (ความเสี่ยง 0%)
+                        เมื่อราคาบวก +$3.50 (350 จุด) เลื่อน SL บังทุนทันที (ความเสี่ยง 0%)
                       </span>
                     </div>
 
@@ -898,47 +662,45 @@ export default function UserDashboard() {
 
       {/* BOTTOM SECTION: PERFORMANCE STATISTICS & TRACK RECORD */}
       <div id="stats-overview" className="mt-6 space-y-6">
-        {stats?.qwenPerformance && (
-          <section className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-neutral-900 to-indigo-950/40 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-purple-500/20 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/40 bg-purple-500/20 text-purple-300">
-                  <Sparkles className="h-5 w-5 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-purple-200">📊 สถิติวัดผลแผน Qwen AI (Performance Track Record)</h3>
-                  <p className="text-xs text-purple-300/80">ระบบบันทึกและวัดผลอัตโนมัติ เพื่อใช้อ้างอิงผลงานสด 100%</p>
-                </div>
+        <section className="rounded-xl border border-amber-500/30 bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-amber-950/20 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(245,158,11,0.08)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-neutral-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/20 text-amber-300">
+                <Sparkles className="h-5 w-5 animate-pulse" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
-                  Win Rate {stats.qwenPerformance.winRate}%
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black text-amber-300">
-                  สะสม +{stats.qwenPerformance.totalRR}R
-                </span>
+              <div>
+                <h3 className="text-sm font-bold text-neutral-100">📊 สถิติวัดผลแผนเทรดสั้น & ดัก Pullback (Real-Time Performance)</h3>
+                <p className="text-xs text-neutral-400">ระบบบันทึกและวัดผลอัตโนมัติตามระยะกำไร 600 - 1000 จุด (TP1 $6-$8 / TP2 $10)</p>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="rounded-lg border border-purple-500/20 bg-neutral-950/50 p-2.5">
-                <div className="text-xs text-neutral-400">แผนทั้งหมด</div>
-                <div className="mt-1 text-base font-bold text-neutral-100">{stats.qwenPerformance.totalRecorded} ไม้</div>
-              </div>
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-2.5">
-                <div className="text-xs text-emerald-400">Take Profit (ชนะ)</div>
-                <div className="mt-1 text-base font-bold text-emerald-300">{stats.qwenPerformance.wins} ไม้</div>
-              </div>
-              <div className="rounded-lg border border-rose-500/20 bg-rose-950/30 p-2.5">
-                <div className="text-xs text-rose-400">Stop Loss (แพ้)</div>
-                <div className="mt-1 text-base font-bold text-rose-300">{stats.qwenPerformance.losses} ไม้</div>
-              </div>
-              <div className="rounded-lg border border-amber-500/20 bg-amber-950/30 p-2.5">
-                <div className="text-xs text-amber-400">กำลังติดตามผลสด</div>
-                <div className="mt-1 text-base font-bold text-amber-300">{stats.qwenPerformance.open} ไม้</div>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
+                Win Rate {performance?.decidedSampleSize ? `${performance.winRate}%` : '0%'}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black text-amber-300">
+                สะสม +{(performance?.sampleSize ? performance.averageRR * (performance?.wins || 0) : 0).toFixed(1)}R
+              </span>
             </div>
-          </section>
-        )}
+          </div>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/50 p-2.5">
+              <div className="text-xs text-neutral-400">แผนทั้งหมด</div>
+              <div className="mt-1 text-base font-bold text-neutral-100">{performance?.sampleSize ?? 0} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-2.5">
+              <div className="text-xs text-emerald-400">Take Profit (ชนะ)</div>
+              <div className="mt-1 text-base font-bold text-emerald-300">{performance?.wins ?? 0} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-rose-500/20 bg-rose-950/30 p-2.5">
+              <div className="text-xs text-rose-400">Stop Loss (แพ้)</div>
+              <div className="mt-1 text-base font-bold text-rose-300">{performance?.losses ?? 0} ไม้</div>
+            </div>
+            <div className="rounded-lg border border-sky-500/20 bg-sky-950/30 p-2.5">
+              <div className="text-xs text-sky-400">ผลตัดสิน</div>
+              <div className="mt-1 text-base font-bold text-sky-300">{performance?.decidedSampleSize ?? 0} ไม้</div>
+            </div>
+          </div>
+        </section>
       </div>
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
