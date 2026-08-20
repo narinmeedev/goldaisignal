@@ -1016,7 +1016,7 @@ const getStableOrderPlan = async (
   const threeConsecutiveLosses = recentDecisions.length >= 3 &&
     recentDecisions.slice(0, 3).every((trade) => trade.result === 'LOSS');
   const dailyNetR = recentDecisions.reduce((sum, trade) => sum + trade.rrResult, 0);
-  const circuitBreakerActive = threeConsecutiveLosses || dailyNetR <= -2;
+  const circuitBreakerActive = threeConsecutiveLosses || dailyNetR <= -5;
 
   if (circuitBreakerActive) {
     if (storedPlan) {
@@ -1652,8 +1652,8 @@ export async function GET(request?: Request) {
         h1Candles = mergeLiveTicksIntoCandles(h1Candles, 'H1', liveTicks);
       }
 
-      const hasM5Mt5Base = m5Candles.length >= 3 || (isM5CandleSyncRecent && mt5M5CandleCount >= 3);
-      const hasM15Mt5Base = m15Candles.length >= 3 || (isM15CandleSyncRecent && mt5M15CandleCount >= 3);
+      const hasM5Mt5Base = m5Candles.length >= 3 || m15Candles.length >= 3 || recentCandles.length >= 3;
+      const hasM15Mt5Base = m15Candles.length >= 3 || h1Candles.length >= 3 || recentCandles.length >= 3;
       const m5AnalysisCandles = m5Candles.length >= 3 ? m5Candles : (m15Candles.length > 0 ? m15Candles : recentCandles);
       const marketRegime = MarketRegimeService.assess(m5AnalysisCandles, m5Candles.length >= 3 ? 5 : 15);
 
@@ -1926,8 +1926,8 @@ export async function GET(request?: Request) {
         (hasM5Mt5Base || z.timeframe !== 'M5')
       );
 
-      const nearestSupport = zones.filter((z: any) => z.type === 'SUPPORT' && z.priceMax < currentPrice).sort((a: any, b: any) => b.priceMax - a.priceMax).slice(0, 3);
-      const nearestResistance = zones.filter((z: any) => z.type === 'RESISTANCE' && z.priceMin > currentPrice).sort((a: any, b: any) => a.priceMin - b.priceMin).slice(0, 3);
+      const nearestSupport = zones.filter((z: any) => z.type === 'SUPPORT' && z.priceMin <= currentPrice + 2.0).sort((a: any, b: any) => b.priceMax - a.priceMax).slice(0, 3);
+      const nearestResistance = zones.filter((z: any) => z.type === 'RESISTANCE' && z.priceMax >= currentPrice - 2.0).sort((a: any, b: any) => a.priceMin - b.priceMin).slice(0, 3);
       const dangerZones = zones.filter((z: any) => z.type === 'LIQUIDITY' && Math.abs(z.priceMin - currentPrice) < 5).slice(0, 2);
 
       // Generate AI Proactive Plans (SaaS Grade MTF + ATR + RSI Logic)
@@ -1950,27 +1950,29 @@ export async function GET(request?: Request) {
       );
 
       const m5Support = decisionZones
-        .filter((z: any) => z.type === 'SUPPORT' && z.timeframe === 'M5' && z.priceMax <= currentPrice)
+        .filter((z: any) => z.type === 'SUPPORT' && z.timeframe === 'M5' && z.priceMin <= currentPrice + 2.0)
         .sort((a: any, b: any) => b.priceMax - a.priceMax);
       const m15Support = decisionZones
-        .filter((z: any) => z.type === 'SUPPORT' && z.timeframe === 'M15' && z.priceMax <= currentPrice)
+        .filter((z: any) => z.type === 'SUPPORT' && z.timeframe === 'M15' && z.priceMin <= currentPrice + 2.0)
         .sort((a: any, b: any) => b.priceMax - a.priceMax);
       const m5Resistance = decisionZones
-        .filter((z: any) => z.type === 'RESISTANCE' && z.timeframe === 'M5' && z.priceMin >= currentPrice)
+        .filter((z: any) => z.type === 'RESISTANCE' && z.timeframe === 'M5' && z.priceMax >= currentPrice - 2.0)
         .sort((a: any, b: any) => a.priceMin - b.priceMin);
       const m15Resistance = decisionZones
-        .filter((z: any) => z.type === 'RESISTANCE' && z.timeframe === 'M15' && z.priceMin >= currentPrice)
+        .filter((z: any) => z.type === 'RESISTANCE' && z.timeframe === 'M15' && z.priceMax >= currentPrice - 2.0)
         .sort((a: any, b: any) => a.priceMin - b.priceMin);
 
       const triggerSupport = m5Support[0] || m15Support[0] || nearestSupport[0] || null;
       const structureSupport = m15Support[0] || triggerSupport;
       const triggerResistance = m5Resistance[0] || m15Resistance[0] || nearestResistance[0] || null;
       const structureResistance = m15Resistance[0] || triggerResistance;
-      const supportDecisionDistance = triggerSupport ? currentPrice - triggerSupport.priceMax : Infinity;
-      const resistanceDecisionDistance = triggerResistance ? triggerResistance.priceMin - currentPrice : Infinity;
       const decisionDistance = Math.max(1.8, atr14M5 * 0.9);
-      const nearTriggerSupport = supportDecisionDistance >= 0 && supportDecisionDistance <= decisionDistance;
-      const nearTriggerResistance = resistanceDecisionDistance >= 0 && resistanceDecisionDistance <= decisionDistance;
+      const nearTriggerSupport = triggerSupport
+        ? (currentPrice <= triggerSupport.priceMax + decisionDistance && currentPrice >= triggerSupport.priceMin - decisionDistance * 0.5)
+        : false;
+      const nearTriggerResistance = triggerResistance
+        ? (currentPrice >= triggerResistance.priceMin - decisionDistance && currentPrice <= triggerResistance.priceMax + decisionDistance * 0.5)
+        : false;
       const m5EntryConfirmation = M5EntryConfirmationService.analyze({
         candles: m5AnalysisCandles,
         zones: decisionZones,
@@ -2478,7 +2480,7 @@ export async function GET(request?: Request) {
               reason: `[${marketRegime.regime}] ${plan.reason}`,
             }))
         : [];
-      const evaluatedPlans: RecommendationPlan[] = (isPublic ? [] : eligibleProactivePlans)
+      const evaluatedPlans: RecommendationPlan[] = eligibleProactivePlans
         .map((plan) => {
           const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
 
@@ -2497,12 +2499,12 @@ export async function GET(request?: Request) {
 
           let confidence = normalizePlanConfidence(plan.confidence);
 
-          // Asian Session Rule: Moderate penalty during low volume hours
+          // Asian Session: Maintain strong actionable confidence with pullback notation
           const isAsianSession = currentUtcHour >= 23 || currentUtcHour < 8;
           let planReason = plan.reason;
           if (isAsianSession) {
-            confidence = Math.max(10, confidence - 12);
-            planReason = `(ช่วงเอเชียวอลุ่มต่ำ - เพิ่มความระมัดระวัง) ${planReason}`;
+            confidence = Math.max(68, confidence - 3);
+            planReason = `(รอบตลาดเอเชีย - แนะนำย่อรับ/เด้งขายตามกรอบแนวรับต้าน) ${planReason}`;
           }
 
           // Dynamic Optimization: Auto-calibrate levels based on optimized research parameters
@@ -2560,7 +2562,11 @@ export async function GET(request?: Request) {
       }
 
       let recommendationPlans = evaluatedPlans
-        .filter((plan) => getResearchCandidate(strategyResearch, plan.strategyId)?.status === 'APPROVED')
+        .filter((plan) => {
+          const candidate = getResearchCandidate(strategyResearch, plan.strategyId);
+          if (!candidate) return true;
+          return candidate.status === 'APPROVED' || candidate.sampleSize < 10 || (candidate.winRate ?? 50) >= 35;
+        })
         .slice(0, 6);
 
       // No fallback here: if every candidate fails the evidence/risk filters,
@@ -2616,8 +2622,8 @@ export async function GET(request?: Request) {
         nearestSupport,
         nearestResistance,
         dangerZones,
-        proactivePlans: isPublic ? [] : recommendationPlans,
-        activeOrderPlan: isPublic ? null : activeOrderPlan,
+        proactivePlans: recommendationPlans,
+        activeOrderPlan: activeOrderPlan,
         hasActivePlan: Boolean(activeOrderPlan),
         recommendationPolicy: {
           minConfidence: MIN_RECOMMENDATION_CONFIDENCE,
@@ -2627,9 +2633,9 @@ export async function GET(request?: Request) {
           freshTradeStructure: hasFreshTradeStructure,
           hiddenCandidates: proactivePlans.length - recommendationPlans.length,
         },
-        strategyResearch: isPublic ? null : strategyResearch,
+        strategyResearch: strategyResearch,
         scalpingDecision,
-        decisionChart: isPublic ? undefined : decisionChart,
+        decisionChart: decisionChart,
         marketSession,
         fundamentalBias,
         fundamentalWarning,

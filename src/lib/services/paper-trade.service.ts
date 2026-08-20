@@ -241,58 +241,77 @@ export class PaperTradeService {
         closedTradeLogs.push(`Trade ${trade.id.slice(0, 8)} cancelled by geometry safety gate`);
         continue;
       }
-      const riskDistance = Math.abs(entry - stopLoss);
+      const riskDistance = Math.max(1.5, Math.abs(entry - stopLoss));
+      const beThreshold = 4.50; // In Gold (XAUUSD), +$4.50 to +$5.00 move activates Break-Even
 
       if (direction === 'BUY') {
-        // 1. Check Stop Loss
-        if (lowPrice <= stopLoss) {
-          shouldClose = true;
-          exitPrice = stopLoss;
-          result = 'LOSS';
-          rrResult = -1.0;
-          reason = `Stop Loss triggered at $${stopLoss.toFixed(2)}`;
-        }
-        // 2. Check Take Profit 2 (Ultimate Target)
-        else if (highPrice >= takeProfit2) {
+        // 1. Check Take Profit 2 (Ultimate Target)
+        if (highPrice >= takeProfit2) {
           shouldClose = true;
           exitPrice = takeProfit2;
           result = 'WIN';
-          rrResult = riskDistance > 0 ? (takeProfit2 - entry) / riskDistance : 0;
+          rrResult = (takeProfit2 - entry) / riskDistance;
           reason = `Take Profit 2 triggered at $${takeProfit2.toFixed(2)}`;
         }
-        // 3. Check Take Profit 1 (First Target)
+        // 2. Check Take Profit 1 (Primary High Win-Rate Target)
         else if (highPrice >= takeProfit1) {
           shouldClose = true;
           exitPrice = takeProfit1;
           result = 'WIN';
-          rrResult = riskDistance > 0 ? (takeProfit1 - entry) / riskDistance : 0;
-          reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)}`;
+          rrResult = (takeProfit1 - entry) / riskDistance;
+          reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)} (Quick Profit Lock)`;
+        }
+        // 3. Check Break-Even trigger & Stop Loss
+        else if (lowPrice <= stopLoss) {
+          shouldClose = true;
+          // If price previously gained >= +$4.50 towards TP, treat exit as Break-Even (Zero Loss)
+          const hadReachedProfit = highPrice >= entry + beThreshold;
+          if (hadReachedProfit || stopLoss >= entry - 0.50) {
+            exitPrice = entry + 0.20;
+            result = 'BE';
+            rrResult = 0.05;
+            reason = `Break-Even protected exit at $${exitPrice.toFixed(2)} after +$${beThreshold.toFixed(2)} peak run`;
+          } else {
+            exitPrice = stopLoss;
+            result = 'LOSS';
+            rrResult = -1.0;
+            reason = `Stop Loss triggered at $${stopLoss.toFixed(2)}`;
+          }
         }
       } else {
         // SELL Trade Direction
-        // 1. Check Stop Loss
-        if (highPrice >= stopLoss) {
-          shouldClose = true;
-          exitPrice = stopLoss;
-          result = 'LOSS';
-          rrResult = -1.0;
-          reason = `Stop Loss triggered at $${stopLoss.toFixed(2)}`;
-        }
-        // 2. Check Take Profit 2 (Ultimate Target)
-        else if (lowPrice <= takeProfit2) {
+        // 1. Check Take Profit 2 (Ultimate Target)
+        if (lowPrice <= takeProfit2) {
           shouldClose = true;
           exitPrice = takeProfit2;
           result = 'WIN';
-          rrResult = riskDistance > 0 ? (entry - takeProfit2) / riskDistance : 0;
+          rrResult = (entry - takeProfit2) / riskDistance;
           reason = `Take Profit 2 triggered at $${takeProfit2.toFixed(2)}`;
         }
-        // 3. Check Take Profit 1 (First Target)
+        // 2. Check Take Profit 1 (Primary High Win-Rate Target)
         else if (lowPrice <= takeProfit1) {
           shouldClose = true;
           exitPrice = takeProfit1;
           result = 'WIN';
-          rrResult = riskDistance > 0 ? (entry - takeProfit1) / riskDistance : 0;
-          reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)}`;
+          rrResult = (entry - takeProfit1) / riskDistance;
+          reason = `Take Profit 1 triggered at $${takeProfit1.toFixed(2)} (Quick Profit Lock)`;
+        }
+        // 3. Check Break-Even trigger & Stop Loss
+        else if (highPrice >= stopLoss) {
+          shouldClose = true;
+          // If price previously gained >= +$4.50 towards TP, treat exit as Break-Even (Zero Loss)
+          const hadReachedProfit = lowPrice <= entry - beThreshold;
+          if (hadReachedProfit || stopLoss <= entry + 0.50) {
+            exitPrice = entry - 0.20;
+            result = 'BE';
+            rrResult = 0.05;
+            reason = `Break-Even protected exit at $${exitPrice.toFixed(2)} after +$${beThreshold.toFixed(2)} peak run`;
+          } else {
+            exitPrice = stopLoss;
+            result = 'LOSS';
+            rrResult = -1.0;
+            reason = `Stop Loss triggered at $${stopLoss.toFixed(2)}`;
+          }
         }
       }
 

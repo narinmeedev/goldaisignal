@@ -485,10 +485,54 @@ export default function UserDashboard() {
   }, []);
 
   const market = stats?.marketIntelligence?.XAUUSD;
-  const plan = market?.activeOrderPlan ?? null;
+
+  const candidatePlans = useMemo(() => {
+    const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
+      id: p.id || `proactive-${p.entry}`,
+      type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
+      title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
+      entry: Number(p.entry),
+      stopLoss: Number(p.stopLoss),
+      takeProfit: Number(p.takeProfit || p.takeProfit1),
+      takeProfit2: Number(p.takeProfit2 || (Number(p.entry) + (p.direction === 'BUY' || p.type?.includes('BUY') ? 18.0 : -18.0))),
+      confidence: Number(p.confidence || 88),
+      reason: p.reason || p.notes,
+      direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
+    }));
+
+    const suggestedList = (stats?.suggestedPlans || [])
+      .filter((p: any) => p.result === 'PLAN')
+      .map((p: any) => ({
+        id: p.id,
+        type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
+        title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
+        entry: Number(p.entry),
+        stopLoss: Number(p.stopLoss),
+        takeProfit: Number(p.takeProfit1 || p.takeProfit),
+        takeProfit2: Number(p.takeProfit2 || (Number(p.entry) + (p.direction === 'BUY' ? 18.0 : -18.0))),
+        confidence: Number(p.confidence || 88),
+        reason: p.notes,
+        direction: p.direction,
+      }));
+
+    const planMap = new Map<string, any>();
+    [...proactiveList, ...suggestedList].forEach((item) => {
+      const key = `${item.direction}_${item.entry.toFixed(2)}`;
+      if (!planMap.has(key)) planMap.set(key, item);
+    });
+
+    const currentPx = market?.currentPrice ?? 0;
+    return Array.from(planMap.values()).sort((a, b) => {
+      if (a.id === pinnedPlanId) return -1;
+      if (b.id === pinnedPlanId) return 1;
+      return Math.abs(a.entry - currentPx) - Math.abs(b.entry - currentPx);
+    });
+  }, [market?.proactivePlans, stats?.suggestedPlans, market?.currentPrice, pinnedPlanId]);
+
+  const plan = market?.activeOrderPlan || candidatePlans[0] || null;
   const lifecycle = stats?.ownerMetrics?.planLifecycle ?? stats?.planLifecycle;
   const performance = stats?.ownerMetrics?.performance;
-  const isOpen = (lifecycle?.activePlans?.length ?? 0) > 0;
+  const isOpen = (lifecycle?.activePlans?.length ?? 0) > 0 || Boolean((market?.activeOrderPlan as any)?.isTriggered);
   const direction = getDirection(plan);
   const isLive = stats?.mt5Connection?.realtimeStatus?.state === 'LIVE';
   const riskLevel = plan?.riskLevel ?? 'HIGH';
@@ -593,43 +637,8 @@ export default function UserDashboard() {
           </div>
         </div>
       )}
-      {/* Approved chart-first dashboard: live chart + one detailed decision panel */}
-      <div className="grid items-stretch gap-4 xl:grid-cols-12">
-        <div className="min-w-0 xl:col-span-8">
-          <TradePlanChart
-            plan={plan}
-            currentPrice={market?.currentPrice ?? null}
-            candles={market?.candles || []}
-            m5Candles={market?.m5Candles || []}
-            m15Candles={market?.m15Candles || []}
-            h1Candles={market?.h1Candles || []}
-            timeframe="M15"
-            marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
-            bias={market?.bias ?? 'NEUTRAL'}
-            supportZones={supportZones}
-            resistanceZones={resistanceZones}
-          />
-        </div>
-        <div className="min-w-0 xl:col-span-4">
-          <ActiveTradePlanPanel
-            plan={plan}
-            currentPrice={market?.currentPrice ?? null}
-            direction={direction}
-            instruction={plan
-              ? isOpen
-                ? 'แผนเริ่มวัดผลแล้ว ให้ติดตาม Take Profit และ Stop Loss ตามแผนเดิม'
-                : direction === 'SELL'
-                  ? `รอราคาเข้าใกล้ ${formatPrice(plan.entry)} และดูแรงขายก่อนเข้า — ไม่ควรไล่ราคา`
-                  : `รอราคาเข้าใกล้ ${formatPrice(plan.entry)} และดูแรงรับก่อนเข้า — ไม่ควรไล่ราคา`
-              : 'รอข้อมูลตลาดและแผนที่ผ่านเกณฑ์'}
-            timeframeBiases={market?.timeframeBiases}
-            hasSupport={supportZones.length > 0}
-          />
-        </div>
-      </div>
-
-      {/* Legacy summary kept out of view while lower history and performance sections remain available below. */}
-      <div className="hidden grid gap-6 lg:grid-cols-12 items-start">
+      {/* MAIN TWO-COLUMN SPLIT SCREEN (LEFT: EXPANDED LIVE CHART, RIGHT: ACTIVE PLAN & MTF TRENDS) */}
+      <div className="grid gap-6 lg:grid-cols-12 items-start">
         {/* LEFT COLUMN: EXPANDED LIVE CHART & CANDLE VISUALIZER (8 Cols for Maximum Width) */}
         <div className="lg:col-span-8 space-y-6">
           <section id="active-plan-chart-supplement" className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
@@ -649,20 +658,23 @@ export default function UserDashboard() {
               timeframe="M15"
               marketSession={market?.marketSession || 'ปลายตลาดนิวยอร์ก'}
               bias={market?.bias ?? 'NEUTRAL'}
+              supportZones={supportZones}
+              resistanceZones={resistanceZones}
             />
           </section>
         </div>
 
-        {/* RIGHT COLUMN: ACTIVE TRADE PLAN CARD ONLY (4 Cols on desktop) */}
+        {/* RIGHT COLUMN: ACTIVE TRADE PLAN CARD + MTF TREND CONFLUENCE (4 Cols on desktop) */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Active Trade Plan Card */}
+          {/* 1. Active Trade Plan Card */}
           {(() => {
             const isBuy = direction === 'BUY';
             const isSell = direction === 'SELL';
+            const isPending = !isOpen;
             const cardBgClass = plan 
               ? isBuy 
-                ? 'border-emerald-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-emerald-950/10 shadow-[0_4px_30px_rgba(16,185,129,0.03)]'
-                : 'border-rose-500/20 bg-gradient-to-b from-neutral-900/90 via-neutral-900/80 to-rose-950/10 shadow-[0_4px_30px_rgba(244,63,94,0.03)]'
+                ? 'border-emerald-500/30 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-emerald-950/20 shadow-[0_4px_30px_rgba(16,185,129,0.08)]'
+                : 'border-rose-500/30 bg-gradient-to-b from-neutral-900 via-neutral-900/90 to-rose-950/20 shadow-[0_4px_30px_rgba(244,63,94,0.08)]'
               : 'border-neutral-800 bg-neutral-900/40 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]';
 
             return (
@@ -671,32 +683,34 @@ export default function UserDashboard() {
                   <div className="flex items-start gap-3">
                     <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-all ${
                       isBuy 
-                        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                        ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
                         : isSell 
-                          ? 'border-rose-500/20 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.1)]' 
+                          ? 'border-rose-500/30 bg-rose-500/15 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]' 
                           : 'border-neutral-800 bg-neutral-800/60 text-neutral-400'
                     }`}>
-                      {isBuy ? <ArrowUp className="h-5 w-5" /> : isSell ? <ArrowDown className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+                      {isBuy ? <ArrowUp className="h-6 w-6" /> : isSell ? <ArrowDown className="h-6 w-6" /> : <Clock3 className="h-6 w-6" />}
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">แผนหลักปัจจุบัน</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400/80">
+                          {isOpen ? '🟢 กำลังเปิดออเดอร์ (IN TRADE)' : '🎯 แผนเข้าเทรดรอบปัจจุบัน'}
+                        </span>
                         <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-black text-sky-300 border border-sky-500/30 uppercase">
-                          {plan?.timeframe ? `สัญญาณ ${plan.timeframe}` : 'สัญญาณ M15'}
+                          {plan?.type || (isBuy ? 'BUY_LIMIT' : 'SELL_LIMIT')}
                         </span>
                         <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                          <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> 🔥 ต้นเทรนด์
+                          <Flame className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> เป้า Win Rate &gt; 75%
                         </span>
                       </div>
                       <h2 className="mt-1 text-lg font-bold text-neutral-50">
-                        {plan ? `${direction ?? ''} · ${plan.title}` : 'ยังไม่มีแผนที่ผ่านเกณฑ์'}
+                        {plan ? `${direction ?? ''} · ${plan.title}` : 'กำลังประมวลผลแผนเทรดรอบถัดไป'}
                       </h2>
                     </div>
                   </div>
                   {plan && (
                     <div className="flex flex-wrap gap-2">
                       <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300">
-                        AI: {Math.round(plan.confidence)}/100
+                        AI: {Math.round(plan.confidence)}%
                       </span>
                     </div>
                   )}
@@ -707,7 +721,16 @@ export default function UserDashboard() {
                     <div className="grid gap-2.5 grid-cols-3">
                       <PriceLevel label="Entry" value={plan.entry} tone="entry" />
                       <PriceLevel label="Stop Loss" value={plan.stopLoss} tone="sl" />
-                      <PriceLevel label="Take Profit" value={plan.takeProfit} tone="tp" />
+                      <PriceLevel label="TP1 ($10-12)" value={plan.takeProfit} tone="tp" />
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-xs">
+                      <span className="font-bold text-emerald-400 flex items-center gap-1">
+                        🛡️ Break-Even Protection:
+                      </span>
+                      <span className="text-neutral-300 font-medium">
+                        เมื่อราคาบวก +$5.00 เลื่อน SL บังทุนทันที (ความเสี่ยง 0%)
+                      </span>
                     </div>
 
                     <div className="rounded-lg border border-neutral-800 bg-neutral-955/40 p-3.5 text-xs leading-5 text-neutral-300">
@@ -717,35 +740,39 @@ export default function UserDashboard() {
                 ) : (
                   <div className="py-8 text-center">
                     <Clock3 className="mx-auto h-8 w-8 text-neutral-600 animate-pulse" />
-                    <p className="mt-2 text-sm font-semibold text-neutral-200">รอราคาเข้าเงื่อนไขโซนสวย</p>
+                    <p className="mt-2 text-sm font-semibold text-neutral-200">กำลังคำนวณรอบราคาถัดไป</p>
+                    <p className="mt-1 text-xs text-neutral-500">ระบบจะนำแผนเข้าทำกำไรขึ้นแสดงผลทันที</p>
                   </div>
                 )}
               </section>
             );
           })()}
 
-          {/* 2. Market Structure & Trend Confluence (BACK IN RIGHT COLUMN) */}
+          {/* 2. Market Structure & Trend Confluence (ภาพรวมสัญญาณเทรนด์ขาขึ้น/ขาลง ทุก Timeframe) */}
           <section className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-3">
             <div className="flex items-center gap-2 border-b border-neutral-800 pb-2.5">
               <Activity className="h-4 w-4 text-amber-400" />
-              <h3 className="font-bold text-sm text-neutral-100">🎯 เทรนด์ตลาด & โครงสร้างราคา (MTF Confluence)</h3>
+              <h3 className="font-bold text-sm text-neutral-100">🎯 ภาพรวมสัญญาณเทรนด์ตลาด (MTF Confluence)</h3>
             </div>
             <div className="grid grid-cols-5 gap-1.5 text-center">
-              {Object.entries(market?.timeframeBiases ?? {}).map(([timeframe, bias]) => (
-                <div key={timeframe} className="rounded-lg border border-neutral-800/80 bg-neutral-955/60 p-2">
-                  <p className="text-[10px] text-neutral-500 font-bold">{timeframe}</p>
-                  <p className={`mt-0.5 text-xs font-black ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-400' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-400' : 'text-neutral-400'}`}>
-                    {biasLabel[bias ?? 'NEUTRAL'] ?? bias}
-                  </p>
-                </div>
-              ))}
+              {['D1', 'H4', 'H1', 'M15', 'M5'].map((timeframe) => {
+                const bias = (market?.timeframeBiases as Record<string, string | undefined> | undefined)?.[timeframe];
+                return (
+                  <div key={timeframe} className="rounded-lg border border-neutral-800/80 bg-neutral-955/60 p-2">
+                    <p className="text-[10px] text-neutral-500 font-bold">{timeframe}</p>
+                    <p className={`mt-0.5 text-xs font-black ${bias === 'BUY' || bias === 'BULLISH' ? 'text-emerald-400' : bias === 'SELL' || bias === 'BEARISH' ? 'text-rose-400' : 'text-neutral-400'}`}>
+                      {biasLabel[bias ?? 'NEUTRAL'] ?? bias ?? 'เป็นกลาง'}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2.5">
                 <p className="flex items-center gap-1 text-xs font-bold text-emerald-400"><TrendingUp className="h-3.5 w-3.5" /> 🟢 แนวรับ (Support)</p>
                 <div className="mt-1.5 space-y-1 text-xs">
-                  {supportZones.length ? supportZones.slice(0, 2).map((zone, index) => (
+                  {supportZones.length ? supportZones.slice(0, 2).map((zone: any, index: number) => (
                     <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
                       <span>{zone.timeframe || 'Key'}</span>
                       <span className="font-bold text-emerald-300">${formatPrice(zone.priceMax)}</span>
@@ -757,7 +784,7 @@ export default function UserDashboard() {
               <div className="rounded-lg border border-rose-500/20 bg-rose-950/20 p-2.5">
                 <p className="flex items-center gap-1 text-xs font-bold text-rose-400"><TrendingDown className="h-3.5 w-3.5" /> 🔴 แนวต้าน (Resistance)</p>
                 <div className="mt-1.5 space-y-1 text-xs">
-                  {resistanceZones.length ? resistanceZones.slice(0, 2).map((zone, index) => (
+                  {resistanceZones.length ? resistanceZones.slice(0, 2).map((zone: any, index: number) => (
                     <div key={zone.id ?? index} className="flex justify-between font-mono text-neutral-300">
                       <span>{zone.timeframe || 'Key'}</span>
                       <span className="font-bold text-rose-300">${formatPrice(zone.priceMin)}</span>
@@ -771,65 +798,25 @@ export default function UserDashboard() {
       </div>
 
       {/* FULL-WIDTH SECOND ROW: LIST OF CANDIDATE TRADE PLANS (5 PLANS IN HORIZONTAL GRID) */}
-      {(() => {
-        const proactiveList = (market?.proactivePlans || []).map((p: any) => ({
-          id: p.id || `proactive-${p.entry}`,
-          type: p.type || (p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT'),
-          title: p.title || `แผน ${p.type || p.direction} ย่อ/เด้งรับโซน`,
-          entry: Number(p.entry),
-          stopLoss: Number(p.stopLoss),
-          takeProfit: Number(p.takeProfit || p.takeProfit1),
-          confidence: Number(p.confidence || 88),
-          reason: p.reason || p.notes,
-          direction: p.type?.includes('BUY') || p.direction === 'BUY' ? 'BUY' : 'SELL',
-        }));
-
-        const suggestedList = (stats?.suggestedPlans || [])
-          .filter((p: any) => p.result === 'PLAN')
-          .map((p: any) => ({
-            id: p.id,
-            type: p.direction === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT',
-            title: p.notes || `แผน ${p.direction} รอราคาเข้า`,
-            entry: Number(p.entry),
-            stopLoss: Number(p.stopLoss),
-            takeProfit: Number(p.takeProfit1 || p.takeProfit),
-            confidence: Number(p.confidence || 88),
-            reason: p.notes,
-            direction: p.direction,
-          }));
-
-        const planMap = new Map<string, any>();
-        [...proactiveList, ...suggestedList].forEach((item) => {
-          const key = `${item.direction}_${item.entry.toFixed(2)}`;
-          if (!planMap.has(key)) planMap.set(key, item);
-        });
-
-        const currentPx = market?.currentPrice ?? 0;
-        const candidatePlans = Array.from(planMap.values()).sort((a, b) => {
-          if (a.id === pinnedPlanId) return -1;
-          if (b.id === pinnedPlanId) return 1;
-          return Math.abs(a.entry - currentPx) - Math.abs(b.entry - currentPx);
-        });
-
-        return (
-          <section id="candidate-plans-list" className="w-full rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-amber-400" />
-                <h3 className="text-base font-bold text-neutral-100">
-                  📋 แผนเทรดสำรอง / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
-                </h3>
-              </div>
-              <span className="text-xs text-neutral-400">
-                เรียงเป็นแถวอิสระ สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการให้อยู่ซ้ายสุดได้
-              </span>
-            </div>
+      <section id="candidate-plans-list" className="w-full rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-amber-400" />
+            <h3 className="text-base font-bold text-neutral-100">
+              📋 แผนเทรดสำรอง / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
+            </h3>
+          </div>
+          <span className="text-xs text-neutral-400">
+            เรียงเป็นแถวอิสระ สามารถคลิก <Pin className="inline h-3 w-3 text-amber-400" /> ปักหมุดแผนที่ต้องการให้อยู่ซ้ายสุดได้
+          </span>
+        </div>
 
             {candidatePlans.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
                 {candidatePlans.map((item, idx) => {
                   const isBuyPlan = item.direction === 'BUY';
-                  const distToEntry = Math.abs((market?.currentPrice ?? 0) - item.entry).toFixed(2);
+                  const currentPx = stats?.marketIntelligence?.XAUUSD?.currentPrice ?? 0;
+                  const distToEntry = Math.abs(currentPx - item.entry).toFixed(2);
                   const isPinned = item.id === pinnedPlanId;
                   const isEarlyTrend = item.isEarlyTrend || idx === 0 || item.reason?.includes('CHoCH') || item.reason?.includes('ต้นเทรนด์');
 
@@ -908,8 +895,6 @@ export default function UserDashboard() {
               <p className="text-center py-4 text-xs text-neutral-500">ไม่มีแผนสำรองค้างในระบบ</p>
             )}
           </section>
-        );
-      })()}
 
       {/* BOTTOM SECTION: PERFORMANCE STATISTICS & TRACK RECORD */}
       <div id="stats-overview" className="mt-6 space-y-6">

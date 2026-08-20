@@ -250,16 +250,20 @@ export class SmartTrendStructureService {
       overallSignal = 'SELL';
     }
 
-    // Exhaustion is a veto, not a direction generator. A local M5 pattern must
-    // never manufacture a counter-trend trade when the higher timeframes are
-    // neutral or disagree.
+    // Exhaustion recognition:
+    // If higher timeframe trend aligns, use exhaustion bounce to trigger dip-buy or rally-sell.
+    // If counter-trend, use exhaustion to veto/wait rather than entering into danger.
     if (exhaustion.isTopExhaustion) {
-      if (overallSignal === 'BUY' || h1Bias.bias !== 'BEARISH' || m15Bias.bias !== 'BEARISH') {
+      if (overallSignal === 'BUY') {
         overallSignal = 'WAIT';
+      } else if (overallSignal === 'WAIT' && h1Bias.bias === 'BEARISH') {
+        overallSignal = 'SELL';
       }
     } else if (exhaustion.isBottomExhaustion) {
-      if (overallSignal === 'SELL' || h1Bias.bias !== 'BULLISH' || m15Bias.bias !== 'BULLISH') {
+      if (overallSignal === 'SELL') {
         overallSignal = 'WAIT';
+      } else if (overallSignal === 'WAIT' && h1Bias.bias === 'BULLISH') {
+        overallSignal = 'BUY';
       }
     }
 
@@ -336,11 +340,13 @@ export class SmartTrendStructureService {
       atr = trs.reduce((a, b) => a + b, 0) / 14;
     }
 
-    // SAFE SCALPING RISK/REWARD GUARD for High Win-Rate (Win-Rate Focused)
-    // Dynamic SL placed safely beyond structure ($2.80 - $3.80)
-    // Quick Scalp TP ($2.50 - $3.20 / 25-32 pips) easily hit on support/resistance bounces before reversal
-    const slBuffer = Math.max(2.80, Math.min(3.80, atr * 0.9));
-    const tpDistance = Math.max(2.50, Math.min(3.20, slBuffer * 0.95)); // Safe Scalp target ($2.50 - $3.20)
+    // SAFE RISK/REWARD GUARD for High Win-Rate ($10 - $20 Targets)
+    // Dynamic SL placed safely beyond structure ($5.00 - $6.50)
+    // TP1 ($10.00 - $12.00 / 100-120 pips) for fast profit lock
+    // TP2 ($18.00 - $22.00 / 180-220 pips) for trend runner
+    const slBuffer = Math.max(5.00, Math.min(6.50, atr * 1.4));
+    const tpDistance = Math.max(10.00, Math.min(12.00, slBuffer * 2.0)); // TP1 ($10 - $12)
+    const tp2Distance = Math.max(18.00, Math.min(22.00, slBuffer * 3.5)); // TP2 ($18 - $22)
 
     let entryTarget = currentPrice;
     let stopLossTarget = currentPrice;
@@ -348,29 +354,29 @@ export class SmartTrendStructureService {
     let takeProfitTarget2 = currentPrice;
 
     if (overallSignal === 'SELL' && exhaustion.isTopExhaustion) {
-      // Entry near peak resistance with tight SL just above peak
+      // Entry near peak resistance with safe SL above peak
       entryTarget = Number((currentPrice + 0.50).toFixed(2));
-      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.00, entryTarget + 2.80)).toFixed(2));
+      stopLossTarget = Number((Math.max(exhaustion.peakPrice + 1.50, entryTarget + slBuffer)).toFixed(2));
       takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
-      takeProfitTarget2 = Number((entryTarget - Math.min(5.50, tpDistance * 1.7)).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget - tp2Distance).toFixed(2));
     } else if (overallSignal === 'BUY' && exhaustion.isBottomExhaustion) {
-      // Entry near trough support with tight SL just below trough
+      // Entry near trough support with safe SL below trough
       entryTarget = Number((currentPrice - 0.50).toFixed(2));
-      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.00, entryTarget - 2.80)).toFixed(2));
+      stopLossTarget = Number((Math.min(exhaustion.troughPrice - 1.50, entryTarget - slBuffer)).toFixed(2));
       takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
-      takeProfitTarget2 = Number((entryTarget + Math.min(5.50, tpDistance * 1.7)).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget + tp2Distance).toFixed(2));
     } else if (overallSignal === 'BUY') {
       // Entry at nearest support or conservative limit zone
-      entryTarget = nearestSup > currentPrice - 1.50 ? Number((currentPrice - 1.80).toFixed(2)) : nearestSup;
+      entryTarget = nearestSup > currentPrice - 2.50 ? Number((currentPrice - 1.50).toFixed(2)) : nearestSup;
       stopLossTarget = Number((entryTarget - slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget + tpDistance).toFixed(2));
-      takeProfitTarget2 = Number((entryTarget + Math.min(5.50, tpDistance * 1.7)).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget + tp2Distance).toFixed(2));
     } else if (overallSignal === 'SELL') {
       // Entry at nearest resistance or conservative limit zone
-      entryTarget = nearestRes < currentPrice + 1.50 ? Number((currentPrice + 1.80).toFixed(2)) : nearestRes;
+      entryTarget = nearestRes < currentPrice + 2.50 ? Number((currentPrice + 1.50).toFixed(2)) : nearestRes;
       stopLossTarget = Number((entryTarget + slBuffer).toFixed(2));
       takeProfitTarget = Number((entryTarget - tpDistance).toFixed(2));
-      takeProfitTarget2 = Number((entryTarget - Math.min(5.50, tpDistance * 1.7)).toFixed(2));
+      takeProfitTarget2 = Number((entryTarget - tp2Distance).toFixed(2));
     } else {
       // WAIT is a real no-trade state. Neutral levels prevent downstream code
       // from accidentally turning an undecided market into a BUY plan.
