@@ -46,7 +46,7 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
@@ -62,15 +62,47 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Admin permission required' }, { status: 403 });
     }
 
-    // Delete all paper trades and signals
+    const { searchParams } = new URL(request.url);
+    const mode = searchParams.get('mode') || 'all';
+
+    if (mode === 'active_plan_only') {
+      await prisma.systemSetting.deleteMany({
+        where: {
+          key: {
+            in: [
+              'ACTIVE_ORDER_PLAN_XAUUSD',
+              'ACTIVE_TRADE_TRACKER_XAUUSD',
+              'SHADOW_ORDER_PLANS_XAUUSD',
+            ],
+          },
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        ok: true,
+        message: 'ล้างแคชแผนปัจจุบันเรียบร้อยแล้ว ระบบจะคำนวณแผนใหม่ตามโครงสร้าง MT5 ทันที',
+      });
+    }
+
+    // Full Reset: Delete all paper trades, signals, and reset all evaluation settings
     const [deletedTrades, deletedSignals] = await Promise.all([
       prisma.paperTrade.deleteMany({}),
       prisma.signal.deleteMany({}),
     ]);
 
-    // Clear active plan setting
     await prisma.systemSetting.deleteMany({
-      where: { key: { in: ['ACTIVE_ORDER_PLAN_XAUUSD', 'ACTIVE_TRADE_TRACKER_XAUUSD'] } }
+      where: {
+        key: {
+          in: [
+            'ACTIVE_ORDER_PLAN_XAUUSD',
+            'ACTIVE_TRADE_TRACKER_XAUUSD',
+            'SHADOW_ORDER_PLANS_XAUUSD',
+            'STRATEGY_RESEARCH_REPORT_XAUUSD',
+            'DAILY_CIRCUIT_BREAKER_XAUUSD',
+            'QWEN_BENCHMARK_RECORD_XAUUSD',
+          ],
+        },
+      },
     });
 
     console.log(`[Stats Reset] Deleted ${deletedTrades.count} trades, ${deletedSignals.count} signals.`);
@@ -78,7 +110,7 @@ export async function DELETE() {
     return NextResponse.json({
       success: true,
       ok: true,
-      message: 'รีเซ็ตสถิติการเทรดและประวัติสัญญาณทั้งหมดเรียบร้อยแล้ว พร้อมวัดผลใหม่ 100%',
+      message: 'ล้างประวัติการเทรดและสถิติเดิมทั้งหมดเรียบร้อยแล้ว ระบบเริ่มวัดผลใหม่ด้วยเกณฑ์ Win Rate > 75%',
       deletedTrades: deletedTrades.count,
       deletedSignals: deletedSignals.count,
     });
