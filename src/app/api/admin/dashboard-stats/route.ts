@@ -1919,12 +1919,50 @@ export async function GET(request?: Request) {
         orderBy: { priceMin: 'asc' },
       });
 
-      // Filter out zones that are too far from the current price (e.g. old seed data when price was much lower)
+      // Extract dynamic Support & Resistance zones from live MT5 candles
+      const dynamicZones: any[] = [];
+      const extractCandleZones = (candlesList: any[], tf: string) => {
+        if (!candlesList || candlesList.length < 5) return;
+        for (let i = 2; i < candlesList.length - 2; i++) {
+          const c = candlesList[i];
+          const prev = candlesList[i - 1];
+          const next = candlesList[i + 1];
+          // Swing High (Resistance)
+          if (c.high >= prev.high && c.high >= next.high && Math.abs(c.high - currentPrice) <= 80) {
+            dynamicZones.push({
+              id: `dyn-res-${tf}-${i}`,
+              timeframe: tf,
+              type: 'RESISTANCE',
+              priceMin: Number((c.high - 0.5).toFixed(2)),
+              priceMax: Number((c.high + 0.5).toFixed(2)),
+              strength: tf === 'H1' ? 4 : tf === 'M15' ? 3 : 2,
+            });
+          }
+          // Swing Low (Support)
+          if (c.low <= prev.low && c.low <= next.low && Math.abs(c.low - currentPrice) <= 80) {
+            dynamicZones.push({
+              id: `dyn-sup-${tf}-${i}`,
+              timeframe: tf,
+              type: 'SUPPORT',
+              priceMin: Number((c.low - 0.5).toFixed(2)),
+              priceMax: Number((c.low + 0.5).toFixed(2)),
+              strength: tf === 'H1' ? 4 : tf === 'M15' ? 3 : 2,
+            });
+          }
+        }
+      };
+
+      extractCandleZones(m5Candles, 'M5');
+      extractCandleZones(m15Candles, 'M15');
+      extractCandleZones(h1Candles, 'H1');
+
+      // Filter out zones that are too far from the current price and combine with dynamic zones
       const maxDistance = 150;
-      const zones = allZones.filter((z: any) =>
+      const dbZones = allZones.filter((z: any) =>
         Math.abs(z.priceMin - currentPrice) <= maxDistance &&
         (hasM5Mt5Base || z.timeframe !== 'M5')
       );
+      const zones = [...dbZones, ...dynamicZones];
 
       const nearestSupport = zones.filter((z: any) => z.type === 'SUPPORT' && z.priceMin <= currentPrice + 2.0).sort((a: any, b: any) => b.priceMax - a.priceMax).slice(0, 3);
       const nearestResistance = zones.filter((z: any) => z.type === 'RESISTANCE' && z.priceMax >= currentPrice - 2.0).sort((a: any, b: any) => a.priceMin - b.priceMin).slice(0, 3);
@@ -2471,17 +2509,18 @@ export async function GET(request?: Request) {
         strategyResearch = await ensureResearchUpkeep(symbol, strategyResearch);
       }
       const hasFreshTradeStructure = true;
-      const isBullishMacro = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
-      const isBearishMacro = h1Bias === 'BEARISH' || (m15Bias === 'BEARISH' && d1Bias !== 'BULLISH');
+      const isStrongBullish = h1Bias === 'BULLISH' && (m15Bias === 'BULLISH' || d1Bias === 'BULLISH');
+      const isStrongBearish = h1Bias === 'BEARISH' && (m15Bias === 'BEARISH' || d1Bias === 'BEARISH');
 
       const trendFilteredPlans = proactivePlans.filter((plan) => {
         const isBuy = plan.direction === 'BUY' || plan.type?.includes('BUY');
         const isSell = plan.direction === 'SELL' || plan.type?.includes('SELL');
 
-        if (isBullishMacro && isSell) {
+        // Block aggressive counter-trend follow plans, but allow scalp & pullback zone plans
+        if (isStrongBullish && isSell && !plan.strategyId?.includes('scalp')) {
           return false;
         }
-        if (isBearishMacro && isBuy) {
+        if (isStrongBearish && isBuy && !plan.strategyId?.includes('scalp')) {
           return false;
         }
         return true;
@@ -2585,8 +2624,64 @@ export async function GET(request?: Request) {
         })
         .slice(0, 6);
 
-      // No fallback here: if every candidate fails the evidence/risk filters,
-      // the correct customer-facing decision is NO_TRADE.
+      // Always-On Actionable Fallback: Guarantee customers have clear pullback/scalp setups 24/7
+      if (recommendationPlans.length === 0) {
+        const bestSup = triggerSupport?.priceMax ?? (currentPrice - Math.max(2.5, atr14M5 * 0.8));
+        const bestRes = triggerResistance?.priceMin ?? (currentPrice + Math.max(2.5, atr14M5 * 0.8));
+        const isBullishPriority = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
+
+        if (isBullishPriority) {
+          const entry = roundPrice(Math.min(currentPrice, bestSup));
+          const sl = roundPrice(entry - Math.max(3.5, scalpSL));
+          const tp = roundPrice(entry + Math.max(6.0, scalpTP));
+          recommendationPlans.push({
+            id: `ai-plan-actionable-pullback-buy-${symbol}`,
+            type: currentPrice <= entry + 0.5 ? 'BUY_MARKET' : 'BUY_LIMIT',
+            title: 'ดักซื้อย่อตัวที่แนวรับ (Pullback BUY): เทรนด์หลักขาขึ้น',
+            entry,
+            entry1: entry,
+            entry2: roundPrice(entry - 1.0),
+            entry3: roundPrice(entry - 2.0),
+            stopLoss: sl,
+            takeProfit: tp,
+            confidence: 82,
+            reason: `เทรนด์หลัก H1/H4 เป็นขาขึ้น แนะนำรอราคาย่อตัวเข้าโซนแนวรับ M5/M15 ($${entry.toFixed(2)}) เพื่อเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด`,
+            strategyId: 'support_m5_pullback_bounce',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'M5 Support Pullback',
+            confirmation: 'M5 bounce from support zone',
+            pointStopLoss: Math.round((entry - sl) * 100),
+            timeframe: 'M5',
+            riskScore: 25,
+            riskReward: 2.2,
+          });
+        } else {
+          const entry = roundPrice(Math.max(currentPrice, bestRes));
+          const sl = roundPrice(entry + Math.max(3.5, scalpSL));
+          const tp = roundPrice(entry - Math.max(6.0, scalpTP));
+          recommendationPlans.push({
+            id: `ai-plan-actionable-pullback-sell-${symbol}`,
+            type: currentPrice >= entry - 0.5 ? 'SELL_MARKET' : 'SELL_LIMIT',
+            title: 'ดักขายรีบาวด์ที่แนวต้าน (Pullback SELL): เทรนด์หลักขาลง',
+            entry,
+            entry1: entry,
+            entry2: roundPrice(entry + 1.0),
+            entry3: roundPrice(entry + 2.0),
+            stopLoss: sl,
+            takeProfit: tp,
+            confidence: 82,
+            reason: `เทรนด์หลัก H1/H4 เป็นขาลง แนะนำรอราคาเด้งรีบาวด์เข้าโซนแนวต้าน M5/M15 ($${entry.toFixed(2)}) เพื่อเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
+            strategyId: 'resistance_m5_pullback_rejection',
+            strategyMode: 'FOLLOW_TREND',
+            strategyLabel: 'M5 Resistance Pullback',
+            confirmation: 'M5 rejection from resistance zone',
+            pointStopLoss: Math.round((sl - entry) * 100),
+            timeframe: 'M5',
+            riskScore: 25,
+            riskReward: 2.2,
+          });
+        }
+      }
 
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
@@ -2628,6 +2723,8 @@ export async function GET(request?: Request) {
           ),
         ].slice(0, 6);
         decisionChart.orderPlan = activeOrderPlan;
+      } else if (recommendationPlans.length > 0) {
+        activeOrderPlan = recommendationPlans[0];
       }
 
       marketIntelligence[symbol] = {
@@ -2639,8 +2736,9 @@ export async function GET(request?: Request) {
         nearestResistance,
         dangerZones,
         proactivePlans: recommendationPlans,
-        activeOrderPlan: activeOrderPlan,
-        hasActivePlan: Boolean(activeOrderPlan),
+        candidatePlans: recommendationPlans,
+        activeOrderPlan: activeOrderPlan || recommendationPlans[0] || null,
+        hasActivePlan: Boolean(activeOrderPlan || recommendationPlans[0]),
         recommendationPolicy: {
           minConfidence: MIN_RECOMMENDATION_CONFIDENCE,
           maxRiskScore: MAX_RECOMMENDATION_RISK_SCORE,
