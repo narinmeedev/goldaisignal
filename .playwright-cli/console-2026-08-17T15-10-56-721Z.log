@@ -1,0 +1,6 @@
+[     399ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ https://goldaisig.com/login:0
+[   21190ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://goldaisig.com/api/auth/login:0
+[   27474ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://goldaisig.com/api/auth/login:0
+[   35037ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://goldaisig.com/api/auth/login:0
+[   52973ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://goldaisig.com/api/admin/dashboard-stats?asset=XAUUSD&public=true:0
+[   53504ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://goldaisig.com/api/admin/dashboard-stats?asset=XAUUSD&public=true:0

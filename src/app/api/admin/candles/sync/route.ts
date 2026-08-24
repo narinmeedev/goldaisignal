@@ -50,34 +50,6 @@ const runPlanAutomation = async (symbol: string, timeframe: string, latestChange
     return 'skipped';
   }
 
-  let shouldRunQwen = timeframe === 'M15' && latestChanged;
-
-  if (!shouldRunQwen) {
-    try {
-      const lastSetting = await prisma.systemSetting.findUnique({
-        where: { key: 'LAST_QWEN_ANALYSIS_TIME' },
-      });
-      const lastTime = lastSetting ? parseInt(lastSetting.value) : 0;
-      if (Date.now() - lastTime >= 15 * 60 * 1000) {
-        shouldRunQwen = true;
-      }
-    } catch {}
-  }
-
-  if (shouldRunQwen) {
-    try {
-      const qwenUrl = new URL('/api/admin/qwen-analyze', getAutomationBaseUrl());
-      fetch(qwenUrl, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => {});
-      console.info('[Plan Automation] 15-minute interval / M15 candle close triggered automatic Qwen AI re-analysis.');
-    } catch (qwenErr) {
-      console.warn('[Plan Automation] Automatic Qwen re-analysis skipped:', qwenErr);
-    }
-  }
-
   const automationUrl = new URL('/api/admin/dashboard-stats', getAutomationBaseUrl());
   automationUrl.searchParams.set('asset', 'XAUUSD');
   automationUrl.searchParams.set('public', 'true');

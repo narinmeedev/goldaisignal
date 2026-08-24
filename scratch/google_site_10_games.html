@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #090D16;
+      color: #E2E8F0;
+      font-family: 'Prompt', 'Kanit', sans-serif;
+      line-height: 1.7;
+      padding: 24px 16px;
+      font-size: 15px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+
+    /* Hero Header */
+    .hero-banner {
+      background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 36px 20px;
+      text-align: center;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    .badge-pill {
+      display: inline-block;
+      background: linear-gradient(90deg, #F59E0B, #EAB308);
+      color: #000;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 4px 16px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+      letter-spacing: 0.5px;
+    }
+    .hero-title {
+      color: #F8FAFC;
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin-bottom: 12px;
+    }
+    .hero-subtitle {
+      color: #94A3B8;
+      font-size: 15px;
+      max-width: 740px;
+      margin: 0 auto 20px auto;
+    }
+    .quick-nav {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 15px;
+    }
+    .quick-nav a {
+      background: #1E293B;
+      border: 1px solid #475569;
+      color: #38BDF8;
+      text-decoration: none;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-weight: 500;
+      transition: 0.2s;
+    }
+    .quick-nav a:hover {
+      background: #38BDF8;
+      color: #000;
+    }
+
+    /* Game Card */
+    .game-card {
+      background: #111A2E;
+      border: 1px solid #233554;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 25px;
+      transition: transform 0.2s;
+    }
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid #1E293B;
+      padding-bottom: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .rank-tag {
+      background: #3B82F6;
+      color: #FFF;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+    .game-title {
+      color: #FFF;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .game-meta {
+      color: #94A3B8;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .score-box {
+      background: linear-gradient(135deg, #F59E0B, #D97706);
+      padding: 8px 18px;
+      border-radius: 10px;
+      text-align: center;
+      min-width: 90px;
+    }
+    .score-label {
+      font-size: 11px;
+      color: #000;
+      font-weight: 700;
+      display: block;
+    }
+    .score-val {
+      font-size: 22px;
+      color: #000;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    /* Overview text */
+    .game-overview {
+      color: #CBD5E1;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+
+    /* Meters */
+    .meter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .meter-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .meter-track {
+      background: #1E293B;
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .meter-fill {
+      height: 100%;
+      border-radius: 4px;
+    }
+
+    /* Pros Cons */
+    .pro-con-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .pro-box {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .con-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .box-h {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    ul.check-list {
+      padding-left: 18px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #CBD5E1;
+    }
+
+    /* Tip pill */
+    .tip-pill {
+      background: #1E293B;
+      border-left: 3px solid #38BDF8;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #94A3B8;
+    }
+    .tip-pill strong { color: #38BDF8; }
+
+    /* Summary Table */
+    .table-box {
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-radius: 14px;
+      padding: 24px;
+      margin: 30px 0;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+    th {
+      background: #1E293B;
+      color: #94A3B8;
+      padding: 10px;
+      border-bottom: 2px solid #334155;
+    }
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #1E293B;
+    }
+
+    .footer-note {
+      text-align: center;
+      color: #64748B;
+      font-size: 12px;
+      padding-top: 20px;
+      border-top: 1px solid #1E293B;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Hero Header -->
+    <div class="hero-banner">
+      <div class="badge-pill">⭐ GAMING MASTERPIECE 2026</div>
+      <h1 class="hero-title">10 สุดยอดเกมยอดนิยมระดับมาสเตอร์พีซสำหรับเกมเมอร์</h1>
+      <p class="hero-subtitle">รวบรวมและวิเคราะห์เจาะลึก 10 เกมคุณภาพสูงที่ได้รับการยกย่องสูงสุดในวงการ ครอบคลุมทั้งแนว RPG, วางแผนกลยุทธ์, โอเพนเวิลด์ และแอ็กชัน</p>
+      <div class="quick-nav">
+        <a href="#g1">#1 Baldur's Gate 3</a>
+        <a href="#g2">#2 Elden Ring</a>
+        <a href="#g3">#3 Cyberpunk 2077</a>
+        <a href="#g4">#4 Red Dead 2</a>
+        <a href="#g5">#5 Civilization VI</a>
+        <a href="#g6">#6 Wukong</a>
+        <a href="#g7">#7 God of War</a>
+        <a href="#g8">#8 Helldivers 2</a>
+        <a href="#g9">#9 Cities 2</a>
+        <a href="#g10">#10 The Witcher 3</a>
+      </div>
+    </div>
+
+    <!-- 1. Baldur's Gate 3 -->
+    <div class="game-card" id="g1">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag" style="background:#F59E0B; color:#000;">อันดับ 1 • Game of the Year</span>
+          <h2 class="game-title">Baldur’s Gate 3</h2>
+          <div class="game-meta">ผู้พัฒนา: Larian Studios | แนวเกม: Tactical Turn-Based RPG | แพลตฟอร์ม: PC, PS5, Xbox Series X/S</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.8</span>
+        </div>
+      </div>
+      <p class="game-overview">สุดยอดเกม RPG แห่งทศวรรษที่สร้างจากระบบ Dungeons & Dragons ฉบับสมบูรณ์ มอบอิสระในการตัดสินใจระดับไร้ขีดจำกัด การกระทำทุกอย่างส่งผลต่อบทสนทนาและชะตากรรมของตัวละครนับร้อยรูปแบบ</p>
+      <div class="meter-list">
+        <div>
+          <div class="meter-row"><span>อิสระและระบบการตัดสินใจ (Freedom & Choice)</span><strong style="color:#38BDF8;">10/10</strong></div>
+          <div class="meter-track"><div class="meter-fill" style="background:#38BDF8; width:100%;"></div></div>
+        </div>
+        <div>
+          <div class="meter-row"><span>ระบบการต่อสู้เชิงกลยุทธ์ (Tactical Combat)</span><strong style="color:#A855F7;">9.8/10</strong></div>
+          <div class="meter-track"><div class="meter-fill" style="background:#A855F7; width:98%;"></div></div>
+        </div>
+      </div>
+      <div class="pro-con-grid">
+        <div class="pro-box"><div class="box-h" style="color:#34D399;">✅ จุดเด่น</div><ul class="check-list"><li>เนื้อเรื่องลุ่มลึก เล่นซ้ำได้หลายรอบไม่ซ้ำกัน</li><li>รองรับ Co-op กับเพื่อนได้สูงสุด 4 คน</li></ul></div>
+        <div class="con-box"><div class="box-h" style="color:#F87171;">⚠️ ข้อควรพิจารณา</div><ul class="check-list"><li>ระบบ D&D ค่อนข้างซับซ้อนสำหรับมือใหม่</li><li>ใช้เวลาเล่นนานกว่า 100+ ชั่วโมงต่อรอบ</li></ul></div>
+      </div>
+      <div class="tip-pill"><strong>💡 คำแนะนำ:</strong> สำรวจทุกซอกทุกมุมและพูดคุยกับสัตว์/วิญญาณ จะพบเควสต์ลับที่คาดไม่ถึง</div>
+    </div>
+
+    <!-- 2. Elden Ring -->
+    <div class="game-card" id="g2">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 2 • Action RPG</span>
+          <h2 class="game-title">Elden Ring</h2>
+          <div class="game-meta">ผู้พัฒนา: FromSoftware | แนวเกม: Open World Action RPG / Soulslike | แพลตฟอร์ม: PC, PlayStation, Xbox</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.7</span>
+        </div>
+      </div>
+      <p class="game-overview">การผจญภัยในดินแดน The Lands Between ที่ยิ่งใหญ่ตระการตา ผสมผสานความท้าทายระดับสูงเข้ากับการสำรวจโลกโอเพนเวิลด์ได้อย่างลงตัวไร้ที่ติ</p>
+      <div class="meter-list">
+        <div>
+          <div class="meter-row"><span>การออกแบบโลกและการสำรวจ (World Design)</span><strong style="color:#38BDF8;">9.9/10</strong></div>
+          <div class="meter-track"><div class="meter-fill" style="background:#38BDF8; width:99%;"></div></div>
+        </div>
+        <div>
+          <div class="meter-row"><span>ความท้าทายและความลื่นไหล (Boss Fights)</span><strong style="color:#F59E0B;">9.6/10</strong></div>
+          <div class="meter-track"><div class="meter-fill" style="background:#F59E0B; width:96%;"></div></div>
+        </div>
+      </div>
+      <div class="pro-con-grid">
+        <div class="pro-box"><div class="box-h" style="color:#34D399;">✅ จุดเด่น</div><ul class="check-list"><li>ดันเจี้ยนและบอสลับซ่อนอยู่มากมาย</li><li>ปรับแต่งสายการเล่น (Build) ได้หลากหลายมาก</li></ul></div>
+        <div class="con-box"><div class="box-h" style="color:#F87171;">⚠️ ข้อควรพิจารณา</div><ul class="check-list"><li>ไม่มีระดับความยากให้ปรับ อาศัยความอดทน</li></ul></div>
+      </div>
+      <div class="tip-pill"><strong>💡 คำแนะนำ:</strong> หากพบบอสที่สู้ไม่ไหว ให้ขี่ม้าออกไปสำรวจดันเจี้ยนอื่นเพื่อฟาร์มเลเวลก่อน</div>
+    </div>
+
+    <!-- 3. Cyberpunk 2077 -->
+    <div class="game-card" id="g3">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 3 • Sci-Fi RPG</span>
+          <h2 class="game-title">Cyberpunk 2077: Phantom Liberty</h2>
+          <div class="game-meta">ผู้พัฒนา: CD Projekt Red | แนวเกม: Sci-Fi Action RPG | แพลตฟอร์ม: PC, PS5, Xbox Series X/S</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.5</span>
+        </div>
+      </div>
+      <p class="game-overview">เมือง Night City ในแบบฉบับปรับปรุงใหม่ 2.0 พร้อมเนื้อเรื่องสายลับสุดระทึกในภาคเสริม Phantom Liberty กราฟิกและระบบ Ray Tracing ล้ำสมัยที่สุดในยุค</p>
+      <div class="pro-con-grid">
+        <div class="pro-box"><div class="box-h" style="color:#34D399;">✅ จุดเด่น</div><ul class="check-list"><li>กราฟิกและเพลงประกอบสไตล์ Cyberpunk ระดับท็อป</li><li>ระบบการยิงและ Cyberware ลื่นไหลสะใจ</li></ul></div>
+        <div class="con-box"><div class="box-h" style="color:#F87171;">⚠️ ข้อควรพิจารณา</div><ul class="check-list"><li>กินสเปกฮาร์ดแวร์สูง ต้องใช้การ์ดจอที่รองรับ DLSS</li></ul></div>
+      </div>
+      <div class="tip-pill"><strong>💡 คำแนะนำ:</strong> อัปเกรด Cyberware เสริมความคล่องตัว (Air Dash) จะทำให้การเคลื่อนที่สนุกขึ้นมาก</div>
+    </div>
+
+    <!-- 4. Red Dead Redemption 2 -->
+    <div class="game-card" id="g4">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 4 • Cinematic Masterpiece</span>
+          <h2 class="game-title">Red Dead Redemption 2</h2>
+          <div class="game-meta">ผู้พัฒนา: Rockstar Games | แนวเกม: Open World Action-Adventure | แพลตฟอร์ม: PC, PS4, Xbox One</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.9</span>
+        </div>
+      </div>
+      <p class="game-overview">ผลงานศิลปะชิ้นเอกที่จำลองยุคคาวบอยตะวันตกได้อย่างสมจริงที่สุดในประวัติศาสตร์เกม พร้อมบทสรุปของ Arthur Morgan ที่ตราตรึงใจ</p>
+      <div class="pro-con-grid">
+        <div class="pro-box"><div class="box-h" style="color:#34D399;">✅ จุดเด่น</div><ul class="check-list"><li>ความสมจริงของระบบนิเวศ สัตว์ป่า และฟิสิกส์</li><li>เนื้อเรื่องและบทสนทนาระดับรางวัลออสการ์</li></ul></div>
+        <div class="con-box"><div class="box-h" style="color:#F87171;">⚠️ ข้อควรพิจารณา</div><ul class="check-list"><li>จังหวะเกมดำเนินค่อนข้างช้า เหมาะกับคนชอบเสพรายละเอียด</li></ul></div>
+      </div>
+    </div>
+
+    <!-- 5. Civilization VI -->
+    <div class="game-card" id="g5">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 5 • Strategy</span>
+          <h2 class="game-title">Sid Meier’s Civilization VI</h2>
+          <div class="game-meta">ผู้พัฒนา: Firaxis Games | แนวเกม: 4X Turn-Based Strategy | แพลตฟอร์ม: PC, Mac, Consoles, Mobile</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.2</span>
+        </div>
+      </div>
+      <p class="game-overview">เกมวางแผนระดับตำนาน "ขออีกเทิร์นเดียว" สร้างอารยธรรมมนุษย์ตั้งแต่ยุคหินไปจนถึงยุคอวกาศด้วยการทูต วัฒนธรรม วิทยาศาสตร์ หรือการทหาร</p>
+      <div class="pro-con-grid">
+        <div class="pro-box"><div class="box-h" style="color:#34D399;">✅ จุดเด่น</div><ul class="check-list"><li>ใช้สมองในการคิดวิเคราะห์และวางแผนระยะยาว</li><li>เล่นได้เพลิน เหมาะกับผู้ใหญ่สายวางกลยุทธ์</li></ul></div>
+        <div class="con-box"><div class="box-h" style="color:#F87171;">⚠️ ข้อควรพิจารณา</div><ul class="check-list"><li>หนึ่งเกมอาจใช้เวลาหลายชั่วโมงจนลืมเวลา</li></ul></div>
+      </div>
+    </div>
+
+    <!-- 6. Black Myth: Wukong -->
+    <div class="game-card" id="g6">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 6 • Action RPG</span>
+          <h2 class="game-title">Black Myth: Wukong</h2>
+          <div class="game-meta">ผู้พัฒนา: Game Science | แนวเกม: Action RPG | แพลตฟอร์ม: PC, PS5</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.4</span>
+        </div>
+      </div>
+      <p class="game-overview">การเดินทางของ "ผู้ถูกลิขิต" สู่ตำนานไซอิ๋วที่ถูกตีความใหม่ การต่อสู้ด้วยกระบองและวิชาแปลงกายที่รวดเร็ว ดุดัน พร้อมกราฟิก Unreal Engine 5</p>
+    </div>
+
+    <!-- 7. God of War Ragnarök -->
+    <div class="game-card" id="g7">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 7 • Action Adventure</span>
+          <h2 class="game-title">God of War Ragnarök</h2>
+          <div class="game-meta">ผู้พัฒนา: Santa Monica Studio | แนวเกม: Action-Adventure | แพลตฟอร์ม: PC, PS4, PS5</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.6</span>
+        </div>
+      </div>
+      <p class="game-overview">บทสรุปมหากาพย์สงครามเทพเจ้านอร์ส ความสัมพันธ์พ่อลูกระหว่าง Kratos และ Atreus พร้อมฉากต่อสู้ด้วยขวาน Leviathan และดาบ Blades of Chaos</p>
+    </div>
+
+    <!-- 8. Helldivers 2 -->
+    <div class="game-card" id="g8">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 8 • Co-op Shooter</span>
+          <h2 class="game-title">Helldivers 2</h2>
+          <div class="game-meta">ผู้พัฒนา: Arrowhead Game Studios | แนวเกม: Co-op Tactical Shooter | แพลตฟอร์ม: PC, PS5</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.1</span>
+        </div>
+      </div>
+      <p class="game-overview">สุดยอดเกมยิง Co-op กับเพื่อน 4 คนเพื่อกอบกู้ประชาธิปไตยแห่งจักรวาล ความโกลาหลของกระสุนลูกหลงและการเรียกการโจมตีทางอากาศที่ฮาและตื่นเต้น</p>
+    </div>
+
+    <!-- 9. Cities: Skylines II -->
+    <div class="game-card" id="g9">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 9 • Simulation</span>
+          <h2 class="game-title">Cities: Skylines II</h2>
+          <div class="game-meta">ผู้พัฒนา: Colossal Order | แนวเกม: City Builder & Management | แพลตฟอร์ม: PC, Consoles</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">8.8</span>
+        </div>
+      </div>
+      <p class="game-overview">สุดยอดเกมจำลองสร้างและบริหารเมือง ออกแบบเครือข่ายถนน การจราจร ระบบไฟฟ้า สาธารณสุข และเศรษฐกิจในระดับมหภาค</p>
+    </div>
+
+    <!-- 10. The Witcher 3 -->
+    <div class="game-card" id="g10">
+      <div class="card-top">
+        <div>
+          <span class="rank-tag">อันดับ 10 • Fantasy RPG</span>
+          <h2 class="game-title">The Witcher 3: Wild Hunt</h2>
+          <div class="game-meta">ผู้พัฒนา: CD Projekt Red | แนวเกม: Open World Fantasy RPG | แพลตฟอร์ม: PC, PS5, Xbox, Switch</div>
+        </div>
+        <div class="score-box">
+          <span class="score-label">OVERALL</span>
+          <span class="score-val">9.8</span>
+        </div>
+      </div>
+      <p class="game-overview">การเดินทางตามหาบุตรสาวบุญธรรม Ciri ของนักล่าอสูร Geralt of Rivia เนื้อเรื่องรองและเควสต์เสริมที่เขียนบทอย่างยอดเยี่ยมที่สุด</p>
+    </div>
+
+    <!-- Summary Comparison Table -->
+    <div class="table-box">
+      <h2 style="color:#F8FAFC; font-size:18px; margin-bottom:14px;">📊 ตารางสรุปเปรียบเทียบทั้ง 10 เกม</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>อันดับ</th>
+            <th>ชื่อเกม</th>
+            <th>แนวเกม</th>
+            <th>แพลตฟอร์ม</th>
+            <th>ชั่วโมงการเล่นโดยเฉลี่ย</th>
+            <th style="text-align:center;">คะแนน</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>#1</td><td>Baldur’s Gate 3</td><td>Tactical RPG</td><td>PC / PS5 / Xbox</td><td>100+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.8</td></tr>
+          <tr><td>#2</td><td>Elden Ring</td><td>Action RPG</td><td>PC / Console</td><td>80+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.7</td></tr>
+          <tr><td>#3</td><td>Cyberpunk 2077</td><td>Sci-Fi RPG</td><td>PC / PS5 / Xbox</td><td>50+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.5</td></tr>
+          <tr><td>#4</td><td>Red Dead 2</td><td>Open World</td><td>PC / Console</td><td>75+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.9</td></tr>
+          <tr><td>#5</td><td>Civilization VI</td><td>4X Strategy</td><td>All Platforms</td><td>150+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.2</td></tr>
+          <tr><td>#6</td><td>Black Myth: Wukong</td><td>Action RPG</td><td>PC / PS5</td><td>45+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.4</td></tr>
+          <tr><td>#7</td><td>God of War Ragnarök</td><td>Action Adventure</td><td>PC / PS4 / PS5</td><td>40+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.6</td></tr>
+          <tr><td>#8</td><td>Helldivers 2</td><td>Co-op Shooter</td><td>PC / PS5</td><td>เล่นได้เรื่อยๆ</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.1</td></tr>
+          <tr><td>#9</td><td>Cities: Skylines II</td><td>Simulation</td><td>PC / Console</td><td>100+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">8.8</td></tr>
+          <tr><td>#10</td><td>The Witcher 3</td><td>Fantasy RPG</td><td>All Platforms</td><td>90+ ชม.</td><td style="color:#FCD34D; font-weight:700; text-align:center;">9.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer-note">
+      © 2026 GAMETH HUB — รีวิวเกมและคู่มือเกมมิ่งคุณภาพสูงสำหรับเกมเมอร์ทุกคน
+    </div>
+
+  </div>
+</body>
+</html>

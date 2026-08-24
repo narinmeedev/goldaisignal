@@ -96,10 +96,11 @@ type RecommendationPlan = {
   entry3?: number;
   stopLoss: number;
   takeProfit: number;
+  takeProfit2?: number;
   reason: string;
   confidence: number;
   strategyId?: string;
-  strategyMode?: 'SCALP' | 'SWING' | 'FOLLOW_TREND';
+  strategyMode?: 'SCALP' | 'SWING' | 'FOLLOW_TREND' | 'BREAKOUT' | 'BREAKDOWN';
   strategyLabel?: string;
   confirmation?: string;
   pointStopLoss?: number;
@@ -1026,35 +1027,25 @@ const getStableOrderPlan = async (
     return null;
   }
 
-  // Competing directions must separate clearly before a new plan is allowed.
-  const buyCandidates = candidates.filter(
-    (p) =>
-      p.type !== 'WAIT' &&
-      p.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
-      (p.direction === 'BUY' || p.type?.includes('BUY')) &&
-      (allowM5DependentPlans || !isM5DependentPlan(p)),
+  // Sort candidates prioritizing valid direction, confidence >= 65, and proximity to currentPrice
+  const validCandidates = candidates.filter(
+    (plan) =>
+      plan.type !== 'WAIT' &&
+      plan.confidence >= 65 &&
+      (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
+      !!getPlanDirection(plan)
   );
 
-  const sellCandidates = candidates.filter(
-    (p) =>
-      p.type !== 'WAIT' &&
-      p.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
-      (p.direction === 'SELL' || p.type?.includes('SELL')) &&
-      (allowM5DependentPlans || !isM5DependentPlan(p)),
-  );
-
-  const strongestBuy = buyCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-  const strongestSell = sellCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-  const hasUnresolvedConflict = !!strongestBuy && !!strongestSell &&
-    Math.abs(strongestBuy.confidence - strongestSell.confidence) < 10;
-
-  const candidate = hasUnresolvedConflict ? undefined : candidates.find((plan) =>
-    plan.type !== 'WAIT' &&
-    plan.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
-    (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
-    !!getPlanDirection(plan) &&
-    (allowM5DependentPlans || !isM5DependentPlan(plan)),
-  );
+  // Pick the candidate whose entry is nearest to currentPrice (most immediate actionable opportunity)
+  const candidate = validCandidates.sort((a, b) => {
+    const distA = Math.abs(a.entry - currentPrice);
+    const distB = Math.abs(b.entry - currentPrice);
+    // If distance is very close within $1.50, prefer higher confidence
+    if (Math.abs(distA - distB) < 1.5) {
+      return b.confidence - a.confidence;
+    }
+    return distA - distB;
+  })[0] || candidates[0];
 
   const storedPlanAllowed = allowStoredPlans && (!storedPlan || allowM5DependentPlans || !isM5DependentPlan(storedPlan));
   const storedPlanResearchRejected = !!storedPlan &&
@@ -2512,176 +2503,141 @@ export async function GET(request?: Request) {
       const isStrongBullish = h1Bias === 'BULLISH' && (m15Bias === 'BULLISH' || d1Bias === 'BULLISH');
       const isStrongBearish = h1Bias === 'BEARISH' && (m15Bias === 'BEARISH' || d1Bias === 'BEARISH');
 
-      const trendFilteredPlans = proactivePlans.filter((plan) => {
-        const isBuy = plan.direction === 'BUY' || plan.type?.includes('BUY');
-        const isSell = plan.direction === 'SELL' || plan.type?.includes('SELL');
+      // 4 CORE PRICE ACTION DECISION SETUPS
+      const supLevel = triggerSupport?.priceMax ?? (currentPrice - 2.50);
+      const resLevel = triggerResistance?.priceMin ?? (currentPrice + 2.50);
+      const isBullishDominant = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
+      const isBearishDominant = h1Bias === 'BEARISH' || (m15Bias === 'BEARISH' && d1Bias !== 'BULLISH');
 
-        // Block aggressive counter-trend follow plans, but allow scalp & pullback zone plans
-        if (isStrongBullish && isSell && !plan.strategyId?.includes('scalp')) {
-          return false;
-        }
-        if (isStrongBearish && isBuy && !plan.strategyId?.includes('scalp')) {
-          return false;
-        }
-        return true;
-      });
+      // 1. Buy Support Bounce
+      const buyBounceEntry = roundPrice(Math.min(currentPrice, supLevel));
+      const buyBouncePlan: RecommendationPlan = {
+        id: `pa-buy-support-bounce-${symbol}`,
+        type: currentPrice <= buyBounceEntry + 0.5 ? 'BUY_MARKET' : 'BUY_LIMIT',
+        title: '🟢 แผนซื้อดักเด้งที่แนวรับ (Support Bounce BUY)',
+        direction: 'BUY',
+        entry: buyBounceEntry,
+        entry1: buyBounceEntry,
+        entry2: roundPrice(buyBounceEntry - 1.0),
+        entry3: roundPrice(buyBounceEntry - 2.0),
+        stopLoss: roundPrice(buyBounceEntry - 3.50),
+        takeProfit: roundPrice(buyBounceEntry + 7.50),
+        takeProfit2: roundPrice(buyBounceEntry + 10.00),
+        confidence: isBullishDominant ? 90 : 82,
+        reason: `ราคาทดสอบโซนแนวรับ M5/M15 ($${buyBounceEntry.toFixed(2)}) เหมาะดักเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด พร้อมระบบเลื่อน SL กันทุนที่ +350 จุด`,
+        strategyId: 'support_bounce_buy',
+        strategyMode: 'FOLLOW_TREND',
+        strategyLabel: 'Support Bounce BUY',
+        confirmation: 'M5 bounce from support zone',
+        pointStopLoss: 350,
+        timeframe: 'M5',
+        riskScore: 20,
+        riskReward: 2.14,
+      };
 
-      const eligibleProactivePlans = marketRegime.tradable
-        ? trendFilteredPlans
-            .filter((plan) => MarketRegimeService.strategyAllowed(marketRegime.regime, plan.strategyId))
-            .map((plan) => ({
-              ...plan,
-              confidence: Math.min(plan.confidence, marketRegime.confidenceCap),
-              reason: `[${marketRegime.regime}] ${plan.reason}`,
-            }))
-        : [];
-      const evaluatedPlans: RecommendationPlan[] = eligibleProactivePlans
-        .map((plan) => {
-          const researchCandidate = getResearchCandidate(strategyResearch, plan.strategyId);
+      // 2. Sell Resistance Rejection
+      const sellRejectEntry = roundPrice(Math.max(currentPrice, resLevel));
+      const sellRejectPlan: RecommendationPlan = {
+        id: `pa-sell-resistance-rejection-${symbol}`,
+        type: currentPrice >= sellRejectEntry - 0.5 ? 'SELL_MARKET' : 'SELL_LIMIT',
+        title: '🔴 แผนขายดักเบรคไม่ผ่านแนวต้าน (Resistance Rejection SELL)',
+        direction: 'SELL',
+        entry: sellRejectEntry,
+        entry1: sellRejectEntry,
+        entry2: roundPrice(sellRejectEntry + 1.0),
+        entry3: roundPrice(sellRejectEntry + 2.0),
+        stopLoss: roundPrice(sellRejectEntry + 3.50),
+        takeProfit: roundPrice(sellRejectEntry - 7.50),
+        takeProfit2: roundPrice(sellRejectEntry - 10.00),
+        confidence: isBearishDominant ? 90 : 82,
+        reason: `ราคาทดสอบโซนแนวต้าน M5/M15 ($${sellRejectEntry.toFixed(2)}) เกิดแรงปฏิเสธราคา/ไม่ผ่านแนวต้าน เหมาะดักเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
+        strategyId: 'resistance_rejection_sell',
+        strategyMode: 'FOLLOW_TREND',
+        strategyLabel: 'Resistance Rejection SELL',
+        confirmation: 'M5 rejection from resistance zone',
+        pointStopLoss: 350,
+        timeframe: 'M5',
+        riskScore: 20,
+        riskReward: 2.14,
+      };
 
-          if (researchCandidate && researchCandidate.sampleSize >= 15 && researchCandidate.winRate < 35) {
-            console.log(`[AI TUNING] Pruned low-performing strategy: ${plan.strategyId} (${researchCandidate.winRate}% over ${researchCandidate.sampleSize} samples)`);
-            return null;
+      // 3. Breakout Follow BUY
+      const breakoutEntry = roundPrice(currentPrice);
+      const breakoutPlan: RecommendationPlan = {
+        id: `pa-breakout-follow-buy-${symbol}`,
+        type: 'BUY_MARKET',
+        title: '🚀 แผนซื้อตามเบรคเอาท์ (Breakout Follow BUY)',
+        direction: 'BUY',
+        entry: breakoutEntry,
+        entry1: breakoutEntry,
+        entry2: roundPrice(breakoutEntry - 1.0),
+        entry3: roundPrice(breakoutEntry - 2.0),
+        stopLoss: roundPrice(breakoutEntry - 3.50),
+        takeProfit: roundPrice(breakoutEntry + 8.00),
+        takeProfit2: roundPrice(breakoutEntry + 10.00),
+        confidence: isBullishDominant ? 88 : 78,
+        reason: `ราคามีโมเมนตัมยกตัวผ่านแนวต้านชัดเจน เหมาะเปิด Follow BUY ตามรอบสวิงทำกำไร 800 - 1,000 จุด`,
+        strategyId: 'breakout_follow_buy',
+        strategyMode: 'BREAKOUT',
+        strategyLabel: 'Breakout Follow BUY',
+        confirmation: 'M15 candle closed above resistance',
+        pointStopLoss: 350,
+        timeframe: 'M15',
+        riskScore: 25,
+        riskReward: 2.28,
+      };
+
+      // 4. Breakdown Follow SELL
+      const breakdownEntry = roundPrice(currentPrice);
+      const breakdownPlan: RecommendationPlan = {
+        id: `pa-breakdown-follow-sell-${symbol}`,
+        type: 'SELL_MARKET',
+        title: '🔻 แผนขายตามหลุดแนวรับ (Breakdown Follow SELL)',
+        direction: 'SELL',
+        entry: breakdownEntry,
+        entry1: breakdownEntry,
+        entry2: roundPrice(breakdownEntry + 1.0),
+        entry3: roundPrice(breakdownEntry + 2.0),
+        stopLoss: roundPrice(breakdownEntry + 3.50),
+        takeProfit: roundPrice(breakdownEntry - 8.00),
+        takeProfit2: roundPrice(breakdownEntry - 10.00),
+        confidence: isBearishDominant ? 88 : 78,
+        reason: `ราคามีโมเมนตัมหลุดแนวรับชัดเจน เหมาะเปิด Follow SELL ตามแรงเทขายทำกำไร 800 - 1,000 จุด`,
+        strategyId: 'breakdown_follow_sell',
+        strategyMode: 'BREAKDOWN',
+        strategyLabel: 'Breakdown Follow SELL',
+        confirmation: 'M15 candle closed below support',
+        pointStopLoss: 350,
+        timeframe: 'M15',
+        riskScore: 25,
+        riskReward: 2.28,
+      };
+
+      const priceActionSetups = isBullishDominant
+        ? [buyBouncePlan, breakoutPlan, sellRejectPlan, breakdownPlan]
+        : isBearishDominant
+          ? [sellRejectPlan, breakdownPlan, buyBouncePlan, breakoutPlan]
+          : [buyBouncePlan, sellRejectPlan, breakoutPlan, breakdownPlan];
+
+      const evaluatedPlans: RecommendationPlan[] = [
+        ...priceActionSetups,
+        ...proactivePlans,
+      ]
+        .filter((plan, idx, arr) => arr.findIndex(p => p.id === plan.id || (p.direction === plan.direction && Math.abs(p.entry - plan.entry) < 0.5)) === idx)
+        .sort((a, b) => {
+          const distA = Math.abs(a.entry - currentPrice);
+          const distB = Math.abs(b.entry - currentPrice);
+          if (Math.abs(distA - distB) < 1.5) {
+            return b.confidence - a.confidence;
           }
-
-          if (researchCandidate && researchCandidate.liveForwardTest) {
-            const { winRate, sampleSize } = researchCandidate.liveForwardTest;
-            if (sampleSize >= 15 && winRate < 35) {
-              console.log(`[AI TUNING] Pruned low winrate recommendation strategy: ${plan.strategyId} (${winRate}% winrate over ${sampleSize} samples)`);
-              return null;
-            }
-          }
-
-          let confidence = normalizePlanConfidence(plan.confidence);
-
-          // Asian Session: Maintain strong actionable confidence with pullback notation
-          const isAsianSession = currentUtcHour >= 23 || currentUtcHour < 8;
-          let planReason = plan.reason;
-          if (isAsianSession) {
-            confidence = Math.max(68, confidence - 3);
-            planReason = `(รอบตลาดเอเชีย - แนะนำย่อรับ/เด้งขายตามกรอบแนวรับต้าน) ${planReason}`;
-          }
-
-          // Dynamic Optimization: Auto-calibrate levels based on optimized research parameters
-          let stopLoss = plan.stopLoss;
-          let takeProfit = plan.takeProfit;
-          if (researchCandidate && researchCandidate.status === 'APPROVED') {
-            const optParams = researchCandidate.parameters;
-            const entry = plan.entry;
-            const isBuy = plan.direction === 'BUY' || plan.type?.includes('BUY');
-
-            if (optParams.slPoints) {
-              const slDist = optParams.slPoints * 0.01;
-              stopLoss = isBuy ? entry - slDist : entry + slDist;
-
-              const tpDist = slDist * (optParams.riskReward || 2.0);
-              takeProfit = isBuy ? entry + tpDist : entry - tpDist;
-            }
-          }
-
-          const candidatePlan: RecommendationPlan = {
-            ...plan,
-            stopLoss: roundPrice(stopLoss),
-            takeProfit: roundPrice(takeProfit),
-            confidence,
-            reason: planReason,
-            researchStatus: researchCandidate?.status || (strategyResearch ? 'RESEARCHING' : 'NOT_RUN'),
-            researchWinRate: researchCandidate?.winRate ?? null,
-            researchSampleSize: researchCandidate?.sampleSize ?? 0,
-          };
-
-          return {
-            ...candidatePlan,
-            ...buildPlanRiskProfile(candidatePlan, {
-              currentPrice,
-              volatility,
-              h1Bias,
-              m15Bias,
-              researchSampleSize: candidatePlan.researchSampleSize || 0,
-              fundamentalBias,
-              fundamentalWarning,
-            }),
-          };
-        })
-        .filter((plan): plan is NonNullable<typeof plan> =>
-          plan !== null &&
-          plan.type !== 'WAIT' &&
-          plan.confidence >= MIN_RECOMMENDATION_CONFIDENCE &&
-          (plan.riskScore ?? 100) <= MAX_RECOMMENDATION_RISK_SCORE &&
-          (plan.riskReward ?? 0) >= 1.8
-        )
-        .sort((a, b) => b.confidence - a.confidence);
+          return distA - distB;
+        });
 
       if (!isPublic) {
         await recordShadowPlans(symbol, evaluatedPlans);
       }
 
-      let recommendationPlans = evaluatedPlans
-        .filter((plan) => {
-          const candidate = getResearchCandidate(strategyResearch, plan.strategyId);
-          if (!candidate) return true;
-          return candidate.status === 'APPROVED' || candidate.sampleSize < 10 || (candidate.winRate ?? 50) >= 35;
-        })
-        .slice(0, 6);
-
-      // Always-On Actionable Fallback: Guarantee customers have clear pullback/scalp setups 24/7
-      if (recommendationPlans.length === 0) {
-        const bestSup = triggerSupport?.priceMax ?? (currentPrice - Math.max(2.5, atr14M5 * 0.8));
-        const bestRes = triggerResistance?.priceMin ?? (currentPrice + Math.max(2.5, atr14M5 * 0.8));
-        const isBullishPriority = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
-
-        if (isBullishPriority) {
-          const entry = roundPrice(Math.min(currentPrice, bestSup));
-          const sl = roundPrice(entry - Math.max(3.5, scalpSL));
-          const tp = roundPrice(entry + Math.max(6.0, scalpTP));
-          recommendationPlans.push({
-            id: `ai-plan-actionable-pullback-buy-${symbol}`,
-            type: currentPrice <= entry + 0.5 ? 'BUY_MARKET' : 'BUY_LIMIT',
-            title: 'ดักซื้อย่อตัวที่แนวรับ (Pullback BUY): เทรนด์หลักขาขึ้น',
-            entry,
-            entry1: entry,
-            entry2: roundPrice(entry - 1.0),
-            entry3: roundPrice(entry - 2.0),
-            stopLoss: sl,
-            takeProfit: tp,
-            confidence: 82,
-            reason: `เทรนด์หลัก H1/H4 เป็นขาขึ้น แนะนำรอราคาย่อตัวเข้าโซนแนวรับ M5/M15 ($${entry.toFixed(2)}) เพื่อเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด`,
-            strategyId: 'support_m5_pullback_bounce',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'M5 Support Pullback',
-            confirmation: 'M5 bounce from support zone',
-            pointStopLoss: Math.round((entry - sl) * 100),
-            timeframe: 'M5',
-            riskScore: 25,
-            riskReward: 2.2,
-          });
-        } else {
-          const entry = roundPrice(Math.max(currentPrice, bestRes));
-          const sl = roundPrice(entry + Math.max(3.5, scalpSL));
-          const tp = roundPrice(entry - Math.max(6.0, scalpTP));
-          recommendationPlans.push({
-            id: `ai-plan-actionable-pullback-sell-${symbol}`,
-            type: currentPrice >= entry - 0.5 ? 'SELL_MARKET' : 'SELL_LIMIT',
-            title: 'ดักขายรีบาวด์ที่แนวต้าน (Pullback SELL): เทรนด์หลักขาลง',
-            entry,
-            entry1: entry,
-            entry2: roundPrice(entry + 1.0),
-            entry3: roundPrice(entry + 2.0),
-            stopLoss: sl,
-            takeProfit: tp,
-            confidence: 82,
-            reason: `เทรนด์หลัก H1/H4 เป็นขาลง แนะนำรอราคาเด้งรีบาวด์เข้าโซนแนวต้าน M5/M15 ($${entry.toFixed(2)}) เพื่อเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
-            strategyId: 'resistance_m5_pullback_rejection',
-            strategyMode: 'FOLLOW_TREND',
-            strategyLabel: 'M5 Resistance Pullback',
-            confirmation: 'M5 rejection from resistance zone',
-            pointStopLoss: Math.round((sl - entry) * 100),
-            timeframe: 'M5',
-            riskScore: 25,
-            riskReward: 2.2,
-          });
-        }
-      }
+      let recommendationPlans = evaluatedPlans.slice(0, 6);
 
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });

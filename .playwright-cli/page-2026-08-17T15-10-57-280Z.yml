@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Gold AI Signal XAUUSD Decision Support" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7]:
+            - strong [ref=e8]: Gold AI Signal
+            - generic [ref=e9]: XAUUSD Decision Support
+        - navigation "เมนูหลัก" [ref=e11]:
+          - link "ภาพรวม" [ref=e12] [cursor=pointer]:
+            - /url: /#overview
+          - link "ระบบวิเคราะห์" [ref=e13] [cursor=pointer]:
+            - /url: /#features
+          - link "วิธีทำงาน" [ref=e14] [cursor=pointer]:
+            - /url: /#workflow
+          - link "คู่มือเทรดทอง" [ref=e15] [cursor=pointer]:
+            - /url: /#gold-trading-guide
+          - link "แพ็กเกจ" [ref=e16] [cursor=pointer]:
+            - /url: /pricing
+        - generic [ref=e17]:
+          - link "เข้าสู่ระบบ" [ref=e18] [cursor=pointer]:
+            - /url: /login
+          - link "ทดลองฟรี 7 วัน" [ref=e23] [cursor=pointer]:
+            - /url: /checkout
+    - main [ref=e26]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - img "Gold AI Signal" [ref=e31]
+          - heading "Gold AI Signal" [level=1] [ref=e32]
+          - paragraph [ref=e33]: เข้าสู่ระบบเพื่อดูแผนวิเคราะห์ XAUUSD
+        - generic [ref=e34]:
+          - heading "เข้าสู่ระบบบัญชีผู้ใช้งาน" [level=2] [ref=e35]
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - generic [ref=e38]: อีเมลผู้ใช้งาน (Email)
+              - textbox "your@email.com" [ref=e43]
+            - generic [ref=e44]:
+              - generic [ref=e45]: รหัสผ่าน (Password)
+              - textbox "••••••••••••" [ref=e50]
+            - generic [ref=e51]:
+              - button "ลืมรหัสผ่าน?" [ref=e52] [cursor=pointer]
+              - link "สมัครสมาชิกใหม่" [ref=e53] [cursor=pointer]:
+                - /url: /pricing
+            - button "เข้าสู่ระบบ" [ref=e54]
+        - paragraph [ref=e57]: ระบบผู้ช่วยอัจฉริยะสำหรับการเทรดทองคำ เวอร์ชั่น 1
+    - contentinfo [ref=e58]:
+      - generic [ref=e59]:
+        - generic [ref=e60]:
+          - strong [ref=e62]: Gold AI Signal
+          - paragraph [ref=e63]: เครื่องมือช่วยวิเคราะห์ทางเทคนิคและจัดโครงสร้างแผนเทรด ไม่ใช่คำรับรองผลตอบแทน การเทรดทองคำมีความเสี่ยง ผู้ใช้ควรกำหนดขนาดความเสี่ยงและ Stop Loss ก่อนตัดสินใจทุกครั้ง
+        - generic [ref=e64]:
+          - link "Dashboard" [ref=e65] [cursor=pointer]:
+            - /url: /admin
+          - link "ติดต่อทีมงาน" [ref=e71] [cursor=pointer]:
+            - /url: https://line.me/R/ti/p/@413aryiz
+  - alert [ref=e74]

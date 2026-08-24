@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #0B0F19;
+      color: #E2E8F0;
+      font-family: 'Prompt', 'Kanit', sans-serif;
+      line-height: 1.7;
+      padding: 20px 15px;
+      font-size: 15px;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    
+    /* Header Banner */
+    .hero-banner {
+      background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 35px 20px;
+      text-align: center;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .badge-pill {
+      display: inline-block;
+      background: linear-gradient(90deg, #F59E0B, #EAB308);
+      color: #000;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .hero-title {
+      color: #F8FAFC;
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 10px;
+      line-height: 1.3;
+    }
+    .hero-subtitle {
+      color: #94A3B8;
+      font-size: 15px;
+      max-width: 700px;
+      margin: 0 auto 18px auto;
+    }
+    .tag-list {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .tag-item {
+      background: #1E293B;
+      border: 1px solid #475569;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    
+    /* Featured Review Card */
+    .review-card {
+      background: #131D31;
+      border: 1px solid #2A3B5C;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 25px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1E293B;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .card-title {
+      color: #FFF;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .score-badge {
+      background: linear-gradient(135deg, #F59E0B, #D97706);
+      padding: 6px 16px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .score-label {
+      font-size: 11px;
+      color: #000;
+      font-weight: 700;
+      display: block;
+    }
+    .score-num {
+      font-size: 20px;
+      color: #000;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+    
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .stat-box {
+      background: #0B1120;
+      padding: 12px 14px;
+      border-radius: 8px;
+    }
+    .stat-label {
+      color: #64748B;
+      font-size: 11px;
+      display: block;
+    }
+    .stat-val {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    /* Meters */
+    .meter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .meter-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .meter-bar-bg {
+      background: #1E293B;
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .meter-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+    }
+    
+    /* Pros and Cons */
+    .pros-cons-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .pros-box {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .cons-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .box-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    ul.check-list {
+      padding-left: 18px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #CBD5E1;
+    }
+    
+    /* Strategy Tips */
+    .tips-section {
+      background: #111827;
+      border: 1px solid #1F2937;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 25px;
+    }
+    .tip-card {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      background: #1F2937;
+      padding: 14px;
+      border-radius: 10px;
+      margin-top: 12px;
+    }
+    .tip-num {
+      background: #3B82F6;
+      color: #FFF;
+      font-weight: 800;
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 14px;
+    }
+    
+    /* Table */
+    .table-container {
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 25px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+    th {
+      background: #1E293B;
+      color: #94A3B8;
+      padding: 10px;
+      border-bottom: 2px solid #334155;
+    }
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #1E293B;
+    }
+    
+    /* FAQ */
+    .faq-section {
+      background: #111827;
+      border: 1px solid #1E293B;
+      border-radius: 14px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .faq-item {
+      border-bottom: 1px solid #1E293B;
+      padding: 10px 0;
+    }
+    .faq-item:last-child {
+      border-bottom: none;
+    }
+    .faq-q {
+      color: #38BDF8;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .faq-a {
+      color: #94A3B8;
+      font-size: 13px;
+      margin: 0;
+    }
+    
+    .footer-note {
+      text-align: center;
+      color: #64748B;
+      font-size: 12px;
+      padding-top: 15px;
+      border-top: 1px solid #1E293B;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Hero Header -->
+    <div class="hero-banner">
+      <div class="badge-pill">⭐ GAME EXPERT REVIEW 2026</div>
+      <h1 class="hero-title">GameVerse Reviews | ศูนย์รวมรีวิวเกมส์ยอดนิยม & กลยุทธ์การเล่น</h1>
+      <p class="hero-subtitle">เจาะลึกระบบเกมเพลย์ อัตราการจ่ายรางวัล (RTP) สถิติความผันผวน และเทคนิคการบริหารทรัพยากรอย่างมืออาชีพ</p>
+      <div class="tag-list">
+        <span class="tag-item" style="color: #38BDF8;">🎮 อัปเดตระบบเกมล่าสุด</span>
+        <span class="tag-item" style="color: #4ADE80;">⚡ วิเคราะห์ค่า RTP & Volatility</span>
+        <span class="tag-item" style="color: #FBBF24;">📖 คู่มือแนะนำสำหรับมือใหม่</span>
+      </div>
+    </div>
+
+    <!-- Featured Review Box -->
+    <div class="review-card">
+      <div class="card-header">
+        <div>
+          <span style="background: #EF4444; color: #FFF; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; vertical-align: middle; margin-right: 6px;">HOT REVIEW</span>
+          <span class="card-title" style="vertical-align: middle;">Dragon Treasure: Fortune Quest</span>
+        </div>
+        <div class="score-badge">
+          <span class="score-label">SCORE</span>
+          <span class="score-num">9.7 / 10</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-box" style="border-left: 3px solid #38BDF8;">
+          <span class="stat-label">ผู้พัฒนา / สตูดิโอ</span>
+          <span class="stat-val" style="color: #F1F5F9;">Dragon Gaming Labs</span>
+        </div>
+        <div class="stat-box" style="border-left: 3px solid #F59E0B;">
+          <span class="stat-label">อัตราจ่ายคืน (RTP)</span>
+          <span class="stat-val" style="color: #FCD34D;">96.82% (เหนือเกณฑ์มาตรฐาน)</span>
+        </div>
+        <div class="stat-box" style="border-left: 3px solid #EC4899;">
+          <span class="stat-label">ความผันผวน (Volatility)</span>
+          <span class="stat-val" style="color: #F472B6;">Medium - High</span>
+        </div>
+        <div class="stat-box" style="border-left: 3px solid #10B981;">
+          <span class="stat-label">ตัวคูณสูงสุด (Max Win)</span>
+          <span class="stat-val" style="color: #34D399;">x10,000 เท่า</span>
+        </div>
+      </div>
+
+      <!-- Meters -->
+      <div class="meter-group">
+        <div>
+          <div class="meter-label-row">
+            <span>ความลื่นไหลและระบบเกมเพลย์ (Gameplay & Mechanics)</span>
+            <strong style="color: #38BDF8;">9.8 / 10</strong>
+          </div>
+          <div class="meter-bar-bg">
+            <div class="meter-bar-fill" style="background: #38BDF8; width: 98%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="meter-label-row">
+            <span>กราฟิก เอฟเฟกต์ และเสียงประกอบ (Graphics & Audio)</span>
+            <strong style="color: #A855F7;">9.6 / 10</strong>
+          </div>
+          <div class="meter-bar-bg">
+            <div class="meter-bar-fill" style="background: #A855F7; width: 96%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="meter-label-row">
+            <span>ความคุ้มค่าและโบนัสฟีเจอร์ (Bonus Features & Multipliers)</span>
+            <strong style="color: #F59E0B;">9.7 / 10</strong>
+          </div>
+          <div class="meter-bar-bg">
+            <div class="meter-bar-fill" style="background: #F59E0B; width: 97%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pros & Cons -->
+      <div class="pros-cons-grid">
+        <div class="pros-box">
+          <div class="box-title" style="color: #34D399;">✅ จุดเด่นและข้อดี</div>
+          <ul class="check-list">
+            <li>ระบบคอมโบตัวคูณสะสมต่อเนื่องไม่มีสะดุด</li>
+            <li>อัตราการเกิด Free Spin สม่ำเสมอ</li>
+            <li>รองรับทั้งแนวนอนและแนวตั้งบนมือถือ</li>
+            <li>ซาวด์เอฟเฟกต์แบบ Dynamic เร้าใจ</li>
+          </ul>
+        </div>
+        <div class="cons-box">
+          <div class="box-title" style="color: #F87171;">⚠️ ข้อควรพิจารณา</div>
+          <ul class="check-list">
+            <li>ความผันผวนระดับสูง ต้องวางแผนรอบหมุนให้เหมาะสม</li>
+            <li>เอฟเฟกต์อลังการอาจใช้พลังงานแบตเตอรี่เพิ่มขึ้น</li>
+            <li>แนะนำให้เชื่อมต่อ Wi-Fi เพื่อความต่อเนื่อง</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strategy Tips -->
+    <div class="tips-section">
+      <h2 style="color: #F8FAFC; font-size: 20px; font-weight: 700; margin-bottom: 8px;">💡 3 กลยุทธ์การเล่นให้ได้เปรียบ</h2>
+      <div class="tip-card">
+        <div class="tip-num">1</div>
+        <div>
+          <strong style="color: #93C5FD; font-size: 15px; display: block; margin-bottom: 2px;">วางแผนรอบหมุนและบริหารจำนวนรอบอย่างเป็นระบบ</strong>
+          <p style="color: #94A3B8; font-size: 13px; margin: 0;">ควรกระจายรอบเล่นอย่างน้อย 50-100 รอบเพื่อให้ครอบคลุมวงจรการออกรางวัลและไม่หมดทรัพยากรเร็วเกินไป</p>
+        </div>
+      </div>
+      <div class="tip-card">
+        <div class="tip-num" style="background: #10B981;">2</div>
+        <div>
+          <strong style="color: #6EE7B7; font-size: 15px; display: block; margin-bottom: 2px;">จับจังหวะ Scatter & Multiplier Trigger</strong>
+          <p style="color: #94A3B8; font-size: 13px; margin: 0;">เมื่อสัญลักษณ์พิเศษปรากฏถี่ขึ้นใน 10-15 รอบ มักเป็นสัญญาณของช่วงคอมโบ สามารถปรับกลยุทธ์ตามสถานการณ์ได้</p>
+        </div>
+      </div>
+      <div class="tip-card">
+        <div class="tip-num" style="background: #F59E0B;">3</div>
+        <div>
+          <strong style="color: #FDE68A; font-size: 15px; display: block; margin-bottom: 2px;">ทดสอบตาราง Paytable ในโหมดจำลองก่อนเสมอ</strong>
+          <p style="color: #94A3B8; font-size: 13px; margin: 0;">ช่วยให้คุ้นเคยกับเงื่อนไขการเรียงตัวของสัญลักษณ์และฟีเจอร์ Wild Expand ได้อย่างแม่นยำ</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container">
+      <h2 style="color: #F8FAFC; font-size: 18px; font-weight: 700; margin-bottom: 12px;">🏆 ตารางเปรียบเทียบ 4 อันดับเกมยอดนิยม</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ชื่อเกม</th>
+            <th>ประเภท</th>
+            <th>RTP</th>
+            <th>ความผันผวน</th>
+            <th>ฟีเจอร์เด่น</th>
+            <th style="text-align: center;">คะแนน</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color: #FFF; font-weight: 600;">🐉 Dragon Treasure</td>
+            <td style="color: #CBD5E1;">Cascade Multiplier</td>
+            <td style="color: #34D399;">96.82%</td>
+            <td style="color: #F59E0B;">สูง</td>
+            <td style="color: #94A3B8;">Free Spin x10,000</td>
+            <td style="text-align: center; color: #FCD34D; font-weight: 700;">9.7/10</td>
+          </tr>
+          <tr>
+            <td style="color: #FFF; font-weight: 600;">👑 Olympus Majesty</td>
+            <td style="color: #CBD5E1;">Scatter Pay</td>
+            <td style="color: #34D399;">96.50%</td>
+            <td style="color: #EF4444;">สูงมาก</td>
+            <td style="color: #94A3B8;">Lightning Multiplier</td>
+            <td style="text-align: center; color: #FCD34D; font-weight: 700;">9.5/10</td>
+          </tr>
+          <tr>
+            <td style="color: #FFF; font-weight: 600;">💎 Neon Cyber Gems</td>
+            <td style="color: #CBD5E1;">Classic 5-Reel</td>
+            <td style="color: #34D399;">97.10%</td>
+            <td style="color: #10B981;">ปานกลาง</td>
+            <td style="color: #94A3B8;">Expanding Wilds</td>
+            <td style="text-align: center; color: #FCD34D; font-weight: 700;">9.4/10</td>
+          </tr>
+          <tr>
+            <td style="color: #FFF; font-weight: 600;">⚡ Fortune Golden Ox</td>
+            <td style="color: #CBD5E1;">3x3 Fast Spin</td>
+            <td style="color: #34D399;">96.75%</td>
+            <td style="color: #10B981;">ปานกลาง</td>
+            <td style="color: #94A3B8;">Respin Until Win</td>
+            <td style="text-align: center; color: #FCD34D; font-weight: 700;">9.3/10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- FAQ -->
+    <div class="faq-section">
+      <h2 style="color: #F8FAFC; font-size: 18px; font-weight: 700; margin-bottom: 12px;">❓ คำถามที่พบบ่อย (FAQ)</h2>
+      <div class="faq-item">
+        <div class="faq-q">1. ค่า RTP มีผลต่อโอกาสชนะจริงหรือไม่?</div>
+        <p class="faq-a">ค่า RTP เป็นค่าเฉลี่ยสถิติทางคณิตศาสตร์ ยิ่งค่าสูงกว่า 96.00% ยิ่งสะท้อนถึงโครงสร้างเกมที่ยุติธรรมต่อผู้เล่นในระยะยาว</p>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">2. มือใหม่ควรเริ่มจากเกมที่มีสัญลักษณ์แบบใด?</div>
+        <p class="faq-a">แนะนำเกมแบบ Cascade หรือ 3x3 ที่มีไลน์การชนะไม่ซับซ้อน ช่วยให้ทำความเข้าใจระบบคะแนนได้ง่ายและรวดเร็ว</p>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">3. เล่นบนอุปกรณ์เคลื่อนที่จะได้ประสบการณ์เหมือนคอมพิวเตอร์ไหม?</div>
+        <p class="faq-a">เกมทั้งหมดพัฒนาด้วย WebGL / HTML5 มอบประสิทธิภาพ อัตราเฟรมเรต และเอฟเฟกต์เสียงเทียบเท่ากัน 100%</p>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      © 2026 GameVerse Reviews — เนื้อหาจัดทำขึ้นเพื่อการวิเคราะห์และให้ความรู้เชิงกลยุทธ์เกมมิ่งเท่านั้น
+    </div>
+
+  </div>
+</body>
+</html>
