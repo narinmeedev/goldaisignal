@@ -745,14 +745,15 @@ const recordShadowPlans = async (symbol: string, plans: RecommendationPlan[]) =>
     if (!direction || !plan.strategyId) continue;
 
     const shadowMarker = `"shadowStrategyId":"${plan.strategyId}"`;
-    const existing = await prisma.paperTrade.findFirst({
+    const existingTrades = await prisma.paperTrade.findMany({
       where: {
         symbol: { in: [symbol, ...GOLD_SYMBOL_LIST] },
         result: { in: ['PLAN', 'OPEN', 'TESTING'] },
-        signal: { is: { reason: { contains: shadowMarker } } },
       },
-      select: { id: true },
+      select: { id: true, signal: { select: { reason: true } } },
+      take: 20,
     });
+    const existing = existingTrades.find((t) => t.signal?.reason?.includes(shadowMarker));
     if (existing) continue;
 
     const reason = JSON.stringify({
@@ -799,10 +800,12 @@ const recordShadowPlans = async (symbol: string, plans: RecommendationPlan[]) =>
 
 const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string) => {
   const trackingSignals = await prisma.signal.findMany({
-    where: { reason: { contains: `"stablePlanLockId":"${plan.id}"` } },
-    select: { id: true },
+    where: { symbol: { in: ['XAUUSD', ...GOLD_SYMBOL_LIST] } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: { id: true, reason: true },
   });
-  const signalIds = trackingSignals.map((signal) => signal.id);
+  const signalIds = trackingSignals.filter((s) => s.reason?.includes(plan.id)).map((signal) => signal.id);
   if (signalIds.length === 0) return;
   const openTrades = await prisma.paperTrade.findMany({
     where: {
@@ -1093,18 +1096,17 @@ const getStableOrderPlan = async (
   // ONLY if the market is open
   if (isMarketOpen()) {
     try {
-      const activeTrackingTrade = await prisma.paperTrade.findFirst({
+      const recentTrades = await prisma.paperTrade.findMany({
         where: {
           symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
           direction: nextPlan.direction,
           result: { in: ['OPEN', 'PLAN', 'TESTING'] },
-          signal: {
-            is: {
-              reason: { contains: `"stablePlanLockId":"${nextPlan.id}"` },
-            },
-          },
         },
+        orderBy: { openedAt: 'desc' },
+        take: 10,
+        select: { id: true, signal: { select: { reason: true } } },
       });
+      const activeTrackingTrade = recentTrades.find((t) => t.signal?.reason?.includes(nextPlan.id));
 
       if (!activeTrackingTrade) {
         const rr = Math.abs(nextPlan.takeProfit - nextPlan.entry) / Math.max(0.1, Math.abs(nextPlan.entry - nextPlan.stopLoss));
