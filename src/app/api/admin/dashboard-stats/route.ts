@@ -737,65 +737,10 @@ const getPlanTrackingReason = (plan: RecommendationPlan) => ({
   riskReward: plan.riskReward,
 });
 
-const recordShadowPlans = async (symbol: string, plans: RecommendationPlan[]) => {
-  if (!isMarketOpen()) return;
-
-  for (const plan of plans.slice(0, 3)) {
-    const direction = getPlanDirection(plan);
-    if (!direction || !plan.strategyId) continue;
-
-    const shadowMarker = `"shadowStrategyId":"${plan.strategyId}"`;
-    const existingTrades = await prisma.paperTrade.findMany({
-      where: {
-        symbol: { in: [symbol, ...GOLD_SYMBOL_LIST] },
-        result: { in: ['PLAN', 'OPEN', 'TESTING'] },
-      },
-      select: { id: true, signal: { select: { reason: true } } },
-      take: 20,
-    });
-    const existing = existingTrades.find((t) => t.signal?.reason?.includes(shadowMarker));
-    if (existing) continue;
-
-    const reason = JSON.stringify({
-      shadowMode: true,
-      shadowStrategyId: plan.strategyId,
-      strategyId: plan.strategyId,
-      regime: plan.reason.match(/^\[([^\]]+)\]/)?.[1] || null,
-      planType: plan.type,
-      riskScore: plan.riskScore,
-      riskReward: plan.riskReward,
-    });
-    const signal = await prisma.signal.create({
-      data: {
-        symbol: 'XAUUSD',
-        timeframe: plan.timeframe || 'M15',
-        direction,
-        entry: plan.entry,
-        stopLoss: plan.stopLoss,
-        takeProfit1: plan.takeProfit,
-        takeProfit2: plan.takeProfit,
-        riskReward: plan.riskReward || 0,
-        confidence: plan.confidence,
-        status: 'shadow',
-        bias: 'Wait',
-        result: 'Pending',
-        reason,
-      },
-    });
-    await prisma.paperTrade.create({
-      data: {
-        signalId: signal.id,
-        symbol: 'XAUUSD',
-        direction,
-        entry: plan.entry,
-        stopLoss: plan.stopLoss,
-        takeProfit1: plan.takeProfit,
-        takeProfit2: plan.takeProfit,
-        result: 'PLAN',
-        notes: `[SHADOW] ${plan.strategyId} | ${plan.reason}`,
-      },
-    });
-  }
+const recordShadowPlans = async (_symbol: string, _plans: RecommendationPlan[]) => {
+  // Enforce 1 Master Trade Rule: Do NOT create database paper trades for shadow/candidate plans.
+  // Real trades and track records are strictly 1 Active Master Plan at a time.
+  return;
 };
 
 const retirePendingStoredPlan = async (plan: RecommendationPlan, reason: string) => {
@@ -1096,19 +1041,14 @@ const getStableOrderPlan = async (
   // ONLY if the market is open
   if (isMarketOpen()) {
     try {
-      const recentTrades = await prisma.paperTrade.findMany({
+      const activeRunningTrade = await prisma.paperTrade.findFirst({
         where: {
           symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
-          direction: nextPlan.direction,
           result: { in: ['OPEN', 'PLAN', 'TESTING'] },
         },
-        orderBy: { openedAt: 'desc' },
-        take: 10,
-        select: { id: true, signal: { select: { reason: true } } },
       });
-      const activeTrackingTrade = recentTrades.find((t) => t.signal?.reason?.includes(nextPlan.id));
 
-      if (!activeTrackingTrade) {
+      if (!activeRunningTrade) {
         const rr = Math.abs(nextPlan.takeProfit - nextPlan.entry) / Math.max(0.1, Math.abs(nextPlan.entry - nextPlan.stopLoss));
         const timeframeVal = nextPlan.timeframe || 'M15';
         const directionVal = nextPlan.direction || 'BUY';
@@ -2639,19 +2579,7 @@ export async function GET(request?: Request) {
         priceActionSetups = [sellRejectPlan, breakdownPlan, buyBouncePlan, breakoutPlan];
       }
 
-      const evaluatedPlans: RecommendationPlan[] = [
-        ...priceActionSetups,
-        ...proactivePlans,
-      ]
-        .filter((plan, idx, arr) => arr.findIndex(p => p.id === plan.id || (p.direction === plan.direction && Math.abs(p.entry - plan.entry) < 0.5)) === idx)
-        .sort((a, b) => {
-          const distA = Math.abs(a.entry - currentPrice);
-          const distB = Math.abs(b.entry - currentPrice);
-          if (Math.abs(distA - distB) < 1.5) {
-            return b.confidence - a.confidence;
-          }
-          return distA - distB;
-        });
+      const evaluatedPlans: RecommendationPlan[] = priceActionSetups;
 
       if (!isPublic) {
         await recordShadowPlans(symbol, evaluatedPlans);

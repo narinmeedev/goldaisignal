@@ -652,9 +652,12 @@ export default function UserDashboard() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
           <div className="flex items-center gap-2">
             <Target className="h-5 w-5 text-amber-400" />
-            <h3 className="text-base font-bold text-neutral-100">
-              📋 แผนเทรดดัก Pullback / โซนรอเข้าตามลำดับ ({candidatePlans.length} แผน)
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-neutral-100">
+                🧭 แผนวิเคราะห์ฉากทัศน์ระดับราคา (Scenario Watchlist - {candidatePlans.length} ฉากทัศน์)
+              </h3>
+              <p className="text-xs text-neutral-400">แผนสำรองตามระดับแนวรับ-แนวต้าน (ระบบจะเปิดออเดอร์เทรดจริงเฉพาะแผนหลักด้านบนเพียง 1 ออเดอร์เท่านั้น)</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -767,7 +770,16 @@ export default function UserDashboard() {
                 <p className="text-xs text-neutral-400">ระบบบันทึกและวัดผลอัตโนมัติตามระยะกำไร 600 - 1000 จุด (TP1 $6-$8 / TP2 $10)</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleResetStats}
+                disabled={isResetting}
+                className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                title="ล้างประวัติการเทรดและสถิติเดิมทั้งหมดเพื่อเริ่มวัดผลใหม่"
+              >
+                {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                ล้างสถิติเริ่มต้นใหม่
+              </button>
               <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
                 Win Rate {performance?.decidedSampleSize ? `${performance.winRate}%` : '0%'}
               </span>
