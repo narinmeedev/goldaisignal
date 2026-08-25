@@ -2504,18 +2504,24 @@ export async function GET(request?: Request) {
       const hasFreshTradeStructure = true;
       const isStrongBullish = h1Bias === 'BULLISH' && (m15Bias === 'BULLISH' || d1Bias === 'BULLISH');
       const isStrongBearish = h1Bias === 'BEARISH' && (m15Bias === 'BEARISH' || d1Bias === 'BEARISH');
-
-      // 4 CORE PRICE ACTION DECISION SETUPS
-      const supLevel = triggerSupport?.priceMax ?? (currentPrice - 2.50);
-      const resLevel = triggerResistance?.priceMin ?? (currentPrice + 2.50);
       const isBullishDominant = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
       const isBearishDominant = h1Bias === 'BEARISH' || (m15Bias === 'BEARISH' && d1Bias !== 'BULLISH');
 
-      // 1. Buy Support Bounce
-      const buyBounceEntry = roundPrice(Math.min(currentPrice, supLevel));
+      // Anti-Trap Level Guards: Check proximity to key support/resistance levels
+      const nearestSupportZone = nearestSupport[0] || triggerSupport;
+      const nearestResistanceZone = nearestResistance[0] || triggerResistance;
+      
+      const distToSupportBelow = nearestSupportZone ? (currentPrice - nearestSupportZone.priceMax) : 999;
+      const isSittingOnSupport = nearestSupportZone && (distToSupportBelow <= 3.5 && currentPrice >= nearestSupportZone.priceMin - 1.0);
+      
+      const distToResistanceAbove = nearestResistanceZone ? (nearestResistanceZone.priceMin - currentPrice) : 999;
+      const isSittingOnResistance = nearestResistanceZone && (distToResistanceAbove <= 3.5 && currentPrice <= nearestResistanceZone.priceMax + 1.0);
+
+      // 1. Buy Support Bounce (Active when price is near/on support)
+      const buyBounceEntry = roundPrice(nearestSupportZone ? Math.min(currentPrice, nearestSupportZone.priceMax) : (currentPrice - 2.50));
       const buyBouncePlan: RecommendationPlan = {
         id: `pa-buy-support-bounce-${symbol}`,
-        type: currentPrice <= buyBounceEntry + 0.5 ? 'BUY_MARKET' : 'BUY_LIMIT',
+        type: isSittingOnSupport ? 'BUY_MARKET' : 'BUY_LIMIT',
         title: '🟢 แผนซื้อดักเด้งที่แนวรับ (Support Bounce BUY)',
         direction: 'BUY',
         entry: buyBounceEntry,
@@ -2525,23 +2531,23 @@ export async function GET(request?: Request) {
         stopLoss: roundPrice(buyBounceEntry - 3.50),
         takeProfit: roundPrice(buyBounceEntry + 7.50),
         takeProfit2: roundPrice(buyBounceEntry + 10.00),
-        confidence: isBullishDominant ? 90 : 82,
-        reason: `ราคาทดสอบโซนแนวรับ M5/M15 ($${buyBounceEntry.toFixed(2)}) เหมาะดักเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด พร้อมระบบเลื่อน SL กันทุนที่ +350 จุด`,
+        confidence: isSittingOnSupport ? 92 : (isBullishDominant ? 88 : 80),
+        reason: `ราคาทดสอบโซนแนวรับสำคัญ ($${buyBounceEntry.toFixed(2)}) ห้ามตาม SELL เด็ดขาด! แนะนำดักเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด (SL กระชับ $3.50 เลื่อนกันทุนที่ +350 จุด)`,
         strategyId: 'support_bounce_buy',
         strategyMode: 'FOLLOW_TREND',
         strategyLabel: 'Support Bounce BUY',
         confirmation: 'M5 bounce from support zone',
         pointStopLoss: 350,
         timeframe: 'M5',
-        riskScore: 20,
+        riskScore: 18,
         riskReward: 2.14,
       };
 
-      // 2. Sell Resistance Rejection
-      const sellRejectEntry = roundPrice(Math.max(currentPrice, resLevel));
+      // 2. Sell Resistance Rejection (Active when price is near/on resistance)
+      const sellRejectEntry = roundPrice(nearestResistanceZone ? Math.max(currentPrice, nearestResistanceZone.priceMin) : (currentPrice + 2.50));
       const sellRejectPlan: RecommendationPlan = {
         id: `pa-sell-resistance-rejection-${symbol}`,
-        type: currentPrice >= sellRejectEntry - 0.5 ? 'SELL_MARKET' : 'SELL_LIMIT',
+        type: isSittingOnResistance ? 'SELL_MARKET' : 'SELL_LIMIT',
         title: '🔴 แผนขายดักเบรคไม่ผ่านแนวต้าน (Resistance Rejection SELL)',
         direction: 'SELL',
         entry: sellRejectEntry,
@@ -2551,75 +2557,87 @@ export async function GET(request?: Request) {
         stopLoss: roundPrice(sellRejectEntry + 3.50),
         takeProfit: roundPrice(sellRejectEntry - 7.50),
         takeProfit2: roundPrice(sellRejectEntry - 10.00),
-        confidence: isBearishDominant ? 90 : 82,
-        reason: `ราคาทดสอบโซนแนวต้าน M5/M15 ($${sellRejectEntry.toFixed(2)}) เกิดแรงปฏิเสธราคา/ไม่ผ่านแนวต้าน เหมาะดักเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
+        confidence: isSittingOnResistance ? 92 : (isBearishDominant ? 88 : 80),
+        reason: `ราคาทดสอบโซนแนวต้านสำคัญ ($${sellRejectEntry.toFixed(2)}) ห้ามตาม BUY เด็ดขาด! เกิดแรงปฏิเสธราคา แนะนำดักเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
         strategyId: 'resistance_rejection_sell',
         strategyMode: 'FOLLOW_TREND',
         strategyLabel: 'Resistance Rejection SELL',
         confirmation: 'M5 rejection from resistance zone',
         pointStopLoss: 350,
         timeframe: 'M5',
-        riskScore: 20,
+        riskScore: 18,
         riskReward: 2.14,
       };
 
-      // 3. Breakout Follow BUY
-      const breakoutEntry = roundPrice(currentPrice);
-      const breakoutPlan: RecommendationPlan = {
-        id: `pa-breakout-follow-buy-${symbol}`,
-        type: 'BUY_MARKET',
-        title: '🚀 แผนซื้อตามเบรคเอาท์ (Breakout Follow BUY)',
-        direction: 'BUY',
-        entry: breakoutEntry,
-        entry1: breakoutEntry,
-        entry2: roundPrice(breakoutEntry - 1.0),
-        entry3: roundPrice(breakoutEntry - 2.0),
-        stopLoss: roundPrice(breakoutEntry - 3.50),
-        takeProfit: roundPrice(breakoutEntry + 8.00),
-        takeProfit2: roundPrice(breakoutEntry + 10.00),
-        confidence: isBullishDominant ? 88 : 78,
-        reason: `ราคามีโมเมนตัมยกตัวผ่านแนวต้านชัดเจน เหมาะเปิด Follow BUY ตามรอบสวิงทำกำไร 800 - 1,000 จุด`,
-        strategyId: 'breakout_follow_buy',
-        strategyMode: 'BREAKOUT',
-        strategyLabel: 'Breakout Follow BUY',
-        confirmation: 'M15 candle closed above resistance',
-        pointStopLoss: 350,
-        timeframe: 'M15',
-        riskScore: 25,
-        riskReward: 2.28,
-      };
-
-      // 4. Breakdown Follow SELL
-      const breakdownEntry = roundPrice(currentPrice);
+      // 3. Breakdown & Retest SELL (ต้องรอให้หลุดแนวรับลงไปก่อน แล้วเด้งกลับมาทดสอบไม่ผ่าน ค่อย SELL)
+      const brokenSupport = nearestSupportZone;
+      const hasBrokenSupport = brokenSupport && currentPrice < brokenSupport.priceMin - 1.20;
+      const breakdownRetestEntry = roundPrice(brokenSupport ? brokenSupport.priceMin : currentPrice);
       const breakdownPlan: RecommendationPlan = {
-        id: `pa-breakdown-follow-sell-${symbol}`,
-        type: 'SELL_MARKET',
-        title: '🔻 แผนขายตามหลุดแนวรับ (Breakdown Follow SELL)',
+        id: `pa-breakdown-retest-sell-${symbol}`,
+        type: 'SELL_LIMIT',
+        title: '🔻 แผนดักขายเมื่อเด้งรีเทสต์แนวรับที่หลุด (Breakdown Retest SELL)',
         direction: 'SELL',
-        entry: breakdownEntry,
-        entry1: breakdownEntry,
-        entry2: roundPrice(breakdownEntry + 1.0),
-        entry3: roundPrice(breakdownEntry + 2.0),
-        stopLoss: roundPrice(breakdownEntry + 3.50),
-        takeProfit: roundPrice(breakdownEntry - 8.00),
-        takeProfit2: roundPrice(breakdownEntry - 10.00),
-        confidence: isBearishDominant ? 88 : 78,
-        reason: `ราคามีโมเมนตัมหลุดแนวรับชัดเจน เหมาะเปิด Follow SELL ตามแรงเทขายทำกำไร 800 - 1,000 จุด`,
-        strategyId: 'breakdown_follow_sell',
+        entry: breakdownRetestEntry,
+        entry1: breakdownRetestEntry,
+        entry2: roundPrice(breakdownRetestEntry + 1.0),
+        entry3: roundPrice(breakdownRetestEntry + 2.0),
+        stopLoss: roundPrice(breakdownRetestEntry + 3.50),
+        takeProfit: roundPrice(breakdownRetestEntry - 8.00),
+        takeProfit2: roundPrice(breakdownRetestEntry - 10.00),
+        confidence: hasBrokenSupport ? 88 : 72,
+        reason: `ราคาหลุดแนวรับ M5/M15 ลงไปแล้ว แนะนำรอราคาเด้งกลับมาทดสอบแนวรับเดิม ($${breakdownRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวต้าน หากไม่ผ่านให้เปิด SELL ดักทำกำไร 600 - 1,000 จุด`,
+        strategyId: 'breakdown_retest_sell',
         strategyMode: 'BREAKDOWN',
-        strategyLabel: 'Breakdown Follow SELL',
-        confirmation: 'M15 candle closed below support',
+        strategyLabel: 'Breakdown Retest SELL',
+        confirmation: 'M15 breakdown & retest rejection',
         pointStopLoss: 350,
         timeframe: 'M15',
-        riskScore: 25,
+        riskScore: 22,
         riskReward: 2.28,
       };
 
-      const priceActionSetups = isBullishDominant
-        ? [buyBouncePlan, breakoutPlan, sellRejectPlan, breakdownPlan]
-        : isBearishDominant
-          ? [sellRejectPlan, breakdownPlan, buyBouncePlan, breakoutPlan]
-          : [buyBouncePlan, sellRejectPlan, breakoutPlan, breakdownPlan];
+      // 4. Breakout & Retest BUY (ต้องรอให้เบรคทะลุต้านขึ้นไปก่อน แล้วย่อกลับมาทดสอบยืนได้ ค่อย BUY)
+      const brokenResistance = nearestResistanceZone;
+      const hasBrokenResistance = brokenResistance && currentPrice > brokenResistance.priceMax + 1.20;
+      const breakoutRetestEntry = roundPrice(brokenResistance ? brokenResistance.priceMax : currentPrice);
+      const breakoutPlan: RecommendationPlan = {
+        id: `pa-breakout-retest-buy-${symbol}`,
+        type: 'BUY_LIMIT',
+        title: '🚀 แผนดักซื้อเมื่อย่อรีเทสต์แนวต้านที่เบรค (Breakout Retest BUY)',
+        direction: 'BUY',
+        entry: breakoutRetestEntry,
+        entry1: breakoutRetestEntry,
+        entry2: roundPrice(breakoutRetestEntry - 1.0),
+        entry3: roundPrice(breakoutRetestEntry - 2.0),
+        stopLoss: roundPrice(breakoutRetestEntry - 3.50),
+        takeProfit: roundPrice(breakoutRetestEntry + 8.00),
+        takeProfit2: roundPrice(breakoutRetestEntry + 10.00),
+        confidence: hasBrokenResistance ? 88 : 72,
+        reason: `ราคาเบรคทะลุแนวต้าน M5/M15 ขึ้นไปแล้ว แนะนำรอราคาย่อตัวกลับมาทดสอบแนวต้านเดิม ($${breakoutRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวรับ หากยืนได้ให้เปิด BUY ดักทำกำไร 600 - 1,000 จุด`,
+        strategyId: 'breakout_retest_buy',
+        strategyMode: 'BREAKOUT',
+        strategyLabel: 'Breakout Retest BUY',
+        confirmation: 'M15 breakout & retest support',
+        pointStopLoss: 350,
+        timeframe: 'M15',
+        riskScore: 22,
+        riskReward: 2.28,
+      };
+
+      // Anti-Trap Priority Selection:
+      // If price is currently sitting on Support: Support Bounce BUY is highest priority (NO Market Sell allowed)
+      // If price is currently sitting on Resistance: Resistance Rejection SELL is highest priority (NO Market Buy allowed)
+      let priceActionSetups: RecommendationPlan[] = [];
+      if (isSittingOnSupport) {
+        priceActionSetups = [buyBouncePlan, breakdownPlan, sellRejectPlan, breakoutPlan];
+      } else if (isSittingOnResistance) {
+        priceActionSetups = [sellRejectPlan, breakoutPlan, buyBouncePlan, breakdownPlan];
+      } else if (isBullishDominant) {
+        priceActionSetups = [buyBouncePlan, breakoutPlan, sellRejectPlan, breakdownPlan];
+      } else {
+        priceActionSetups = [sellRejectPlan, breakdownPlan, buyBouncePlan, breakoutPlan];
+      }
 
       const evaluatedPlans: RecommendationPlan[] = [
         ...priceActionSetups,
@@ -3116,8 +3134,9 @@ export async function GET(request?: Request) {
 
     return NextResponse.json(responseData, { headers: noStoreHeaders });
   } catch (err: any) {
+    console.error('[DASHBOARD STATS ERROR]', err);
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard metrics.', details: err.message },
+      { error: 'Failed to fetch dashboard metrics.', details: err.message, stack: err.stack },
       { status: 500, headers: noStoreHeaders }
     );
   }
