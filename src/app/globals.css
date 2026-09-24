@@ -108,3 +108,51 @@ input, select, textarea, button {
 .public-theme .text-neutral-400 { color: #a6b0ba !important; }
 .public-theme .text-neutral-500,
 .public-theme .text-neutral-600 { color: #7f8a96 !important; }
+
+/* Interactive Software Simulator Animations */
+@keyframes scanline {
+  0% { transform: translateY(-100%); opacity: 0; }
+  30% { opacity: 0.8; }
+  70% { opacity: 0.8; }
+  100% { transform: translateY(350%); opacity: 0; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes floatBadge {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulseBorder {
+  0%, 100% { border-color: rgba(227, 181, 45, 0.3); box-shadow: 0 0 15px rgba(227, 181, 45, 0.1); }
+  50% { border-color: rgba(227, 181, 45, 0.7); box-shadow: 0 0 30px rgba(227, 181, 45, 0.25); }
+}
+
+.animate-scanline {
+  animation: scanline 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 35s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+.animate-float-slow {
+  animation: floatBadge 5s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: floatBadge 6s ease-in-out 2s infinite;
+}
+
+.animate-pulse-gold {
+  animation: pulseBorder 3s ease-in-out infinite;
+}
