@@ -25,7 +25,7 @@ try {
 
 async function run() {
   const { GET } = await import('../src/app/api/admin/dashboard-stats/route');
-  const response = await GET();
+  const response = await GET(new Request('http://localhost:3000/api/admin/dashboard-stats'));
   const data = await response.json();
   console.log('--- Current Live Dashboard Stats ---');
   console.log('Gold currentPrice:', data.marketIntelligence.XAUUSD.currentPrice);

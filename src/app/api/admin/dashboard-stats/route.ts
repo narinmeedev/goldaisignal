@@ -17,7 +17,7 @@ import { TradeExecutionGateService, type ExecutionGateDecision } from '@/lib/ser
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export const GOLD_SYMBOL_LIST = [
+const GOLD_SYMBOL_LIST = [
   'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
   'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
 ];
@@ -1164,9 +1164,9 @@ const getStableOrderPlan = async (
   return nextPlan;
 };
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
-    const url = request ? new URL(request.url) : null;
+    const url = new URL(request.url);
     const assetParam = url ? url.searchParams.get('asset') : null;
     if (assetParam && assetParam !== 'XAUUSD') {
       return NextResponse.json(
