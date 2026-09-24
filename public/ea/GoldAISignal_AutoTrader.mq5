@@ -14,7 +14,7 @@
 //| Input Parameters                                                 |
 //+------------------------------------------------------------------+
 input group "--- Server Connection ---"
-input string   InpServerURL                = "http://localhost:3000"; // Server URL (localhost:3000 or https://goldaisig.com)
+input string   InpServerURL                = "https://goldaisig.com"; // Server URL (https://goldaisig.com)
 input string   InpSecret                   = "GOLD_AI_SECRET";       // Webhook Secret Key
 
 input group "--- Auto Trading Control ---"
@@ -32,22 +32,22 @@ input bool     InpAutoCloseOnFlip          = true;                   // Auto-Clo
 input bool     InpAutoModifyExistingOrders = true;                   // Auto-Update Existing Active Orders on Chart (true = เปิดอัปเดตตาม, false = ปิด)
 
 input group "--- Custom Entry Offset (In Points / จุด) ---"
-input int      InpEntryOffsetPoints        = 0;                      // Entry Offset in Points (e.g. 150 points = Shift Entry $1.50 deeper)
+input int      InpEntryOffsetPoints        = 0;                      // Entry Offset in Points (Exness: 1000 pts = $1.00 | Standard: 100 pts = $1.00)
 
 input group "--- Custom Risk & Scalp Targets (In Points / จุด) ---"
 input bool     InpUseCustomTPSL            = false;                  // Enable Custom TP / SL Override (true = Use Custom Points, false = Use AI Target)
-input int      InpCustomTPPoints           = 280;                    // Custom Safe Scalp TP in Points (e.g. 280 points = $2.80 / 28 pips)
-input int      InpCustomSLPoints           = 300;                    // Custom Safe SL in Points (e.g. 300 points = $3.00 / 30 pips)
+input int      InpCustomTPPoints           = 2800;                   // Custom Safe Scalp TP in Points (Exness: 2800 pts = $2.80 | Standard: 280 pts = $2.80)
+input int      InpCustomSLPoints           = 3000;                   // Custom Safe SL in Points (Exness: 3000 pts = $3.00 | Standard: 300 pts = $3.00)
 
 input group "--- Auto Break-Even (ล็อคหน้าทุนอัตโนมัติ) ---"
 input bool     InpEnableBreakEven          = true;                   // Enable Auto Break-Even (ขยับ SL บังหน้าทุนเมื่อกำไรถึงเป้า)
-input int      InpBreakEvenTriggerPoints   = 150;                    // Break-Even Trigger in Points (กำไรบวก 150 จุด = $1.50 ให้เริ่มล็อค)
-input int      InpBreakEvenLockPoints      = 20;                     // Profit to Lock in Points (ล็อคกำไรขั้นต่ำ 20 จุด = $0.20 กันตกรถ)
+input int      InpBreakEvenTriggerPoints   = 1500;                   // Break-Even Trigger in Points (Exness: 1500 pts = $1.50 | Standard: 150 pts = $1.50)
+input int      InpBreakEvenLockPoints      = 200;                    // Profit to Lock in Points (Exness: 200 pts = $0.20 | Standard: 20 pts = $0.20)
 
 input group "--- Trailing Stop (เลื่อน SL ล็อคกำไรตามเทรนด์) ---"
 input bool     InpEnableTrailing           = true;                   // Enable Trailing Stop (เลื่อน SL ตามราคากำไรอัตโนมัติ)
-input int      InpTrailingStartPoints      = 200;                    // Trailing Start in Points (เริ่มเลื่อนเมื่อกำไรบวก 200 จุด = $2.00)
-input int      InpTrailingDistPoints       = 150;                    // Trailing Distance in Points (รักษาระยะห่าง 150 จุด = $1.50)
+input int      InpTrailingStartPoints      = 2000;                   // Trailing Start in Points (Exness: 2000 pts = $2.00 | Standard: 200 pts = $2.00)
+input int      InpTrailingDistPoints       = 1500;                   // Trailing Distance in Points (Exness: 1500 pts = $1.50 | Standard: 150 pts = $1.50)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                 |
@@ -63,12 +63,12 @@ double         m_activeTP = 0;
 int            m_totalSyncCount = 0;
 
 //+------------------------------------------------------------------+
-//| Helper: Get Point Value for Gold Symbol                          |
+//| Helper: Get Point Value for Gold Symbol (Handles Exness 3-digits)|
 //+------------------------------------------------------------------+
 double GetPointValue()
 {
    double p = _Point;
-   if(p <= 0) p = 0.01;
+   if(p <= 0) p = (_Digits == 3) ? 0.001 : 0.01;
    return p;
 }
 

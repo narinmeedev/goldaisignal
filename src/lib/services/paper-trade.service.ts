@@ -24,7 +24,7 @@ export class PaperTradeService {
       in: [
         normalizedSymbol,
         'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
-        'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn',
+        'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn',
         symbol,
       ],
     };
@@ -242,7 +242,7 @@ export class PaperTradeService {
         continue;
       }
       const riskDistance = Math.max(1.5, Math.abs(entry - stopLoss));
-      const beThreshold = 3.50; // In Gold (XAUUSD), +$3.50 (350 points) gain activates Break-Even
+      const beThreshold = 2.50; // In Gold (XAUUSD), +$2.50 (250 points) gain activates Break-Even
 
       if (direction === 'BUY') {
         // 1. Check Take Profit 2 (Ultimate Target)

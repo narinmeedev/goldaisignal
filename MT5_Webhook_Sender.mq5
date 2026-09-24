@@ -1,33 +1,110 @@
 //+------------------------------------------------------------------+
 //|                                     MT5_Webhook_Sender.mq5       |
 //|                        Gold AI Signal Lab - Webhook & Sync       |
+//|                    Supports IUX Markets (XAUUSD.iux) & All Gold  |
 //+------------------------------------------------------------------+
 #property copyright "Gold AI Signal Lab"
-#property version   "2.10"
+#property link      "https://goldaisig.com"
+#property version   "3.30"
+#property description "EA for MetaTrader 5 - Syncs Realtime Candles and Market Structure Webhook Signals from IUX Markets (XAUUSD.iux) / Exness to Gold AI Signal Cloud & Localhost"
+
+enum ENUM_SERVER_TARGET
+{
+   TARGET_CLOUD_ONLY,   // ☁️ Cloud Only (https://goldaisig.com)
+   TARGET_BOTH,         // 🚀 Both Cloud & Local/Tailscale (ส่งพร้อมกันทั้งคู่)
+   TARGET_LOCAL_ONLY    // 💻 Local/Tailscale Only (http://100.64.189.114:3000)
+};
+
+enum ENUM_SIGNAL_STRATEGY
+{
+   STRAT_BIGGY_SMART_SIGNAL, // 🏆 BiggySmartSignal (Market Structure + Doji Filter + Limit Entry)
+   STRAT_EMA_CROSS           // ⚡ EMA Fast / Slow Cross
+};
 
 //--- Inputs
-input string   ServerURL        = "https://goldaisig.com/api/webhooks/tradingview";
-input string   SyncURL          = "https://goldaisig.com/api/admin/candles/sync";
-input string   LocalSyncURL     = "http://100.64.189.114:3000/api/admin/candles/sync";
-input bool     EnableLocalSync  = true;
-input string   SecretKey        = "GOLD_AI_SECRET";
-input string   StrategyName   = "support_bounce";
-input int      FastMA_Period  = 9;
-input int      SlowMA_Period  = 21;
-input int      CandleSyncSeconds = 60;
-input int      CandleHistoryBars = 500;
+input group "=== 1. SERVER & DESTINATION (เลือกส่งเข้า Cloud / Tailscale VPN) ==="
+input ENUM_SERVER_TARGET InpServerTarget     = TARGET_CLOUD_ONLY;             // ปลายทางที่ต้องการส่งข้อมูล (ค่าเริ่มต้น: Cloud)
+input string             InpCloudBaseURL     = "https://goldaisig.com";       // Cloud Server URL (https://goldaisig.com)
+input string             InpLocalBaseURL     = "http://100.64.189.114:3000"; // Local/Tailscale IP (http://100.64.189.114:3000)
+input string             InpSecretKey        = "GOLD_AI_SECRET";              // Webhook Secret Key
 
-int handle_fastMA, handle_slowMA;
-datetime lastAlertTimeBuy = 0, lastAlertTimeSell = 0;
-datetime lastSyncTime = 0;
+input group "=== 2. SIGNAL STRATEGY & OPTIMAL LIMIT ENTRY ==="
+input ENUM_SIGNAL_STRATEGY InpSignalStrategy = STRAT_BIGGY_SMART_SIGNAL;     // กลยุทธ์การตรวจจับสัญญาณ
+input int                InpSwingLeftBars    = 3;                             // Swing Left Bars (สำหรับตรวจจับ HH/LH/LL/HL)
+input bool               InpFilterDojiBuy    = true;                          // กรอง Doji ฝั่ง BUY (รอแท่งถัดไปยืนยัน)
+input double             InpPullbackRatio    = 0.40;                          // สัดส่วนย่อ/เด้งรับ Limit Entry (0.40 = 40% ของแท่งสัญญาณ)
+input double             InpSLBufferPoints   = 300.0;                         // ระยะเผื่อ SL นอกสวิง (Points)
+input int                InpFastEMA_Period   = 20;                            // EMA Fast Period (Cloud Trend)
+input int                InpSlowEMA_Period   = 50;                            // EMA Slow Period (Cloud Trend)
+
+input group "=== 3. SYNC & DATA SETTINGS ==="
+input int                InpCandleSyncSec    = 5;                             // ความถี่ในการซิงค์แท่งเทียน (วินาที)
+input int                InpHistoryBars      = 300;                           // จำนวนแท่งเทียนประวัติที่ส่งครั้งแรก (300 bars)
+input int                InpPriceFeedSec     = 5;                             // ส่ง Live Tick Price ทุกๆ (วินาที)
+
+//--- Global Variables
+int      handle_fastMA, handle_slowMA, handle_atr;
+datetime lastAlertTimeBuy  = 0;
+datetime lastAlertTimeSell = 0;
+datetime lastSyncTime      = 0;
 datetime lastPriceFeedTime = 0;
 datetime lastM5BarSyncTime = 0;
+datetime lastErrorLogTime  = 0;
+string   lastCloudStatus   = "Waiting for initial sync...";
+string   lastLocalStatus   = "Waiting for initial sync...";
 
+// Market Structure State
+double   prevHighPrice     = 0.0;
+double   prevLowPrice      = 0.0;
+bool     awaitingDojiBuy   = false;
+double   dojiLLLevel       = 0.0;
+datetime dojiBarTime       = 0;
+
+//+------------------------------------------------------------------+
+//| Check Gold Symbol (Supports XAUUSD.iux, XAUUSD, XAUUSDc, GOLD)  |
+//+------------------------------------------------------------------+
 bool IsGoldSymbol()
 {
-   string symbol = _Symbol;
-   StringToUpper(symbol);
-   return (StringFind(symbol, "XAU") >= 0 || StringFind(symbol, "GOLD") >= 0);
+   string sym = _Symbol;
+   StringToUpper(sym);
+   return (StringFind(sym, "XAU") >= 0 || StringFind(sym, "GOLD") >= 0);
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Get Point Value                                          |
+//+------------------------------------------------------------------+
+double GetPointValue()
+{
+   double p = _Point;
+   if(p <= 0) p = (_Digits == 3) ? 0.001 : 0.01;
+   return p;
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Update On-Screen HUD Comment                             |
+//+------------------------------------------------------------------+
+void UpdateHudComment()
+{
+   string hud = "====================================================\n";
+   hud += "🤖 GOLD AI SIGNAL - WEBHOOK & SYNC ENGINE (v3.30)\n";
+   hud += "====================================================\n";
+   hud += "📍 Symbol: " + _Symbol + " | Timeframe: " + GetTimeframeString() + " (Digits: " + IntegerToString(_Digits) + ")\n";
+   hud += "📡 Target Mode: " + (InpServerTarget == TARGET_BOTH ? "BOTH (Cloud & Tailscale)" : (InpServerTarget == TARGET_CLOUD_ONLY ? "CLOUD ONLY" : "TAILSCALE LOCAL ONLY")) + "\n";
+   
+   if(InpServerTarget == TARGET_CLOUD_ONLY || InpServerTarget == TARGET_BOTH)
+   {
+      hud += "☁️ Cloud Server: " + InpCloudBaseURL + "\n";
+      hud += "   ↳ Status: " + lastCloudStatus + "\n";
+   }
+   if(InpServerTarget == TARGET_LOCAL_ONLY || InpServerTarget == TARGET_BOTH)
+   {
+      hud += "💻 Tailscale Server: " + InpLocalBaseURL + "\n";
+      hud += "   ↳ Status: " + lastLocalStatus + "\n";
+   }
+   hud += "⏱️ Last Sync Time: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\n";
+   hud += "💡 Strategy: " + (InpSignalStrategy == STRAT_BIGGY_SMART_SIGNAL ? "BiggySmartSignal Pro + Limit Entry" : "EMA Cross") + "\n";
+   hud += "====================================================";
+   Comment(hud);
 }
 
 //+------------------------------------------------------------------+
@@ -37,18 +114,26 @@ int OnInit()
 {
    if(!IsGoldSymbol())
    {
-      Print(">>> Gold AI Signal รองรับเฉพาะกราฟทองคำ (GOLD# / XAUUSD) เท่านั้น: ", _Symbol);
-      Alert("Gold AI Signal: กรุณาติดตั้ง EA บนกราฟทองคำ (GOLD# หรือ XAUUSD) เท่านั้น");
+      Print(">>> ❌ Gold AI Signal รองรับเฉพาะกราฟทองคำ (XAUUSD.iux / XAUUSD / XAUUSDc / GOLD): ", _Symbol);
       return(INIT_FAILED);
    }
 
-   handle_fastMA = iMA(_Symbol, _Period, FastMA_Period, 0, MODE_EMA, PRICE_CLOSE);
-   handle_slowMA = iMA(_Symbol, _Period, SlowMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   handle_fastMA = iMA(_Symbol, _Period, InpFastEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   handle_slowMA = iMA(_Symbol, _Period, InpSlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   handle_atr    = iATR(_Symbol, _Period, 14);
    
-   EventSetTimer(5); // Check candle sync often so the web chart keeps moving
+   EventSetTimer(InpCandleSyncSec);
    lastM5BarSyncTime = iTime(_Symbol, PERIOD_M5, 0);
    
-   // ทำการอัปเดตกราฟให้เว็บทันทีที่ลาก EA ลงกราฟ
+   Print(">>> 🚀 [Gold AI Signal Webhook Sender v3.30] Started on ", _Symbol, " (Digits: ", _Digits, ", Point: ", DoubleToString(GetPointValue(), _Digits), ")");
+   if(InpServerTarget == TARGET_CLOUD_ONLY || InpServerTarget == TARGET_BOTH)
+      Print(">>> ☁️ Target Cloud URL: ", InpCloudBaseURL);
+   if(InpServerTarget == TARGET_LOCAL_ONLY || InpServerTarget == TARGET_BOTH)
+      Print(">>> 💻 Target Local/Tailscale URL: ", InpLocalBaseURL);
+
+   UpdateHudComment();
+
+   // ซิงค์แท่งเทียนทันทีเมื่อเริ่มทำงาน
    SyncCandlesToWeb(true);
    lastSyncTime = TimeCurrent();
    
@@ -63,6 +148,8 @@ void OnDeinit(const int reason)
    EventKillTimer();
    IndicatorRelease(handle_fastMA);
    IndicatorRelease(handle_slowMA);
+   IndicatorRelease(handle_atr);
+   Comment("");
 }
 
 //+------------------------------------------------------------------+
@@ -71,85 +158,283 @@ void OnDeinit(const int reason)
 void OnTimer()
 {
    if(!IsGoldSymbol()) return;
-   // อัปเดตกราฟ (แท่งเทียน) ให้ระบบเว็บทราบแบบถี่ เพื่อให้กราฟบนเว็บ realtime ใกล้ MT5
-   if(TimeCurrent() - lastSyncTime >= CandleSyncSeconds) {
+   
+   if(TimeCurrent() - lastSyncTime >= InpCandleSyncSec)
+   {
       SyncCandlesToWeb(false);
       lastSyncTime = TimeCurrent();
+      UpdateHudComment();
    }
 }
 
 //+------------------------------------------------------------------+
-//| Expert tick function (Signal Generation)                         |
+//| Helper: Find Pivot High in historical bars                       |
+//+------------------------------------------------------------------+
+bool CheckPivotHigh(int leftBars, double &pivotPrice)
+{
+   double centerHigh = iHigh(_Symbol, _Period, 1);
+   double currentHigh = iHigh(_Symbol, _Period, 0);
+   if(currentHigh > centerHigh) return false;
+   
+   for(int i = 2; i <= leftBars + 1; i++)
+   {
+      if(iHigh(_Symbol, _Period, i) >= centerHigh) return false;
+   }
+   pivotPrice = centerHigh;
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Find Pivot Low in historical bars                        |
+//+------------------------------------------------------------------+
+bool CheckPivotLow(int leftBars, double &pivotPrice)
+{
+   double centerLow = iLow(_Symbol, _Period, 1);
+   double currentLow = iLow(_Symbol, _Period, 0);
+   if(currentLow < centerLow) return false;
+   
+   for(int i = 2; i <= leftBars + 1; i++)
+   {
+      if(iLow(_Symbol, _Period, i) <= centerLow) return false;
+   }
+   pivotPrice = centerLow;
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function (Signal Generation & Price Feed)            |
 //+------------------------------------------------------------------+
 void OnTick()
 {
    if(!IsGoldSymbol()) return;
-   double fastMA[2], slowMA[2];
-   if(CopyBuffer(handle_fastMA, 0, 0, 2, fastMA) < 2) return;
-   if(CopyBuffer(handle_slowMA, 0, 0, 2, slowMA) < 2) return;
    
-   double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double currentBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double currentAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double currentPrice = currentBid;
    datetime currentBarTime = iTime(_Symbol, _Period, 0);
    
-   // ส่งราคาปัจจุบัน (Live Tick) กลับไปให้หน้าจอ Dashboard ทุกๆ 10 วินาที
-   if(TimeCurrent() - lastPriceFeedTime >= 10) {
-      SendSignalToDashboard("NONE", currentPrice, "price_feed");
+   // 1. ส่ง Live Price Feed กลับไปให้หน้าจอ Dashboard
+   if(TimeCurrent() - lastPriceFeedTime >= InpPriceFeedSec)
+   {
+      SendSignalToWeb("NONE", currentPrice, "price_feed", 0, 0, 0);
       lastPriceFeedTime = TimeCurrent();
+      UpdateHudComment();
    }
 
+   // 2. ตรวจสอบแท่งเทียนใหม่ M5
    datetime latestM5BarTime = iTime(_Symbol, PERIOD_M5, 0);
-   if(latestM5BarTime > 0 && latestM5BarTime != lastM5BarSyncTime) {
+   if(latestM5BarTime > 0 && latestM5BarTime != lastM5BarSyncTime)
+   {
       SyncCandlesToWeb(false);
       lastM5BarSyncTime = latestM5BarTime;
       lastSyncTime = TimeCurrent();
+      UpdateHudComment();
    }
-   
-   // Cross Up -> ยิงสัญญาณ BUY
-   if(fastMA[1] <= slowMA[1] && fastMA[0] > slowMA[0])
+
+   // 3. กลยุทธ์การออกสัญญาณ (BiggySmartSignal / EMA Cross)
+   if(InpSignalStrategy == STRAT_BIGGY_SMART_SIGNAL)
    {
-      if(currentBarTime != lastAlertTimeBuy)
+      double ph = 0.0;
+      double pl = 0.0;
+      
+      double c0 = iClose(_Symbol, _Period, 0);
+      double o0 = iOpen(_Symbol, _Period, 0);
+      double h0 = iHigh(_Symbol, _Period, 0);
+      double l0 = iLow(_Symbol, _Period, 0);
+      double c1 = iClose(_Symbol, _Period, 1);
+      
+      double candleSpan = h0 - l0;
+      double curUpperWick = h0 - MathMax(c0, o0);
+      double curLowerWick = MathMin(c0, o0) - l0;
+      bool isBearishWickDoji = (curUpperWick > curLowerWick);
+      double ptVal = GetPointValue();
+
+      // 🔴 SELL: Pivot High Rejection + Optimal Limit Entry
+      if(CheckPivotHigh(InpSwingLeftBars, ph))
       {
-         SendSignalToDashboard("BUY", currentPrice, StrategyName);
-         lastAlertTimeBuy = currentBarTime;
+         bool testFailed = (h0 <= ph);
+         bool isBearish  = (c0 < o0) || (c0 < c1);
+         
+         if(testFailed && isBearish && currentBarTime != lastAlertTimeSell)
+         {
+            double limitEntry = c0 + (candleSpan * InpPullbackRatio);
+            if(limitEntry > h0) limitEntry = h0;
+            
+            double sl = MathMax(ph, h0) + (InpSLBufferPoints * ptVal);
+            double risk = MathAbs(limitEntry - sl);
+            double tp = limitEntry - (risk * 1.5);
+            
+            SendSignalToWeb("SELL", c0, "BiggySmartSignal_SELL", sl, tp, limitEntry);
+            lastAlertTimeSell = currentBarTime;
+            prevHighPrice = ph;
+         }
+      }
+
+      // 🟢 BUY: Pivot Low Reversal + Doji Followup + Optimal Limit Entry
+      if(CheckPivotLow(InpSwingLeftBars, pl))
+      {
+         bool isLL = (prevLowPrice == 0.0) ? true : (pl <= prevLowPrice);
+         
+         if(isLL)
+         {
+            if(!InpFilterDojiBuy || !isBearishWickDoji)
+            {
+               if(currentBarTime != lastAlertTimeBuy)
+               {
+                  double limitEntry = c0 - (candleSpan * InpPullbackRatio);
+                  if(limitEntry < l0) limitEntry = l0;
+                  
+                  double sl = MathMin(pl, l0) - (InpSLBufferPoints * ptVal);
+                  double risk = MathAbs(limitEntry - sl);
+                  double tp = limitEntry + (risk * 1.5);
+                  
+                  SendSignalToWeb("BUY", c0, "BiggySmartSignal_BUY", sl, tp, limitEntry);
+                  lastAlertTimeBuy = currentBarTime;
+                  awaitingDojiBuy = false;
+               }
+            }
+            else
+            {
+               awaitingDojiBuy = true;
+               dojiLLLevel     = pl;
+               dojiBarTime     = currentBarTime;
+            }
+         }
+         prevLowPrice = pl;
+      }
+
+      // ตรวจสอบ Doji Follow-up Bar
+      if(awaitingDojiBuy && currentBarTime > dojiBarTime)
+      {
+         bool holdLL = (l0 >= dojiLLLevel) || (c0 >= dojiLLLevel);
+         bool isBounce = (curUpperWick > 0 || curLowerWick > 0 || c0 > o0);
+         
+         if(holdLL && isBounce && currentBarTime != lastAlertTimeBuy)
+         {
+            double limitEntry = c0 - (candleSpan * InpPullbackRatio);
+            if(limitEntry < l0) limitEntry = l0;
+            
+            double sl = MathMin(dojiLLLevel, l0) - (InpSLBufferPoints * ptVal);
+            double risk = MathAbs(limitEntry - sl);
+            double tp = limitEntry + (risk * 1.5);
+            
+            SendSignalToWeb("BUY", c0, "BiggySmartSignal_DojiFollowup", sl, tp, limitEntry);
+            lastAlertTimeBuy = currentBarTime;
+            awaitingDojiBuy = false;
+         }
+         else if(l0 < dojiLLLevel)
+         {
+            awaitingDojiBuy = false;
+         }
       }
    }
-   
-   // Cross Down -> ยิงสัญญาณ SELL
-   if(fastMA[1] >= slowMA[1] && fastMA[0] < slowMA[0])
+   else
    {
-      if(currentBarTime != lastAlertTimeSell)
+      // --- EMA Cross Logic ---
+      double fastMA[2], slowMA[2];
+      if(CopyBuffer(handle_fastMA, 0, 0, 2, fastMA) >= 2 && CopyBuffer(handle_slowMA, 0, 0, 2, slowMA) >= 2)
       {
-         SendSignalToDashboard("SELL", currentPrice, StrategyName);
-         lastAlertTimeSell = currentBarTime;
+         if(fastMA[1] <= slowMA[1] && fastMA[0] > slowMA[0] && currentBarTime != lastAlertTimeBuy)
+         {
+            SendSignalToWeb("BUY", currentPrice, "EMA_Cross_BUY", 0, 0, currentPrice);
+            lastAlertTimeBuy = currentBarTime;
+         }
+         if(fastMA[1] >= slowMA[1] && fastMA[0] < slowMA[0] && currentBarTime != lastAlertTimeSell)
+         {
+            SendSignalToWeb("SELL", currentPrice, "EMA_Cross_SELL", 0, 0, currentPrice);
+            lastAlertTimeSell = currentBarTime;
+         }
       }
    }
 }
 
 //+------------------------------------------------------------------+
-//| WebRequest: ส่งสัญญาณสด (Live Signal)                           |
+//| WebRequest Helper: ส่งข้อมูล JSON ไปยัง URL ปลายทาง (ไม่มี Modal Alert)|
 //+------------------------------------------------------------------+
-void SendSignalToDashboard(string direction, double price, string strategyType)
+bool PostJson(string url, string jsonBody, string &responseOut, string label)
 {
    char postData[], resultData[];
    string resultHeaders;
    
-   string jsonPayload = StringFormat(
-      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%f,\"strategy\":\"%s\",\"timestamp\":\"%s\"}",
-      SecretKey, _Symbol, GetTimeframeString(), direction, price, strategyType, ToIsoUtc(TimeCurrent())
-   );
-   
-   StringToCharArray(jsonPayload, postData, 0, WHOLE_ARRAY, CP_UTF8);
-   ArrayResize(postData, ArraySize(postData) - 1); // Remove null terminator เพื่อป้องกัน Error ฝั่งเว็บ
+   StringToCharArray(jsonBody, postData, 0, WHOLE_ARRAY, CP_UTF8);
+   ArrayResize(postData, ArraySize(postData) - 1); // ตัด null terminator ทิ้ง
    
    string headers = "Content-Type: application/json\r\n";
-   int res = WebRequest("POST", ServerURL, headers, 5000, postData, resultData, resultHeaders);
+   ResetLastError();
+   int res = WebRequest("POST", url, headers, 10000, postData, resultData, resultHeaders);
    
-   if(res == 200) Print(">>> ส่งสัญญาณ (", direction, ") เข้าระบบสำเร็จ!");
-   else Print(">>> ส่งสัญญาณล้มเหลว Error: ", GetLastError());
+   if(res == 200 || res == 202)
+   {
+      responseOut = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
+      return true;
+   }
+   
+   int err = GetLastError();
+   // แสดง error log ในแถบ Experts ทุกๆ 30 วินาทีเพื่อไม่ให้รก log และไม่ใช้ Alert() popup กวนใจ
+   if(TimeCurrent() - lastErrorLogTime >= 30)
+   {
+      if(res == -1)
+      {
+         if(err == 4014)
+         {
+            Print(">>> ❌ [", label, " Error 4014: ERR_WEBREQUEST_NOT_ALLOWED] กรุณาไปที่ Tools -> Options -> Expert Advisors และเพิ่ม URL: ", url);
+         }
+         else
+         {
+            Print(">>> ❌ [", label, " WebRequest Failed] Error code: ", err, " URL: ", url);
+         }
+      }
+      else
+      {
+         string errBody = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
+         Print(">>> ⚠️ [", label, " Server Returned HTTP ", res, "] ", errBody, " URL: ", url);
+      }
+      lastErrorLogTime = TimeCurrent();
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+
-//| WebRequest: ส่งประวัติแท่งเทียน (Historical Candles)              |
+//| ส่งสัญญาณสด (Live Signal / Tick) ไปยัง Cloud / Tailscale         |
+//+------------------------------------------------------------------+
+void SendSignalToWeb(string direction, double price, string strategyType, double sl = 0, double tp = 0, double limitEntry = 0)
+{
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double spread = (ask - bid);
+
+   string jsonPayload = StringFormat(
+      "{\"secret\":\"%s\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"direction\":\"%s\",\"price\":%." + IntegerToString(_Digits) + "f,\"limit_entry\":%." + IntegerToString(_Digits) + "f,\"bid\":%." + IntegerToString(_Digits) + "f,\"ask\":%." + IntegerToString(_Digits) + "f,\"spread\":%." + IntegerToString(_Digits) + "f,\"sl\":%." + IntegerToString(_Digits) + "f,\"tp\":%." + IntegerToString(_Digits) + "f,\"strategy\":\"%s\",\"timestamp\":\"%s\"}",
+      InpSecretKey, _Symbol, GetTimeframeString(), direction, price, (limitEntry > 0 ? limitEntry : price), bid, ask, spread, sl, tp, strategyType, ToIsoUtc(TimeCurrent())
+   );
+
+   string resp = "";
+   
+   // 1. ส่งเข้า Cloud Server
+   if(InpServerTarget == TARGET_CLOUD_ONLY || InpServerTarget == TARGET_BOTH)
+   {
+      string cloudWebhookUrl = InpCloudBaseURL + "/api/webhooks/tradingview";
+      if(PostJson(cloudWebhookUrl, jsonPayload, resp, "CLOUD_SIGNAL"))
+      {
+         if(direction != "NONE")
+            Print(">>> ☁️ [CLOUD] ส่งสัญญาณ ", _Symbol, " (", direction, " @ ", DoubleToString(price, _Digits), ") สำเร็จ!");
+      }
+   }
+
+   // 2. ส่งเข้า Local/Tailscale Server
+   if(InpServerTarget == TARGET_LOCAL_ONLY || InpServerTarget == TARGET_BOTH)
+   {
+      string localWebhookUrl = InpLocalBaseURL + "/api/webhooks/tradingview";
+      if(PostJson(localWebhookUrl, jsonPayload, resp, "LOCAL_SIGNAL"))
+      {
+         if(direction != "NONE")
+            Print(">>> 💻 [LOCAL] ส่งสัญญาณ ", _Symbol, " (", direction, " @ ", DoubleToString(price, _Digits), ") สำเร็จ!");
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| ส่งประวัติแท่งเทียน (Historical Candles) ไปยัง Cloud / Tailscale  |
 //+------------------------------------------------------------------+
 void SyncCandlesToWeb(bool fullHistory)
 {
@@ -158,17 +443,14 @@ void SyncCandlesToWeb(bool fullHistory)
 
    for(int tfIndex = 0; tfIndex < 3; tfIndex++)
    {
-      char postData[], resultData[];
-      string resultHeaders;
-
       MqlRates rates[];
       ArraySetAsSeries(rates, true);
-      int barsToCopy = fullHistory ? CandleHistoryBars : 10;
+      int barsToCopy = fullHistory ? InpHistoryBars : 10;
       int copied = CopyRates(_Symbol, periods[tfIndex], 0, barsToCopy, rates);
 
       if(copied <= 0) continue;
 
-      string json = "{\"secret\":\"" + SecretKey + "\",\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"" + labels[tfIndex] + "\",\"candles\":[";
+      string json = "{\"secret\":\"" + InpSecretKey + "\",\"symbol\":\"" + _Symbol + "\",\"timeframe\":\"" + labels[tfIndex] + "\",\"candles\":[";
 
       for(int i = 0; i < copied; i++) {
          string timeStr = ToIsoUtc(rates[i].time);
@@ -186,42 +468,37 @@ void SyncCandlesToWeb(bool fullHistory)
       }
       json += "]}";
 
-      StringToCharArray(json, postData, 0, WHOLE_ARRAY, CP_UTF8);
-      ArrayResize(postData, ArraySize(postData) - 1); // Remove null terminator
-
-      string headers = "Content-Type: application/json\r\n";
+      string resp = "";
       
-      // 1. ส่งข้อมูลเข้า Localhost (Qwen 3.5-9B Engine) หากเปิดใช้งาน
-      if(EnableLocalSync && StringLen(LocalSyncURL) > 0)
+      // 1. ซิงค์เข้า Cloud
+      if(InpServerTarget == TARGET_CLOUD_ONLY || InpServerTarget == TARGET_BOTH)
       {
-         uchar localResult[];
-         string localHeaders;
-         int localRes = WebRequest("POST", LocalSyncURL, headers, 3000, postData, localResult, localHeaders);
-         if(localRes == 200)
+         string cloudSyncUrl = InpCloudBaseURL + "/api/admin/candles/sync";
+         if(PostJson(cloudSyncUrl, json, resp, "CLOUD_CANDLES_" + labels[tfIndex]))
          {
-            Print(">>> 🤖 [LOCAL QWEN ENGINE] ส่งแท่งเทียนเข้า Qwen 3.5-9B บนเครื่องสำเร็จ!");
-            string localResp = CharArrayToString(localResult, 0, WHOLE_ARRAY, CP_UTF8);
-            UpdateChartTradePlan(localResp);
+            lastCloudStatus = "✅ OK (" + labels[tfIndex] + " " + IntegerToString(copied) + " bars synced)";
+            UpdateChartTradePlan(resp);
+         }
+         else
+         {
+            lastCloudStatus = "❌ Error connecting to " + InpCloudBaseURL;
          }
       }
 
-      // 2. ส่งข้อมูลเข้า Cloud (goldaisig.com)
-      int res = WebRequest("POST", SyncURL, headers, 5000, postData, resultData, resultHeaders);
-
-      if(res == 200) {
-         Print(">>> ☁️ [CLOUD SERVER] อัปเดตแท่งเทียน ", copied, " แท่ง (", labels[tfIndex], ") ขึ้น goldaisig.com สำเร็จ!");
-         string responseText = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
-         
-         if(StringFind(responseText, "\"command\":\"RECONNECT\"") >= 0 || StringFind(responseText, "\"command\":\"RESYNC\"") >= 0) {
-            Print(">>> [SERVER COMMAND] ได้รับคำสั่งสั่ง RECONNECT / RESYNC จากเว็บหลังบ้าน! กำลังเริ่มโหลดรีเซ็ตบอทใหม่...");
-            Alert("ได้รับคำสั่งให้เชื่อมต่อใหม่จากเซิร์ฟเวอร์เว็บ!");
-            ChartSetSymbolPeriod(0, _Symbol, _Period);
+      // 2. ซิงค์เข้า Local/Tailscale
+      if(InpServerTarget == TARGET_LOCAL_ONLY || InpServerTarget == TARGET_BOTH)
+      {
+         string localSyncUrl = InpLocalBaseURL + "/api/admin/candles/sync";
+         if(PostJson(localSyncUrl, json, resp, "LOCAL_CANDLES_" + labels[tfIndex]))
+         {
+            lastLocalStatus = "✅ OK (" + labels[tfIndex] + " " + IntegerToString(copied) + " bars synced)";
+            UpdateChartTradePlan(resp);
          }
-         
-         // วาดเส้นแนวออเดอร์ Entry / SL / TP บนกราฟ MT5 อัตโนมัติเมื่อได้รับแผนจากเซิร์ฟเวอร์
-         UpdateChartTradePlan(responseText);
+         else
+         {
+            lastLocalStatus = "❌ Error connecting to " + InpLocalBaseURL;
+         }
       }
-      else Print(">>> ☁️ [CLOUD SERVER] อัปเดตแท่งเทียน ", labels[tfIndex], " ล้มเหลว Error: ", GetLastError());
    }
 }
 
@@ -230,26 +507,19 @@ void SyncCandlesToWeb(bool fullHistory)
 //+------------------------------------------------------------------+
 void UpdateChartTradePlan(string json)
 {
-   int planPos = StringFind(json, "\"activePlan\":{");
-   if(planPos < 0) return;
+   if(StringFind(json, "\"activePlan\":{") < 0) return;
 
    double entry = ExtractJsonDouble(json, "\"entry\":");
-   double sl = ExtractJsonDouble(json, "\"stopLoss\":");
-   double tp = ExtractJsonDouble(json, "\"takeProfit\":");
+   double sl    = ExtractJsonDouble(json, "\"stopLoss\":");
+   double tp    = ExtractJsonDouble(json, "\"takeProfit\":");
 
    if(entry <= 0 || sl <= 0 || tp <= 0) return;
 
-   // 1. Draw Entry Line & Text Label
-   DrawChartLine("GoldAI_ENTRY", entry, clrDodgerBlue, STYLE_SOLID, 2, "🔹 Entry by AI: $" + DoubleToString(entry, 2));
-   
-   // 2. Draw SL Line & Text Label
-   DrawChartLine("GoldAI_SL", sl, clrCrimson, STYLE_DASH, 2, "🔻 SL by AI: $" + DoubleToString(sl, 2));
+   DrawChartLine("GoldAI_ENTRY", entry, clrDodgerBlue, STYLE_SOLID, 2, "🔹 Entry: $" + DoubleToString(entry, _Digits));
+   DrawChartLine("GoldAI_SL", sl, clrCrimson, STYLE_DASH, 2, "🔻 SL: $" + DoubleToString(sl, _Digits));
+   DrawChartLine("GoldAI_TP", tp, clrGold, STYLE_SOLID, 2, "🎯 TP: $" + DoubleToString(tp, _Digits));
 
-   // 3. Draw TP Line & Text Label
-   DrawChartLine("GoldAI_TP", tp, clrGold, STYLE_SOLID, 2, "🎯 TP by AI: $" + DoubleToString(tp, 2));
-
-   // 4. Draw Overlay Information Badge on Top-Right Corner
-   DrawChartCornerText("GoldAI_BADGE", "🤖 Gold AI Signal: Entry by AI $" + DoubleToString(entry, 2) + " | SL $" + DoubleToString(sl, 2) + " | TP $" + DoubleToString(tp, 2), clrYellow);
+   DrawChartCornerText("GoldAI_BADGE", "🤖 Gold AI (" + _Symbol + "): Entry $" + DoubleToString(entry, _Digits) + " | SL $" + DoubleToString(sl, _Digits) + " | TP $" + DoubleToString(tp, _Digits), clrYellow);
 }
 
 double ExtractJsonDouble(string json, string key)
@@ -312,9 +582,6 @@ string ToIsoUtc(datetime serverTime)
    return timeStr;
 }
 
-//+------------------------------------------------------------------+
-//| แปลง Timeframe เป็นข้อความ                                        |
-//+------------------------------------------------------------------+
 string GetTimeframeString()
 {
    switch(_Period)

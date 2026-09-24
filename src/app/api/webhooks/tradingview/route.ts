@@ -49,11 +49,12 @@ export async function POST(request: Request) {
     const reportedSpread = Number(payload.spread);
     const hasTickIntegrityFields = Number.isFinite(bid) && Number.isFinite(ask);
     const spread = hasTickIntegrityFields ? ask - bid : reportedSpread;
+    const isPriceFeedOnly = String(payload.direction || '').toUpperCase() === 'NONE';
     const invalidTick = hasTickIntegrityFields && (
       ask < bid ||
       spread <= 0 ||
-      spread > 1.5 ||
-      Math.abs(((ask + bid) / 2) - Number(payload.price)) > Math.max(spread, 0.25)
+      spread > 15.0 ||
+      (isPriceFeedOnly && Math.abs(((ask + bid) / 2) - Number(payload.price)) > Math.max(spread * 2, 5.0))
     );
 
     if (invalidTick) {

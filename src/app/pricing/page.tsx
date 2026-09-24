@@ -1,69 +1,153 @@
 import Link from 'next/link';
-import { ArrowRight, BarChart3, Bell, Check, CircleDollarSign, Clock3, LineChart, MessageCircle, ShieldCheck, Target } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  Bell,
+  Check,
+  CheckCircle2,
+  CircleDollarSign,
+  Clock3,
+  Flame,
+  LineChart,
+  MessageCircle,
+  Radio,
+  Send,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Target,
+  WalletCards,
+  Zap,
+} from 'lucide-react';
 import PublicShell from '@/components/PublicShell';
-import DashboardProductPreview from '@/components/DashboardProductPreview';
 import { PROMOTIONAL_MONTHLY_PRICE_THB, REGULAR_MONTHLY_PRICE_THB, TRIAL_DURATION_DAYS, formatBaht } from '@/lib/billing';
 
 const included = [
-  { icon: Target, title: 'แผนหลักปัจจุบัน', desc: 'BUY / SELL / NO TRADE พร้อม Entry, Stop Loss และ Take Profit' },
-  { icon: LineChart, title: 'กราฟวิเคราะห์หลายกรอบเวลา', desc: 'แท่งเทียน โซนแนวรับแนวต้าน และภาพรวม D1 ถึง M5' },
-  { icon: ShieldCheck, title: 'เงื่อนไขความเสี่ยง', desc: 'คะแนนความเสี่ยง เหตุผลประกอบ และ Risk/Reward ของแผน' },
-  { icon: Bell, title: 'LINE notification', desc: 'แจ้งเตือนเมื่อมีแผนใหม่ที่ผ่านเกณฑ์ของระบบ' },
-  { icon: BarChart3, title: 'ประวัติและผลการติดตาม', desc: 'Win rate, R-multiple และสถานะแผนที่ตรวจสอบย้อนหลังได้' },
-  { icon: Clock3, title: 'ข้อมูลตลาดต่อเนื่อง', desc: 'อ่านราคาจาก MT5 และแสดงสถานะความสดของข้อมูล' },
+  { icon: Send, title: 'Telegram VIP Channel สัญญาณสด', desc: 'แจ้งเตือน Entry, SL, TP1-TP3 ตรงเข้ามือถือ 24 ชั่วโมง' },
+  { icon: MessageCircle, title: 'LINE Official VIP Alert', desc: 'รับสัญญาณและบทวิเคราะห์โครงสร้างราคาผ่าน LINE' },
+  { icon: Sparkles, title: 'AI + SMC & FVG Analysis', desc: 'วิเคราะห์โครงสร้างราคาแนวรับแนวต้าน และจุดกลับตัวแม่นยำ' },
+  { icon: ShieldCheck, title: 'Stop Loss Buffer ทุกไม้', desc: 'คุมความเสี่ยงปลอดภัย ไม่ลากติดลบ มีจุดยอมแพ้ชัดเจน' },
+  { icon: Radio, title: 'Smart Market Filter', desc: 'แจ้งเตือน NO TRADE เมื่อตลาดผันผวนสูง หรือมีข่าวกล่องแดง' },
+  { icon: WalletCards, title: 'โปรแกรม Affiliate 35%', desc: 'รับสิทธิ์แนะนำเพื่อน รับค่าคอมมิชชั่น 35% ตลอดอายุสมาชิก' },
 ];
 
 export default function PricingPage() {
   return (
     <PublicShell>
-      <main>
-        <section className="relative overflow-hidden border-b border-ga-border">
-          <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(39,49,59,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(39,49,59,0.18)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-          <div className="relative mx-auto max-w-[1200px] px-4 py-16 text-center sm:px-6 lg:px-8 lg:py-24">
-            <span className="public-kicker">Pricing · Gold AI Signal Pro</span>
-            <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold leading-tight tracking-[-0.035em] text-ga-text sm:text-5xl">แพ็กเกจเดียว<br /><span className="text-ga-gold">เห็นข้อมูลครบก่อนตัดสินใจ</span></h1>
-            <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-ga-muted">ทดลองใช้งาน Dashboard และการนำเสนอแผนจริงก่อน ไม่มีการรับประกันผลกำไร และระบบอาจเลือกไม่ออกแผนเมื่อคุณภาพไม่ผ่านเกณฑ์</p>
-          </div>
+      <main className="relative overflow-hidden">
+        {/* Glow */}
+        <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-[450px] w-full max-w-7xl bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(227,181,45,0.1),transparent_70%)]" />
+
+        <section className="relative border-b border-ga-border/80 px-4 py-16 text-center sm:px-6 lg:px-8 lg:py-20">
+          <span className="public-kicker">
+            <Sparkles className="h-4 w-4 text-ga-gold" /> PRICING & PLANS · GOLD AI SIGNAL VIP
+          </span>
+          <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-extrabold tracking-tight text-ga-text sm:text-5xl lg:text-6xl">
+            แพ็กเกจสมาชิก <span className="text-ga-gold">Gold AI VIP</span><br />
+            รับสัญญาณตรงบนมือถือ
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ga-muted sm:text-lg">
+            เข้ากลุ่ม Telegram VIP และ LINE Notification เพื่อรับสัญญาณเทรดทองคำ AI สด 24 ชม. ไม่ต้องนั่งเฝ้าจอ ไม่พลาดทุกจังหวะสำคัญ
+          </p>
         </section>
 
-        <section className="border-b border-ga-border px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
-          <DashboardProductPreview compact />
-        </section>
-
-        <section className="bg-[#0d141c]">
-          <div className="mx-auto grid max-w-[1200px] gap-6 px-4 py-12 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:px-8 lg:py-20">
-            <div className="public-panel overflow-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ga-border p-6 sm:p-8">
-                <div><p className="font-mono text-xs uppercase tracking-[0.14em] text-ga-muted">Founding member</p><h2 className="mt-2 text-2xl font-semibold text-ga-text">สมาชิก PRO รายเดือน</h2></div>
-                <span className="rounded-md border border-ga-gold/30 bg-ga-gold/8 px-3 py-1.5 text-xs font-medium text-ga-gold">สิทธิ์จำนวนจำกัด</span>
+        <section className="bg-[#0b1017] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+            {/* VIP Package Card */}
+            <div className="relative overflow-hidden rounded-3xl border-2 border-ga-gold/40 bg-[#0e1622] p-8 shadow-2xl sm:p-10">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ga-border pb-6">
+                <div>
+                  <p className="font-mono text-xs uppercase tracking-widest text-ga-gold">Founding Member Privilege</p>
+                  <h2 className="mt-2 text-2xl font-bold text-ga-text sm:text-3xl">สมาชิก VIP รายเดือน</h2>
+                </div>
+                <span className="rounded-full border border-ga-gold/30 bg-ga-gold/10 px-3.5 py-1 text-xs font-bold text-ga-gold">
+                  สิทธิ์ราคาพิเศษ
+                </span>
               </div>
-              <div className="p-6 sm:p-8">
-                <div className="flex flex-wrap items-end gap-x-3 gap-y-1"><span className="font-mono text-5xl font-semibold tracking-tight text-ga-gold">{formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}</span><span className="pb-2 text-sm text-ga-muted">ต่อเดือน</span></div>
-                <p className="mt-2 text-sm text-ga-muted">จากราคาปกติ <span className="line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span></p>
-                <div className="mt-5 rounded-lg border border-ga-gold/20 bg-ga-gold/6 p-4"><p className="text-sm font-semibold text-ga-text">ชำระวันนี้ ล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน</p><p className="mt-1 text-xs leading-5 text-ga-muted">เมื่อยอดชำระได้รับอนุมัติ ราคานี้จะถูกล็อกไว้กับบัญชีของคุณตลอดไป</p></div>
-                <Link href="/checkout" className="public-button-primary mt-7 min-h-14 w-full px-6 text-base">รับสิทธิ์ราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)} <ArrowRight className="h-4 w-4" /></Link>
-                <p className="mt-3 text-center text-xs leading-5 text-ga-muted">ทดลองใช้ฟรี {TRIAL_DURATION_DAYS} วันโดยไม่ผูกบัตร · การทดลองฟรีเพียงอย่างเดียวยังไม่ล็อกราคา</p>
-                <div className="my-7 border-t border-ga-border" />
-                <h3 className="text-sm font-semibold text-ga-text">สิ่งที่รวมในแพ็กเกจ</h3>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {included.map(({ icon: Icon, title, desc }) => <div key={title} className="rounded-lg border border-ga-border bg-ga-canvas p-4"><Icon className="h-4 w-4 text-ga-gold" /><p className="mt-3 text-sm font-semibold text-ga-text">{title}</p><p className="mt-1 text-xs leading-5 text-ga-muted">{desc}</p></div>)}
+
+              <div className="py-8">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-mono text-5xl font-extrabold tracking-tight text-ga-gold sm:text-6xl">
+                    {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}
+                  </span>
+                  <span className="text-base text-ga-muted">/ เดือน</span>
+                  <span className="ml-2 text-base text-neutral-500 line-through">{formatBaht(REGULAR_MONTHLY_PRICE_THB)}</span>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-ga-gold/20 bg-ga-gold/5 p-4">
+                  <p className="text-sm font-semibold text-ga-text">
+                    🔒 สิทธิ์ล็อกราคา {formatBaht(PROMOTIONAL_MONTHLY_PRICE_THB)}/เดือน ตลอดอายุสมาชิก
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-ga-muted">
+                    ชำระเงินวันนี้ ล็อกราคานี้ไว้กับบัญชีของคุณ ไม่มีการปรับขึ้นราคาในรอบบิลถัดไป
+                  </p>
+                </div>
+
+                <Link
+                  href="/checkout"
+                  className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-ga-gold via-amber-400 to-amber-500 text-base font-bold text-neutral-950 shadow-lg transition-all hover:brightness-110"
+                >
+                  <Zap className="h-5 w-5 fill-neutral-950" />
+                  <span>สมัครสมาชิกและเปิดสิทธิ์ VIP</span>
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+
+                <p className="mt-3 text-center text-xs text-ga-muted">
+                  ทดลองใช้งานฟรี {TRIAL_DURATION_DAYS} วันโดยไม่ต้องผูกบัตรเครดิต
+                </p>
+
+                <div className="my-8 border-t border-ga-border" />
+
+                <h3 className="text-sm font-bold uppercase tracking-wider text-ga-text">สิทธิ์ประโยชน์ที่ได้รับ</h3>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {included.map(({ icon: Icon, title, desc }) => (
+                    <div key={title} className="rounded-xl border border-ga-border bg-[#121a24] p-4">
+                      <Icon className="h-5 w-5 text-ga-gold" />
+                      <p className="mt-2.5 text-sm font-bold text-ga-text">{title}</p>
+                      <p className="mt-1 text-xs leading-5 text-ga-muted">{desc}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <aside className="space-y-4 lg:sticky lg:top-24">
-              <div className="public-panel p-6 sm:p-7">
-                <p className="font-mono text-xs uppercase tracking-[0.12em] text-ga-gold">ก่อนเริ่มใช้งาน</p>
+            {/* Sidebar Guide */}
+            <aside className="space-y-6 lg:sticky lg:top-24">
+              <div className="rounded-2xl border border-ga-border bg-[#0e1620] p-6 sm:p-7">
+                <p className="font-mono text-xs font-bold uppercase tracking-widest text-ga-gold">ข้อตกลงและคำแนะนำ</p>
                 <ul className="mt-5 space-y-4">
-                  {['ระบบเป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่ระบบรับประกันผลตอบแทน', 'สมาชิกควรกำหนดขนาด Lot และความเสี่ยงต่อครั้งด้วยตนเอง', 'เมื่อข้อมูลไม่สดหรือคุณภาพแผนไม่ผ่าน ระบบจะแสดง NO TRADE', 'ผลลัพธ์ในอดีตไม่รับรองผลลัพธ์ในอนาคต'].map((item) => <li key={item} className="flex gap-3 text-sm leading-6 text-[#c7ced5]"><Check className="mt-1 h-4 w-4 shrink-0 text-emerald-400" />{item}</li>)}
+                  {[
+                    'สัญญาณส่งตรงเข้ามือถือผ่าน Telegram & LINE ทันทีเมื่อ AI ตรวจพบจังหวะ',
+                    'มีระดับ Entry, Stop Loss และ Take Profit ชัดเจนทุกไม้',
+                    'สมาชิกควรกำหนดความเสี่ยงไม่เกิน 1-2% ต่อไม้',
+                    'เมื่อตลาดผันผวนสูง ข่าวแรง ระบบจะแจ้งเตือน NO TRADE เพื่อรักษาทุน',
+                    'สถิติโปร่งใส ตรวจสอบประวัติไม้เทรดย้อนหลังได้ในระบบสมาชิก',
+                  ].map((item) => (
+                    <li key={item} className="flex gap-3 text-sm leading-relaxed text-[#c7ced5]">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
-              <div className="rounded-xl border border-ga-gold/25 bg-ga-gold/6 p-6">
-                <CircleDollarSign className="h-5 w-5 text-ga-gold" />
-                <h3 className="mt-4 text-base font-semibold text-ga-text">ทดลองให้เห็นวิธีทำงานก่อน</h3>
-                <p className="mt-2 text-sm leading-6 text-ga-muted">เข้า Dashboard ดูราคา สถานะแผน กราฟ และวิธีอธิบายความเสี่ยง แล้วจึงตัดสินใจว่าจะใช้งานต่อหรือไม่</p>
+
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+                <div className="flex items-center gap-3">
+                  <Smartphone className="h-6 w-6 text-emerald-400" />
+                  <h3 className="text-base font-bold text-ga-text">เชื่อมต่อง่ายผ่านมือถือ</h3>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-ga-muted">
+                  หลังชำระเงิน คุณจะสามารถกดเข้ากลุ่ม Telegram VIP และเปิดรับแจ้งเตือน LINE ได้ทันทีในหน้า Member Hub
+                </p>
+                <a
+                  href="https://line.me/R/ti/p/@413aryiz"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"
+                >
+                  <MessageCircle className="h-4 w-4" /> สอบถามทีมงานผ่าน LINE
+                </a>
               </div>
-              <a href="https://line.me/R/ti/p/@413aryiz" target="_blank" rel="noreferrer" className="public-button-secondary min-h-12 w-full px-5"><MessageCircle className="h-4 w-4 text-emerald-400" /> สอบถามรายละเอียดผ่าน LINE</a>
             </aside>
           </div>
         </section>

@@ -70,9 +70,9 @@ const formatTime = (value: string) => {
 type ChartTimeframe = 'M5' | 'M15' | 'H1';
 
 const DEFAULT_VISIBLE_CANDLES: Record<ChartTimeframe, number> = {
-  M5: 60,
-  M15: 60,
-  H1: 48,
+  M5: 45,
+  M15: 45,
+  H1: 35,
 };
 
 const MIN_VISIBLE_CANDLES = 12;
@@ -95,18 +95,25 @@ export default function TradePlanChart({
   const chartSvgRef = useRef<SVGSVGElement>(null);
 
   const sourceCandles = useMemo(() => {
-    return selectedTF === 'M5' && m5Candles.length
+    const raw = selectedTF === 'M5' && m5Candles.length
       ? m5Candles
       : selectedTF === 'H1' && h1Candles.length
         ? h1Candles
         : m15Candles.length
           ? m15Candles
           : candles;
+
+    if (!raw.length) return [];
+    const sorted = [...raw].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    const latestTime = new Date(sorted[sorted.length - 1].time).getTime();
+    // Keep only candles within the active session (within 72 hours of latest candle)
+    // to prevent historical test data with huge price gaps from flattening the current chart
+    const sessionCutoff = latestTime - 72 * 60 * 60 * 1000;
+    return sorted.filter((c) => new Date(c.time).getTime() >= sessionCutoff);
   }, [candles, h1Candles, m15Candles, m5Candles, selectedTF]);
 
   const chartCandles = useMemo(() => {
     const mapped = [...sourceCandles]
-      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
       .slice(-visibleCandleCount)
       .map((candle) => ({ ...candle, time: formatTime(candle.time) }));
 
@@ -156,32 +163,69 @@ export default function TradePlanChart({
   const visibleSupport = supportZones.slice(0, 2);
   const visibleResistance = resistanceZones.slice(0, 2);
 
+  // Focus the chart vertical scale on the visible candlesticks
+  // so candles are tall, bold, and easy to read without squishing
   const priceMetrics = useMemo(() => {
-    const values = chartCandles.flatMap((candle) => [candle.high, candle.low]);
-    if (currentPrice) values.push(currentPrice);
-    if (plan) values.push(plan.entry, plan.stopLoss, plan.takeProfit);
-    [...visibleSupport, ...visibleResistance].forEach((zone) => values.push(zone.priceMin, zone.priceMax));
+    const candleHighs = chartCandles.map((c) => c.high);
+    const candleLows = chartCandles.map((c) => c.low);
+    if (!candleHighs.length) {
+      const base = currentPrice || 4350;
+      return { min: base - 5, max: base + 5, range: 10 };
+    }
 
-    if (!values.length) values.push(4300, 4310);
-    const rawMax = Math.max(...values);
-    const rawMin = Math.min(...values);
-    // Keep every important level visible while using more of the vertical canvas.
-    // A tighter domain makes each price step easier to compare without clipping
-    // the plan levels or support/resistance zones included above.
-    const padding = Math.max((rawMax - rawMin) * 0.1, 2);
-    const max = rawMax + padding;
-    const min = rawMin - padding;
-    return { min, max, range: Math.max(max - min, 1) };
+    let candleMax = Math.max(...candleHighs);
+    let candleMin = Math.min(...candleLows);
+    if (currentPrice) {
+      candleMax = Math.max(candleMax, currentPrice);
+      candleMin = Math.min(candleMin, currentPrice);
+    }
+
+    const candleRange = Math.max(candleMax - candleMin, 2.0);
+
+    // Only include nearby plan levels and zones to avoid stretching out the vertical space
+    const candidateLevels: number[] = [];
+    if (plan) {
+      if (Number.isFinite(plan.entry)) candidateLevels.push(plan.entry);
+      if (Number.isFinite(plan.stopLoss)) candidateLevels.push(plan.stopLoss);
+      if (Number.isFinite(plan.takeProfit)) candidateLevels.push(plan.takeProfit);
+    }
+
+    [...visibleSupport, ...visibleResistance].forEach((zone) => {
+      if (zone.priceMax >= candleMin - candleRange * 1.2 && zone.priceMin <= candleMax + candleRange * 1.2) {
+        candidateLevels.push(zone.priceMin, zone.priceMax);
+      }
+    });
+
+    let max = candleMax;
+    let min = candleMin;
+
+    for (const lvl of candidateLevels) {
+      // Clamp outlier expansion so candlesticks maintain healthy height
+      const clampedMax = Math.min(lvl, candleMax + candleRange * 0.8);
+      const clampedMin = Math.max(lvl, candleMin - candleRange * 0.8);
+      max = Math.max(max, clampedMax);
+      min = Math.min(min, clampedMin);
+    }
+
+    const effectiveRange = Math.max(max - min, 2.0);
+    const padding = Math.max(effectiveRange * 0.10, 1.2);
+    max += padding;
+    min -= padding;
+
+    return { min, max, range: Math.max(max - min, 1.0) };
   }, [chartCandles, currentPrice, plan, visibleResistance, visibleSupport]);
 
-  const priceTop = 28;
-  const priceBottom = 350;
-  const plotWidth = 610;
-  const getY = (price: number) => priceTop + ((priceMetrics.max - price) / priceMetrics.range) * (priceBottom - priceTop);
+  const priceTop = 18;
+  const priceBottom = 425;
+  const plotWidth = 605;
+  const getY = (price: number) => {
+    const clamped = Math.max(priceMetrics.min - 10, Math.min(priceMetrics.max + 10, price));
+    return priceTop + ((priceMetrics.max - clamped) / priceMetrics.range) * (priceBottom - priceTop);
+  };
   const candleGap = plotWidth / Math.max(chartCandles.length, 1);
-  const candleWidth = Math.max(2.5, Math.min(9, candleGap * 0.52));
+  const candleWidth = Math.max(4.0, Math.min(22, candleGap * 0.72));
   const maxVolume = Math.max(...chartCandles.map((candle) => candle.volume ?? 0), 0);
-  const priceTicks = Array.from({ length: 6 }, (_, index) => priceMetrics.max - (priceMetrics.range * index) / 5);
+  const priceTicks = Array.from({ length: 7 }, (_, index) => priceMetrics.max - (priceMetrics.range * index) / 6);
 
   const renderZone = (zone: ChartZone, tone: 'support' | 'resistance', index: number) => {
     const upper = Math.max(zone.priceMin, zone.priceMax);
@@ -209,14 +253,14 @@ export default function TradePlanChart({
       <g>
         <line x1="0" y1={y} x2={plotWidth} y2={y} stroke={color} strokeWidth="1.2" strokeDasharray={dash} />
         <text x="8" y={y - 6} fill={color} fontSize="10" fontWeight="600">{label}</text>
-        <rect x="612" y={y - 10 + tagOffset} width="84" height="20" rx="3" fill={color} />
-        <text x="654" y={y + 4 + tagOffset} fill="#071018" fontSize="10" fontWeight="700" textAnchor="middle">{formatPrice(value)}</text>
+        <rect x="608" y={y - 10 + tagOffset} width="88" height="20" rx="3" fill={color} />
+        <text x="652" y={y + 4 + tagOffset} fill="#071018" fontSize="10" fontWeight="700" textAnchor="middle">{formatPrice(value)}</text>
       </g>
     );
   };
 
   return (
-    <section className="flex h-full min-h-[780px] flex-col rounded-xl border border-[#27313b] bg-[#111820] p-4 xl:p-5">
+    <section className="flex h-full min-h-[800px] flex-col rounded-xl border border-[#27313b] bg-[#111820] p-4 xl:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -289,7 +333,7 @@ export default function TradePlanChart({
         </div>
       </div>
 
-      <div className="relative mt-4 min-h-[600px] flex-1 overflow-hidden rounded-lg border border-[#202a34] bg-[#0b1118] xl:min-h-[640px]">
+      <div className="relative mt-4 min-h-[620px] flex-1 overflow-hidden rounded-lg border border-[#202a34] bg-[#0b1118] xl:min-h-[680px]">
         {!chartCandles.length && (
           <div className="absolute inset-0 z-20 flex items-center justify-center text-[13px] text-[#77828e]">
             <Activity className="mr-2 h-4 w-4" /> รอข้อมูลแท่งเทียนจาก MT5
@@ -298,8 +342,8 @@ export default function TradePlanChart({
 
         <svg
           ref={chartSvgRef}
-          className="h-full min-h-[600px] w-full xl:min-h-[640px]"
-          viewBox="0 0 700 470"
+          className="h-full min-h-[620px] w-full xl:min-h-[680px]"
+          viewBox="0 0 700 480"
           preserveAspectRatio="none"
           role="img"
           aria-label={`กราฟแท่งเทียน XAUUSD ${selectedTF} พร้อมแนวรับ แนวต้าน Entry Take Profit และ Stop Loss`}
@@ -309,13 +353,13 @@ export default function TradePlanChart({
             return (
               <g key={index}>
                 <line x1="0" y1={y} x2={plotWidth} y2={y} stroke="#34404b" strokeOpacity="0.35" strokeDasharray="2 3" />
-                <text x="620" y={y + 4} fill="#818c98" fontSize="10">{formatPrice(price)}</text>
+                <text x="614" y={y + 4} fill="#818c98" fontSize="10">{formatPrice(price)}</text>
               </g>
             );
           })}
 
           {Array.from({ length: 8 }, (_, index) => (
-            <line key={index} x1={(plotWidth * index) / 7} y1={priceTop} x2={(plotWidth * index) / 7} y2="438" stroke="#27323c" strokeOpacity="0.28" />
+            <line key={index} x1={(plotWidth * index) / 7} y1={priceTop} x2={(plotWidth * index) / 7} y2={priceBottom} stroke="#27323c" strokeOpacity="0.28" />
           ))}
 
           {visibleResistance.map((zone, index) => renderZone(zone, 'resistance', index))}
@@ -323,21 +367,21 @@ export default function TradePlanChart({
 
           {chartCandles.map((candle, index) => {
             const positive = candle.close >= candle.open;
-            const color = positive ? '#1fc48d' : '#f05261';
+            const color = positive ? '#22c55e' : '#f43f5e';
             const x = index * candleGap + candleGap / 2;
             const openY = getY(candle.open);
             const closeY = getY(candle.close);
             const highY = getY(candle.high);
             const lowY = getY(candle.low);
             const bodyY = Math.min(openY, closeY);
-            const bodyHeight = Math.max(Math.abs(openY - closeY), 2);
-            const volumeHeight = maxVolume ? ((candle.volume ?? 0) / maxVolume) * 55 : 0;
+            const bodyHeight = Math.max(Math.abs(openY - closeY), 3.0);
+            const volumeHeight = maxVolume ? ((candle.volume ?? 0) / maxVolume) * 45 : 0;
 
             return (
               <g key={`${candle.time}-${index}`} onMouseEnter={() => setHoveredCandle(candle)} onMouseLeave={() => setHoveredCandle(null)} className="cursor-crosshair">
-                <line x1={x} y1={highY} x2={x} y2={lowY} stroke={color} strokeWidth="1.3" />
-                <rect x={x - candleWidth / 2} y={bodyY} width={candleWidth} height={bodyHeight} fill={color} rx="0.8" />
-                {volumeHeight > 0 && <rect x={x - candleWidth / 2} y={435 - volumeHeight} width={candleWidth} height={volumeHeight} fill={color} fillOpacity="0.45" />}
+                <line x1={x} y1={highY} x2={x} y2={lowY} stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+                <rect x={x - candleWidth / 2} y={bodyY} width={candleWidth} height={bodyHeight} fill={color} rx="1.2" />
+                {volumeHeight > 0 && <rect x={x - candleWidth / 2} y={450 - volumeHeight} width={candleWidth} height={volumeHeight} fill={color} fillOpacity="0.3" />}
               </g>
             );
           })}
@@ -347,10 +391,10 @@ export default function TradePlanChart({
           {renderLevel(plan?.stopLoss, 'Stop Loss', '#ef4e61', '5 4', 12)}
           {renderLevel(currentPrice ?? undefined, '', '#e3b52d', '2 3', -8)}
 
-          {maxVolume > 0 && <text x="8" y="375" fill="#909aa6" fontSize="10">Volume</text>}
+          {maxVolume > 0 && <text x="8" y="440" fill="#909aa6" fontSize="10">Volume</text>}
 
-          {chartCandles.filter((_, index) => index % Math.max(Math.ceil(chartCandles.length / 6), 1) === 0).map((candle, index, labels) => (
-            <text key={`${candle.time}-${index}`} x={8 + (index * (plotWidth - 24)) / Math.max(labels.length - 1, 1)} y="458" fill="#818c98" fontSize="10">{candle.time}</text>
+          {chartCandles.filter((_, index) => index % Math.max(Math.ceil(chartCandles.length / 7), 1) === 0).map((candle, index, labels) => (
+            <text key={`${candle.time}-${index}`} x={8 + (index * (plotWidth - 24)) / Math.max(labels.length - 1, 1)} y="468" fill="#818c98" fontSize="10">{candle.time}</text>
           ))}
         </svg>
 

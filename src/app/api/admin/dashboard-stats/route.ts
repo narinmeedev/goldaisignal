@@ -7,16 +7,19 @@ import { verifyToken } from '@/lib/auth';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
 import { NotificationService } from '@/lib/services/notification.service';
 import { QwenLocalAiService } from '@/lib/services/qwen-ai.service';
+import { GeminiTradePlanService } from '@/lib/services/gemini-trade-plan.service';
 import { MarketRegimeService } from '@/lib/services/market-regime.service';
 import { M5EntryConfirmationService } from '@/lib/services/m5-entry-confirmation.service';
 import { hasValidTradeGeometry } from '@/lib/services/trade-safety.service';
+import { LossReviewAdaptationService, type LossReviewState } from '@/lib/services/loss-review-adaptation.service';
+import { TradeExecutionGateService, type ExecutionGateDecision } from '@/lib/services/trade-execution-gate.service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const GOLD_SYMBOL_LIST = [
   'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
-  'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+  'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
 ];
 
 // Global in-memory cache for fallback fetch times to prevent concurrent fetch/write storms
@@ -550,12 +553,16 @@ const parseStoredOrderPlan = (value?: string | null, currentPrice?: number): Rec
     const direction = getPlanDirection(parsed);
     if (!direction || !hasValidTradeGeometry({ direction, entry: parsed.entry, stopLoss: parsed.stopLoss, takeProfit: parsed.takeProfit })) return null;
 
+    const isAiPlan = !!parsed.id?.toLowerCase().includes('gemini') || !!parsed.id?.toLowerCase().includes('qwen') || !!parsed.id?.toLowerCase().includes('ai-plan') || !!parsed.strategyLabel?.toLowerCase().includes('gemini') || !!parsed.strategyLabel?.toLowerCase().includes('ai');
+
     if (parsed.lockedAt) {
       const ageMs = Date.now() - new Date(parsed.lockedAt).getTime();
-      if (ageMs > 30 * 60 * 1000) return null; // Expire plans older than 30 minutes
+      const maxAgeMs = isAiPlan ? 90 * 60 * 1000 : 30 * 60 * 1000;
+      if (ageMs > maxAgeMs) return null;
     }
     if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0) {
-      if (Math.abs(currentPrice - parsed.entry) > 8.0) return null; // Expire plans where price moved > $8 away
+      const maxDist = isAiPlan ? 12.0 : 8.0;
+      if (Math.abs(currentPrice - parsed.entry) > maxDist) return null;
     }
     return parsed;
   } catch {
@@ -683,16 +690,16 @@ const getPlanMaxDistance = (plan: RecommendationPlan) => {
 const isPlanStale = (plan: RecommendationPlan, currentPrice: number, now: Date) => {
   if (hasPlanFinishedOrFailed(plan, currentPrice)) return true;
 
-  const isQwenPlan = !!plan.id?.toLowerCase().includes('qwen') || !!plan.title?.toLowerCase().includes('qwen') || !!plan.strategyLabel?.toLowerCase().includes('qwen');
+  const isAiPlan = !!plan.id?.toLowerCase().includes('qwen') || !!plan.id?.toLowerCase().includes('gemini') || !!plan.id?.toLowerCase().includes('ai-plan') || !!plan.title?.toLowerCase().includes('qwen') || !!plan.title?.toLowerCase().includes('gemini') || !!plan.strategyLabel?.toLowerCase().includes('qwen') || !!plan.strategyLabel?.toLowerCase().includes('gemini') || !!plan.strategyLabel?.toLowerCase().includes('ai');
 
   // Price deviation stale check: if current price is too far away from entry zone, cancel/expire the recommendation
-  const maxDist = isQwenPlan ? 10.0 : getPlanMaxDistance(plan);
+  const maxDist = isAiPlan ? 12.0 : getPlanMaxDistance(plan);
   if (Math.abs(currentPrice - plan.entry) > maxDist) return true;
 
-  // Lifetime safety stale check (max 90 mins for Qwen plan)
+  // Lifetime safety stale check (max 90 mins for AI plan)
   const lockedAt = plan.lockedAt ? new Date(plan.lockedAt) : null;
   if (lockedAt && Number.isFinite(lockedAt.getTime())) {
-    const lockMinutes = isQwenPlan ? 90 : getPlanLockMinutes(plan);
+    const lockMinutes = isAiPlan ? 90 : getPlanLockMinutes(plan);
     const maxLifetimeMs = lockMinutes * 60 * 1000;
     if (now.getTime() - lockedAt.getTime() > maxLifetimeMs) return true;
   }
@@ -706,10 +713,25 @@ const shouldReplaceStablePlan = (
   currentPrice: number,
   now: Date,
 ) => {
+  if (isPlanStale(storedPlan, currentPrice, now)) return true;
+
+  const isStoredAiPlan = !!storedPlan.id?.toLowerCase().includes('gemini') ||
+    !!storedPlan.id?.toLowerCase().includes('qwen') ||
+    !!storedPlan.id?.toLowerCase().includes('ai-plan') ||
+    !!storedPlan.strategyLabel?.toLowerCase().includes('gemini') ||
+    !!storedPlan.strategyLabel?.toLowerCase().includes('ai');
+
+  const isCandidateAiPlan = !!candidate.id?.toLowerCase().includes('gemini') ||
+    !!candidate.id?.toLowerCase().includes('qwen') ||
+    !!candidate.id?.toLowerCase().includes('ai-plan');
+
+  // If current stored plan is an active AI Plan, protect it unless candidate is a newer AI plan
+  if (isStoredAiPlan && !isCandidateAiPlan) {
+    return false;
+  }
+
   const storedDirection = getPlanDirection(storedPlan);
   const candidateDirection = getPlanDirection(candidate);
-
-  if (isPlanStale(storedPlan, currentPrice, now)) return true;
 
   // Rule: Only replace direction if the new candidate has HIGHER confidence than the stored plan!
   if (storedDirection !== candidateDirection) {
@@ -947,7 +969,7 @@ const getStableOrderPlan = async (
   const { start: bangkokDayStart, end: bangkokDayEnd } = getBangkokDayRange(now);
   const recentDecisionCandidates = await prisma.paperTrade.findMany({
     where: {
-      symbol: { in: ['XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+      symbol: { in: GOLD_SYMBOL_LIST },
       result: { in: ['WIN', 'LOSS', 'BE'] },
       closedAt: { gte: bangkokDayStart, lt: bangkokDayEnd },
     },
@@ -973,6 +995,17 @@ const getStableOrderPlan = async (
       await prisma.systemSetting.deleteMany({ where: { key } });
     }
     return null;
+  }
+
+  // If the stored plan is an active AI Plan (Gemini / Qwen), preserve it unconditionally until stale or finished
+  const isStoredAiPlan = !!storedPlan?.id?.toLowerCase().includes('gemini') ||
+    !!storedPlan?.id?.toLowerCase().includes('qwen') ||
+    !!storedPlan?.id?.toLowerCase().includes('ai-plan') ||
+    !!storedPlan?.strategyLabel?.toLowerCase().includes('gemini') ||
+    !!storedPlan?.strategyLabel?.toLowerCase().includes('ai');
+
+  if (storedPlan && isStoredAiPlan && !isPlanStale(storedPlan, currentPrice, now)) {
+    return normalizeOrderPlan(storedPlan, currentPrice, now, 'locked_existing');
   }
 
   // Sort candidates prioritizing valid direction, confidence >= 65, and proximity to currentPrice
@@ -1041,9 +1074,15 @@ const getStableOrderPlan = async (
   // ONLY if the market is open
   if (isMarketOpen()) {
     try {
+      const gateDecision = await TradeExecutionGateService.evaluateGate(symbol, currentPrice);
+      if (!gateDecision.allowed) {
+        console.log(`[EXECUTION GATE] Trade entry paused by safety gate: ${gateDecision.reasonTh}`);
+        return nextPlan;
+      }
+
       const activeRunningTrade = await prisma.paperTrade.findFirst({
         where: {
-          symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+          symbol: { in: GOLD_SYMBOL_LIST },
           result: { in: ['OPEN', 'PLAN', 'TESTING'] },
         },
       });
@@ -1054,8 +1093,8 @@ const getStableOrderPlan = async (
         const directionVal = nextPlan.direction || 'BUY';
         const entryVal = nextPlan.entry || currentPrice;
         const slVal = nextPlan.stopLoss || (directionVal === 'BUY' ? entryVal - 3.5 : entryVal + 3.5);
-        const tpVal = nextPlan.takeProfit || (directionVal === 'BUY' ? entryVal + 8.5 : entryVal - 8.5);
-        const confVal = typeof nextPlan.confidence === 'number' ? nextPlan.confidence : 70;
+        const tpVal = nextPlan.takeProfit || (directionVal === 'BUY' ? entryVal + 5.5 : entryVal - 5.5);
+        const confVal = typeof nextPlan.confidence === 'number' ? nextPlan.confidence : 80;
         const entryReached = nextPlan.type.includes('STOP')
           ? directionVal === 'BUY' ? currentPrice >= entryVal : currentPrice <= entryVal
           : directionVal === 'BUY' ? currentPrice <= entryVal : currentPrice >= entryVal;
@@ -1256,7 +1295,7 @@ export async function GET(request?: Request) {
         ] = await Promise.all([
           prisma.signal.findMany({
             where: {
-              symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+              symbol: { in: GOLD_SYMBOL_LIST },
               createdAt: { gte: todayRange.start, lt: todayRange.end },
             },
             orderBy: { createdAt: 'desc' },
@@ -1283,19 +1322,19 @@ export async function GET(request?: Request) {
             },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: { in: ['WIN', 'LOSS', 'BE'] } },
             orderBy: { closedAt: 'desc' },
             take: 30,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'WIN' },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: 'WIN' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'LOSS' },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: 'LOSS' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
@@ -1353,7 +1392,7 @@ export async function GET(request?: Request) {
         ] = await Promise.all([
           prisma.signal.findMany({
             where: {
-              symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+              symbol: { in: GOLD_SYMBOL_LIST },
               createdAt: { gte: todayRange.start, lt: todayRange.end },
             },
             orderBy: { createdAt: 'desc' },
@@ -1380,19 +1419,19 @@ export async function GET(request?: Request) {
             },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: { in: ['WIN', 'LOSS', 'BE'] } },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: { in: ['WIN', 'LOSS', 'BE'] } },
             orderBy: { closedAt: 'desc' },
             take: 30,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'WIN' },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: 'WIN' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
           }),
           prisma.paperTrade.findMany({
-            where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, result: 'LOSS' },
+            where: { symbol: { in: GOLD_SYMBOL_LIST }, result: 'LOSS' },
             orderBy: { closedAt: 'desc' },
             take: 3,
             include: { signal: true },
@@ -1455,13 +1494,20 @@ export async function GET(request?: Request) {
     for (const symbol of assets) {
       const searchSymbol = 'XAU';
 
+      const xauSymbolsFilter = {
+        in: GOLD_SYMBOL_LIST,
+      };
+
+      // 1. Check direct live MT5 quote bridge / wine quote file
+      const liveMt5Quote = await GeminiTradePlanService.fetchQuote().catch(() => null);
+
       // Both dedicated tick events and frequent MT5 syncs carry a current price.
       // Treat either source as a live tick so the chart stays current even when
       // the installed EA only posts its rolling M5 candle set.
       const [recentPriceEvents, latestAnySyncEvent] = await Promise.all([
         prisma.webhookEvent.findMany({
           where: {
-            symbol: { in: [searchSymbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] },
+            symbol: { in: [searchSymbol, ...GOLD_SYMBOL_LIST] },
             status: 'processed',
             source: { in: ['tradingview', 'mt5_sync'] },
             receivedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
@@ -1470,7 +1516,7 @@ export async function GET(request?: Request) {
           take: 36,
         }),
         prisma.webhookEvent.findFirst({
-          where: { symbol: { in: [searchSymbol, 'XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, status: 'processed', source: 'mt5_sync' },
+          where: { symbol: { in: [searchSymbol, ...GOLD_SYMBOL_LIST] }, status: 'processed', source: 'mt5_sync' },
           orderBy: { receivedAt: 'desc' },
         }),
       ]);
@@ -1480,24 +1526,7 @@ export async function GET(request?: Request) {
       priceEvents = recentPriceEvents;
       mt5SyncEvent = latestAnySyncEvent;
 
-      const xauSymbolsFilter = {
-        in: [
-          'XAUUSD',
-          'GOLD',
-          'GOLD#',
-          'GOLD.a',
-          'GOLDm',
-          'GOLDmicro',
-          'GOLD.ecn',
-          'XAUUSD#',
-          'XAUUSD.iux',
-          'XAUUSD.a',
-          'XAUUSDm',
-          'XAUUSD.raw',
-        ],
-      };
-
-      const activeSymbol = latestPriceEvent?.symbol || latestAnySyncEvent?.symbol || symbol;
+      const activeSymbol = liveMt5Quote?.symbol || latestPriceEvent?.symbol || latestAnySyncEvent?.symbol || symbol;
       const [latestM5SyncEvent, latestM15SyncEvent] = await Promise.all([
         prisma.webhookEvent.findFirst({
           where: { symbol: xauSymbolsFilter, timeframe: 'M5', status: 'processed', source: 'mt5_sync' },
@@ -1530,7 +1559,7 @@ export async function GET(request?: Request) {
       const tickAgeMs = latestPriceEvent ? Date.now() - latestPriceEvent.receivedAt.getTime() : null;
       const m5CandleSyncAgeMs = latestM5SyncEvent ? Date.now() - latestM5SyncEvent.receivedAt.getTime() : null;
       const m15CandleSyncAgeMs = latestM15SyncEvent ? Date.now() - latestM15SyncEvent.receivedAt.getTime() : null;
-      const isPriceEventRecent = tickAgeMs !== null && tickAgeMs < 90 * 1000;
+      let isPriceEventRecent = tickAgeMs !== null && tickAgeMs < 90 * 1000;
       const isM5CandleSyncRecent = m5CandleSyncAgeMs !== null && m5CandleSyncAgeMs < STALE_M5_CANDLE_SYNC_MS;
       const isM15CandleSyncRecent = m15CandleSyncAgeMs !== null && m15CandleSyncAgeMs < STALE_MT5_CANDLE_BASE_MS;
       if (isPriceEventRecent && latestLiveTick) {
@@ -1561,6 +1590,44 @@ export async function GET(request?: Request) {
         }),
       ]);
 
+      // If live quote bridge is available, prioritize live MT5 quote & bars
+      if (liveMt5Quote && (liveMt5Quote.last || liveMt5Quote.bid)) {
+        currentPrice = liveMt5Quote.last || liveMt5Quote.bid;
+        isPriceEventRecent = true;
+
+        if (liveMt5Quote.barsM5 && liveMt5Quote.barsM5.length > 0) {
+          const bridgeM5Candles: CandlePoint[] = liveMt5Quote.barsM5.map((b) => ({
+            time: new Date(b.t.replace(/\./g, '-')),
+            open: b.o,
+            high: b.h,
+            low: b.l,
+            close: b.c,
+            volume: b.v || 100,
+            createdAt: new Date(),
+          })).reverse();
+          m5Candles = [
+            ...bridgeM5Candles,
+            ...m5Candles.filter((c) => c.time.getTime() < bridgeM5Candles[bridgeM5Candles.length - 1].time.getTime()),
+          ].slice(0, M5_CANDLE_FETCH_LIMIT);
+        }
+
+        if (liveMt5Quote.barsM15 && liveMt5Quote.barsM15.length > 0) {
+          const bridgeM15Candles: CandlePoint[] = liveMt5Quote.barsM15.map((b) => ({
+            time: new Date(b.t.replace(/\./g, '-')),
+            open: b.o,
+            high: b.h,
+            low: b.l,
+            close: b.c,
+            volume: b.v || 100,
+            createdAt: new Date(),
+          })).reverse();
+          m15Candles = [
+            ...bridgeM15Candles,
+            ...m15Candles.filter((c) => c.time.getTime() < bridgeM15Candles[bridgeM15Candles.length - 1].time.getTime()),
+          ].slice(0, M15_CANDLE_FETCH_LIMIT);
+        }
+      }
+
       // The installed EA posts M5 every few seconds. Derive the open M15/H1 bars
       // from that canonical feed when their dedicated sync cadence falls behind.
       if (isM5CandleSyncRecent && m5Candles.length > 0) {
@@ -1576,8 +1643,8 @@ export async function GET(request?: Request) {
 
       if (m15Candles.length === 0) m15Candles = recentCandles;
       if (h1Candles.length === 0) h1Candles = recentCandles;
-      const mt5M5CandleCount = isM5CandleSyncRecent ? m5Candles.length : 0;
-      const mt5M15CandleCount = isM15CandleSyncRecent ? m15Candles.length : 0;
+      const mt5M5CandleCount = (isM5CandleSyncRecent || liveMt5Quote) ? m5Candles.length : 0;
+      const mt5M15CandleCount = (isM15CandleSyncRecent || liveMt5Quote) ? m15Candles.length : 0;
 
       if (isPriceEventRecent && liveTicks.length > 0) {
         m5Candles = mergeLiveTicksIntoCandles(m5Candles, 'M5', liveTicks);
@@ -1585,8 +1652,8 @@ export async function GET(request?: Request) {
         h1Candles = mergeLiveTicksIntoCandles(h1Candles, 'H1', liveTicks);
       }
 
-      const hasM5Mt5Base = m5Candles.length >= 3 || m15Candles.length >= 3 || recentCandles.length >= 3;
-      const hasM15Mt5Base = m15Candles.length >= 3 || h1Candles.length >= 3 || recentCandles.length >= 3;
+      const hasM5Mt5Base = m5Candles.length >= 3 || m15Candles.length >= 3 || recentCandles.length >= 3 || Boolean(liveMt5Quote);
+      const hasM15Mt5Base = m15Candles.length >= 3 || h1Candles.length >= 3 || recentCandles.length >= 3 || Boolean(liveMt5Quote);
       const m5AnalysisCandles = m5Candles.length >= 3 ? m5Candles : (m15Candles.length > 0 ? m15Candles : recentCandles);
       const marketRegime = MarketRegimeService.assess(m5AnalysisCandles, m5Candles.length >= 3 ? 5 : 15);
 
@@ -2447,72 +2514,113 @@ export async function GET(request?: Request) {
       const isBullishDominant = h1Bias === 'BULLISH' || (m15Bias === 'BULLISH' && d1Bias !== 'BEARISH');
       const isBearishDominant = h1Bias === 'BEARISH' || (m15Bias === 'BEARISH' && d1Bias !== 'BULLISH');
 
-      // Anti-Trap Level Guards: Check proximity to key support/resistance levels
-      const nearestSupportZone = nearestSupport[0] || triggerSupport;
-      const nearestResistanceZone = nearestResistance[0] || triggerResistance;
-      
-      const distToSupportBelow = nearestSupportZone ? (currentPrice - nearestSupportZone.priceMax) : 999;
-      const isSittingOnSupport = nearestSupportZone && (distToSupportBelow <= 3.5 && currentPrice >= nearestSupportZone.priceMin - 1.0);
-      
-      const distToResistanceAbove = nearestResistanceZone ? (nearestResistanceZone.priceMin - currentPrice) : 999;
-      const isSittingOnResistance = nearestResistanceZone && (distToResistanceAbove <= 3.5 && currentPrice <= nearestResistanceZone.priceMax + 1.0);
+      // Analyze M5/M15 Wave Structure (วิเคราะห์โครงสร้างหัวคลื่น Lower Highs / ก้นคลื่น Higher Lows)
+      const m5RecentCandles = (m5Candles || []).slice(-30);
+      const swingHighPrices: number[] = [];
+      const swingLowPrices: number[] = [];
 
-      // 1. Buy Support Bounce (Active when price is near/on support)
-      const buyBounceEntry = roundPrice(nearestSupportZone ? Math.min(currentPrice, nearestSupportZone.priceMax) : (currentPrice - 2.50));
+      for (let i = 2; i < m5RecentCandles.length - 2; i++) {
+        const c = m5RecentCandles[i];
+        if (Math.abs(c.high - currentPrice) <= 15.0 &&
+            c.high >= m5RecentCandles[i - 1].high && c.high >= m5RecentCandles[i - 2].high &&
+            c.high >= m5RecentCandles[i + 1].high && c.high >= m5RecentCandles[i + 2].high) {
+          swingHighPrices.push(c.high);
+        }
+        if (Math.abs(c.low - currentPrice) <= 15.0 &&
+            c.low <= m5RecentCandles[i - 1].low && c.low <= m5RecentCandles[i - 2].low &&
+            c.low <= m5RecentCandles[i + 1].low && c.low <= m5RecentCandles[i + 2].low) {
+          swingLowPrices.push(c.low);
+        }
+      }
+
+      const isMakingLowerHighs = swingHighPrices.length >= 2 &&
+        swingHighPrices[swingHighPrices.length - 1] < swingHighPrices[swingHighPrices.length - 2] - 0.8;
+      const isMakingLowerLows = swingLowPrices.length >= 2 &&
+        swingLowPrices[swingLowPrices.length - 1] < swingLowPrices[swingLowPrices.length - 2] - 0.8;
+
+      const isDowntrendWave = isMakingLowerHighs || isMakingLowerLows || isStrongBearish || (h1Bias === 'BEARISH' && m15Bias === 'BEARISH');
+      const isUptrendWave = !isDowntrendWave && (isStrongBullish || (h1Bias === 'BULLISH' && m15Bias === 'BULLISH'));
+
+      const lastPullbackHigh = swingHighPrices.length > 0 ? swingHighPrices[swingHighPrices.length - 1] : (currentPrice + 3.50);
+      const lastPullbackLow = swingLowPrices.length > 0 ? swingLowPrices[swingLowPrices.length - 1] : (currentPrice - 3.50);
+
+      // Find valid Resistance Zone ABOVE current price (ดัก SELL ที่แนวต้านด้านบนเท่านั้น ห้ามไล่ SELL ที่ก้น)
+      const validResistanceAbove = zones
+        .filter((z: any) => z.type === 'RESISTANCE' && z.priceMin >= currentPrice + 2.00)
+        .sort((a: any, b: any) => a.priceMin - b.priceMin)[0] || null;
+
+      const pullbackSellEntry = roundPrice(
+        validResistanceAbove
+          ? validResistanceAbove.priceMin
+          : Math.max(currentPrice + 4.50, lastPullbackHigh)
+      );
+
+      // Find valid Support Zone BELOW current price (ดัก BUY ที่แนวรับด้านล่างเท่านั้น)
+      const validSupportBelow = zones
+        .filter((z: any) => z.type === 'SUPPORT' && z.priceMax <= currentPrice - 2.00)
+        .sort((a: any, b: any) => b.priceMax - a.priceMax)[0] || null;
+
+      const pullbackBuyEntry = roundPrice(
+        validSupportBelow
+          ? validSupportBelow.priceMax
+          : Math.min(currentPrice - 4.50, lastPullbackLow)
+      );
+
+      // 1. Buy Support Bounce (Active when price is near/on support in uptrend/range)
+      const isSittingOnSupport = validSupportBelow && (currentPrice - validSupportBelow.priceMax <= 2.5);
       const buyBouncePlan: RecommendationPlan = {
         id: `pa-buy-support-bounce-${symbol}`,
         type: isSittingOnSupport ? 'BUY_MARKET' : 'BUY_LIMIT',
-        title: '🟢 แผนซื้อดักเด้งที่แนวรับ (Support Bounce BUY)',
+        title: '🟢 แผนซื้อดักก้นสวิงเมื่อย่อชนแนวรับ (Higher Low Pullback BUY)',
         direction: 'BUY',
-        entry: buyBounceEntry,
-        entry1: buyBounceEntry,
-        entry2: roundPrice(buyBounceEntry - 1.0),
-        entry3: roundPrice(buyBounceEntry - 2.0),
-        stopLoss: roundPrice(buyBounceEntry - 3.50),
-        takeProfit: roundPrice(buyBounceEntry + 7.50),
-        takeProfit2: roundPrice(buyBounceEntry + 10.00),
-        confidence: isSittingOnSupport ? 92 : (isBullishDominant ? 88 : 80),
-        reason: `ราคาทดสอบโซนแนวรับสำคัญ ($${buyBounceEntry.toFixed(2)}) ห้ามตาม SELL เด็ดขาด! แนะนำดักเข้าซื้อทำกำไรเร็ว 600 - 1,000 จุด (SL กระชับ $3.50 เลื่อนกันทุนที่ +350 จุด)`,
+        entry: pullbackBuyEntry,
+        entry1: pullbackBuyEntry,
+        entry2: roundPrice(pullbackBuyEntry - 1.0),
+        entry3: roundPrice(pullbackBuyEntry - 2.0),
+        stopLoss: roundPrice(pullbackBuyEntry - 3.50),
+        takeProfit: roundPrice(pullbackBuyEntry + 6.00),
+        takeProfit2: roundPrice(pullbackBuyEntry + 8.00),
+        confidence: isSittingOnSupport ? 94 : (isBullishDominant ? 90 : 82),
+        reason: `โครงสร้างตลาดเป็นขาขึ้น ห้ามไล่ Follow BUY เด็ดขาด! แนะนำตั้ง BUY_LIMIT ดักที่ก้นฐานคลื่น M5/M15 ($${pullbackBuyEntry.toFixed(2)}) เมื่อราคาย่อลงมา แล้วออกทำกำไรไว 600 - 800 จุด (TP1 $6.00 / SL $3.50 เลื่อนกันทุนที่ +250 จุด)`,
         strategyId: 'support_bounce_buy',
         strategyMode: 'FOLLOW_TREND',
-        strategyLabel: 'Support Bounce BUY',
-        confirmation: 'M5 bounce from support zone',
+        strategyLabel: 'Higher Low Pullback BUY',
+        confirmation: 'M5 bounce from wave base support',
         pointStopLoss: 350,
         timeframe: 'M5',
-        riskScore: 18,
-        riskReward: 2.14,
+        riskScore: 16,
+        riskReward: 1.71,
       };
 
-      // 2. Sell Resistance Rejection (Active when price is near/on resistance)
-      const sellRejectEntry = roundPrice(nearestResistanceZone ? Math.max(currentPrice, nearestResistanceZone.priceMin) : (currentPrice + 2.50));
+      // 2. Sell Lower High Pullback Rejection (Active when price is near/on wave head resistance)
+      const isSittingOnResistance = validResistanceAbove && (validResistanceAbove.priceMin - currentPrice <= 2.5);
       const sellRejectPlan: RecommendationPlan = {
         id: `pa-sell-resistance-rejection-${symbol}`,
         type: isSittingOnResistance ? 'SELL_MARKET' : 'SELL_LIMIT',
-        title: '🔴 แผนขายดักเบรคไม่ผ่านแนวต้าน (Resistance Rejection SELL)',
+        title: '🔴 แผนขายดักหัวสวิงเมื่อเด้งชนแนวต้าน (Lower High Pullback SELL)',
         direction: 'SELL',
-        entry: sellRejectEntry,
-        entry1: sellRejectEntry,
-        entry2: roundPrice(sellRejectEntry + 1.0),
-        entry3: roundPrice(sellRejectEntry + 2.0),
-        stopLoss: roundPrice(sellRejectEntry + 3.50),
-        takeProfit: roundPrice(sellRejectEntry - 7.50),
-        takeProfit2: roundPrice(sellRejectEntry - 10.00),
-        confidence: isSittingOnResistance ? 92 : (isBearishDominant ? 88 : 80),
-        reason: `ราคาทดสอบโซนแนวต้านสำคัญ ($${sellRejectEntry.toFixed(2)}) ห้ามตาม BUY เด็ดขาด! เกิดแรงปฏิเสธราคา แนะนำดักเข้าขายทำกำไรเร็ว 600 - 1,000 จุด`,
+        entry: pullbackSellEntry,
+        entry1: pullbackSellEntry,
+        entry2: roundPrice(pullbackSellEntry + 1.0),
+        entry3: roundPrice(pullbackSellEntry + 2.0),
+        stopLoss: roundPrice(pullbackSellEntry + 3.50),
+        takeProfit: roundPrice(pullbackSellEntry - 6.00),
+        takeProfit2: roundPrice(pullbackSellEntry - 8.00),
+        confidence: isSittingOnResistance ? 94 : (isDowntrendWave ? 90 : 82),
+        reason: `โครงสร้างตลาดเป็นขาลง (Lower Highs) ห้ามไล่ Follow SELL เด็ดขาด เพราะเสี่ยงเจอเด้งสวนกิน SL! แนะนำตั้ง SELL_LIMIT ดักที่ยอดหัวคลื่น M5/M15 ($${pullbackSellEntry.toFixed(2)}) เมื่อราคาเด้งขึ้นมา แล้วออกทำกำไรไว 600 - 800 จุด (TP1 $6.00 / SL $3.50 เลื่อนกันทุนที่ +250 จุด)`,
         strategyId: 'resistance_rejection_sell',
         strategyMode: 'FOLLOW_TREND',
-        strategyLabel: 'Resistance Rejection SELL',
-        confirmation: 'M5 rejection from resistance zone',
+        strategyLabel: 'Lower High Pullback SELL',
+        confirmation: 'M5 rejection from wave head resistance',
         pointStopLoss: 350,
         timeframe: 'M5',
-        riskScore: 18,
-        riskReward: 2.14,
+        riskScore: 16,
+        riskReward: 1.71,
       };
 
-      // 3. Breakdown & Retest SELL (ต้องรอให้หลุดแนวรับลงไปก่อน แล้วเด้งกลับมาทดสอบไม่ผ่าน ค่อย SELL)
-      const brokenSupport = nearestSupportZone;
-      const hasBrokenSupport = brokenSupport && currentPrice < brokenSupport.priceMin - 1.20;
-      const breakdownRetestEntry = roundPrice(brokenSupport ? brokenSupport.priceMin : currentPrice);
+      // 3. Breakdown & Retest SELL (เฉพาะเมื่อหลุดแนวรับไปแล้ว และแนวรับเดิมนั้นอยู่เหนือราคาปัจจุบัน)
+      const brokenSupport = zones.find((z: any) => z.type === 'SUPPORT' && currentPrice < z.priceMin - 1.50 && z.priceMin > currentPrice);
+      const breakdownRetestEntry = roundPrice(brokenSupport ? brokenSupport.priceMin : (currentPrice + 4.00));
       const breakdownPlan: RecommendationPlan = {
         id: `pa-breakdown-retest-sell-${symbol}`,
         type: 'SELL_LIMIT',
@@ -2523,10 +2631,10 @@ export async function GET(request?: Request) {
         entry2: roundPrice(breakdownRetestEntry + 1.0),
         entry3: roundPrice(breakdownRetestEntry + 2.0),
         stopLoss: roundPrice(breakdownRetestEntry + 3.50),
-        takeProfit: roundPrice(breakdownRetestEntry - 8.00),
-        takeProfit2: roundPrice(breakdownRetestEntry - 10.00),
-        confidence: hasBrokenSupport ? 88 : 72,
-        reason: `ราคาหลุดแนวรับ M5/M15 ลงไปแล้ว แนะนำรอราคาเด้งกลับมาทดสอบแนวรับเดิม ($${breakdownRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวต้าน หากไม่ผ่านให้เปิด SELL ดักทำกำไร 600 - 1,000 จุด`,
+        takeProfit: roundPrice(breakdownRetestEntry - 5.50),
+        takeProfit2: roundPrice(breakdownRetestEntry - 8.00),
+        confidence: brokenSupport ? 88 : 72,
+        reason: `ราคาหลุดแนวรับ M5/M15 ลงไปแล้ว แนะนำรอราคาเด้งกลับมาทดสอบแนวรับเดิม ($${breakdownRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวต้าน หากไม่ผ่านให้เปิด SELL ดักทำกำไรเร็ว 500 - 600 จุด (TP1 $5.50)`,
         strategyId: 'breakdown_retest_sell',
         strategyMode: 'BREAKDOWN',
         strategyLabel: 'Breakdown Retest SELL',
@@ -2534,13 +2642,12 @@ export async function GET(request?: Request) {
         pointStopLoss: 350,
         timeframe: 'M15',
         riskScore: 22,
-        riskReward: 2.28,
+        riskReward: 1.57,
       };
 
-      // 4. Breakout & Retest BUY (ต้องรอให้เบรคทะลุต้านขึ้นไปก่อน แล้วย่อกลับมาทดสอบยืนได้ ค่อย BUY)
-      const brokenResistance = nearestResistanceZone;
-      const hasBrokenResistance = brokenResistance && currentPrice > brokenResistance.priceMax + 1.20;
-      const breakoutRetestEntry = roundPrice(brokenResistance ? brokenResistance.priceMax : currentPrice);
+      // 4. Breakout & Retest BUY (เฉพาะเมื่อเบรคแนวต้านขึ้นไปแล้ว และแนวต้านเดิมนั้นอยู่ใต้ราคาปัจจุบัน)
+      const brokenResistance = zones.find((z: any) => z.type === 'RESISTANCE' && currentPrice > z.priceMax + 1.50 && z.priceMax < currentPrice);
+      const breakoutRetestEntry = roundPrice(brokenResistance ? brokenResistance.priceMax : (currentPrice - 4.00));
       const breakoutPlan: RecommendationPlan = {
         id: `pa-breakout-retest-buy-${symbol}`,
         type: 'BUY_LIMIT',
@@ -2551,10 +2658,10 @@ export async function GET(request?: Request) {
         entry2: roundPrice(breakoutRetestEntry - 1.0),
         entry3: roundPrice(breakoutRetestEntry - 2.0),
         stopLoss: roundPrice(breakoutRetestEntry - 3.50),
-        takeProfit: roundPrice(breakoutRetestEntry + 8.00),
-        takeProfit2: roundPrice(breakoutRetestEntry + 10.00),
-        confidence: hasBrokenResistance ? 88 : 72,
-        reason: `ราคาเบรคทะลุแนวต้าน M5/M15 ขึ้นไปแล้ว แนะนำรอราคาย่อตัวกลับมาทดสอบแนวต้านเดิม ($${breakoutRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวรับ หากยืนได้ให้เปิด BUY ดักทำกำไร 600 - 1,000 จุด`,
+        takeProfit: roundPrice(breakoutRetestEntry + 5.50),
+        takeProfit2: roundPrice(breakoutRetestEntry + 8.00),
+        confidence: brokenResistance ? 88 : 72,
+        reason: `ราคาเบรคทะลุแนวต้าน M5/M15 ขึ้นไปแล้ว แนะนำรอราคาย่อตัวกลับมาทดสอบแนวต้านเดิม ($${breakoutRetestEntry.toFixed(2)}) ที่เปลี่ยนเป็นแนวรับ หากยืนได้ให้เปิด BUY ดักทำกำไรเร็ว 500 - 600 จุด (TP1 $5.50)`,
         strategyId: 'breakout_retest_buy',
         strategyMode: 'BREAKOUT',
         strategyLabel: 'Breakout Retest BUY',
@@ -2562,21 +2669,64 @@ export async function GET(request?: Request) {
         pointStopLoss: 350,
         timeframe: 'M15',
         riskScore: 22,
-        riskReward: 2.28,
+        riskReward: 1.57,
       };
 
-      // Anti-Trap Priority Selection:
-      // If price is currently sitting on Support: Support Bounce BUY is highest priority (NO Market Sell allowed)
-      // If price is currently sitting on Resistance: Resistance Rejection SELL is highest priority (NO Market Buy allowed)
+      // Major H4/H1/D1 Structural Zone Guards (ป้องกันการตาม SELL ที่แนวรับใหญ่ หรือตาม BUY ที่แนวต้านใหญ่)
+      const majorH4Support = zones.find((z: any) =>
+        z.type === 'SUPPORT' && (z.timeframe === 'H4' || z.timeframe === 'D1' || z.timeframe === 'H1') &&
+        currentPrice >= z.priceMin - 2.5 && currentPrice <= z.priceMax + 5.0
+      );
+      const isSittingOnMajorH4Support = Boolean(majorH4Support || isSittingOnSupport);
+
+      const majorH4Resistance = zones.find((z: any) =>
+        z.type === 'RESISTANCE' && (z.timeframe === 'H4' || z.timeframe === 'D1' || z.timeframe === 'H1') &&
+        currentPrice <= z.priceMax + 2.5 && currentPrice >= z.priceMin - 5.0
+      );
+      const isSittingOnMajorH4Resistance = Boolean(majorH4Resistance || isSittingOnResistance);
+
+      // AI Loss Review & Adaptive Guard (ตรวจจับ SL ติดๆ ทบทวนกราฟ และปรับกลยุทธ์แก้เกมส์อัตโนมัติ)
+      const lossReviewState = await LossReviewAdaptationService.analyze(symbol, {
+        currentPrice,
+        h1Bias,
+        m15Bias,
+        m5Bias,
+        d1Bias,
+        rsi14M5,
+        atr14M5,
+      });
+
+      const executionGate = await TradeExecutionGateService.evaluateGate(symbol, currentPrice);
+
+      // Market Structure & Pullback-First Selection (ยึดโครงสร้างคลื่นและยอดหัวคลื่นเป็นหลัก):
+      // 1. ถ้าโครงสร้างเป็นขาลงทำหัว New Low (Downtrend Wave): แผนอันดับ 1 คือ "ดัก SELL ที่ยอดหัวคลื่นแนวต้าน (Lower High Pullback SELL)" ห้ามออกแผน BUY และห้าม SELL ที่ก้นรับเด็ดขาด!
+      // 2. ถ้าโครงสร้างเป็นขาขึ้นทำก้น New High (Uptrend Wave): แผนอันดับ 1 คือ "ดัก BUY ที่ก้นคลื่นแนวรับ (Higher Low Pullback BUY)" ห้ามออกแผน SELL เด็ดขาด!
+      // 3. ถ้าลงมาชนแนวรับใหญ่ H4: ห้าม SELL ที่ก้นแนวรับเด็ดขาด ให้รอราคาเด้งไปชนต้าน H1 ก่อน ค่อย Sell Limit
       let priceActionSetups: RecommendationPlan[] = [];
-      if (isSittingOnSupport) {
-        priceActionSetups = [buyBouncePlan, breakdownPlan, sellRejectPlan, breakoutPlan];
-      } else if (isSittingOnResistance) {
-        priceActionSetups = [sellRejectPlan, breakoutPlan, buyBouncePlan, breakdownPlan];
-      } else if (isBullishDominant) {
-        priceActionSetups = [buyBouncePlan, breakoutPlan, sellRejectPlan, breakdownPlan];
+
+      if (isDowntrendWave) {
+        // ในโครงสร้างขาลง: ดัก SELL ที่แนวต้านด้านบน (4,304 - 4,306) เท่านั้น ห้ามไล่ Sell ที่ก้น
+        priceActionSetups = [sellRejectPlan, breakdownPlan];
+      } else if (isUptrendWave) {
+        // ในโครงสร้างขาขึ้น: ดัก BUY ที่แนวรับด้านล่างเท่านั้น
+        priceActionSetups = [buyBouncePlan, breakoutPlan];
+      } else if (isSittingOnMajorH4Support) {
+        priceActionSetups = [buyBouncePlan, sellRejectPlan, breakdownPlan, breakoutPlan];
+      } else if (isSittingOnMajorH4Resistance) {
+        priceActionSetups = [sellRejectPlan, buyBouncePlan, breakdownPlan, breakoutPlan];
       } else {
         priceActionSetups = [sellRejectPlan, breakdownPlan, buyBouncePlan, breakoutPlan];
+      }
+
+      // Apply Adaptive Guard Filters (ถ้าอยู่ในช่วงเฝ้าระวังหรือแก้เกมส์ ให้คัดกรองเข้มงวดเป็นพิเศษ)
+      if (lossReviewState.isAdaptiveGuardActive) {
+        if (lossReviewState.forbiddenDirection) {
+          priceActionSetups = priceActionSetups.filter(p => p.direction !== lossReviewState.forbiddenDirection);
+        }
+        priceActionSetups.forEach(p => {
+          p.confidence = Math.max(p.confidence, lossReviewState.minConfidenceThreshold);
+          p.reason = `[🛡️ AI ปรับกลยุทธ์แก้เกมส์: ${lossReviewState.tacticalActionTh}] ${p.reason}`;
+        });
       }
 
       const evaluatedPlans: RecommendationPlan[] = priceActionSetups;
@@ -2590,6 +2740,16 @@ export async function GET(request?: Request) {
       let activeOrderPlan: RecommendationPlan | null = null;
       const storedSetting = await prisma.systemSetting.findUnique({ where: { key: stablePlanSettingKey(symbol) } });
       let storedPlan = parseStoredOrderPlan(storedSetting?.value, currentPrice);
+
+      // Discard stored plan if it conflicts with Adaptive Guard forbidden direction!
+      if (storedPlan && lossReviewState.isAdaptiveGuardActive && lossReviewState.forbiddenDirection) {
+        const storedDir = getPlanDirection(storedPlan);
+        if (storedDir === lossReviewState.forbiddenDirection) {
+          console.log(`[DASHBOARD STATS] Stored plan ${storedPlan.id} matches forbidden direction ${lossReviewState.forbiddenDirection}. Purging stored plan...`);
+          storedPlan = null;
+          await prisma.systemSetting.deleteMany({ where: { key: stablePlanSettingKey(symbol) } }).catch(() => {});
+        }
+      }
 
       // Discard plan if price breached SL or hit TP
       if (storedPlan) {
@@ -2695,12 +2855,15 @@ export async function GET(request?: Request) {
           H1: h1Bias,
           M15: m15Bias,
           M5: m5Bias,
-        }
+        },
+        lossReviewState,
+        executionGate,
       };
 
     }
 
-    // 8. Determine live feed status by reusing cached webhook event queries
+    // 8. Determine live feed status by checking quote bridge and cached webhook events
+    const latestQuoteForFeed = await GeminiTradePlanService.fetchQuote().catch(() => null);
     const latestPriceOverall = priceEvents[0] || null;
     const latestCandleSyncOverall = mt5SyncEvent;
     const latestM5CandleSyncOverall = mt5M5SyncEvent;
@@ -2721,25 +2884,25 @@ export async function GET(request?: Request) {
     const lastM5CandleSyncTime = latestM5CandleSyncOverall ? latestM5CandleSyncOverall.receivedAt.getTime() : 0;
     const lastM15CandleSyncTime = latestM15CandleSyncOverall ? latestM15CandleSyncOverall.receivedAt.getTime() : 0;
     const nowMs = now.getTime();
-    const priceFeedAgeMs = lastPriceTime > 0 ? nowMs - lastPriceTime : null;
-    const candleSyncAgeMs = lastCandleSyncTime > 0 ? nowMs - lastCandleSyncTime : null;
-    const m5CandleSyncAgeMs = lastM5CandleSyncTime > 0 ? nowMs - lastM5CandleSyncTime : null;
-    const m15CandleSyncAgeMs = lastM15CandleSyncTime > 0 ? nowMs - lastM15CandleSyncTime : null;
-    const isPriceFeedLive = priceFeedAgeMs !== null && priceFeedAgeMs < 90 * 1000;
-    const isM5CandleSyncLive = m5CandleSyncAgeMs !== null && m5CandleSyncAgeMs < STALE_M5_CANDLE_SYNC_MS;
-    const isM15CandleSyncLive = m15CandleSyncAgeMs !== null && m15CandleSyncAgeMs < STALE_MT5_CANDLE_BASE_MS;
+    const priceFeedAgeMs = latestQuoteForFeed ? 0 : (lastPriceTime > 0 ? nowMs - lastPriceTime : null);
+    const candleSyncAgeMs = latestQuoteForFeed ? 0 : (lastCandleSyncTime > 0 ? nowMs - lastCandleSyncTime : null);
+    const m5CandleSyncAgeMs = latestQuoteForFeed ? 0 : (lastM5CandleSyncTime > 0 ? nowMs - lastM5CandleSyncTime : null);
+    const m15CandleSyncAgeMs = latestQuoteForFeed ? 0 : (lastM15CandleSyncTime > 0 ? nowMs - lastM15CandleSyncTime : null);
+    const isPriceFeedLive = latestQuoteForFeed !== null || (priceFeedAgeMs !== null && priceFeedAgeMs < 90 * 1000);
+    const isM5CandleSyncLive = latestQuoteForFeed !== null || (m5CandleSyncAgeMs !== null && m5CandleSyncAgeMs < STALE_M5_CANDLE_SYNC_MS);
+    const isM15CandleSyncLive = latestQuoteForFeed !== null || (m15CandleSyncAgeMs !== null && m15CandleSyncAgeMs < STALE_MT5_CANDLE_BASE_MS);
     const isCandleSyncLive = isM5CandleSyncLive || isM15CandleSyncLive;
     const isMt5Live = isPriceFeedLive || isCandleSyncLive;
     const latestPricePayload = parseEventPayload(latestPriceOverall);
     const latestCandleSyncPayload = parseEventPayload(latestCandleSyncOverall);
     const latestM5CandleSyncPayload = parseEventPayload(latestM5CandleSyncOverall);
     const latestM15CandleSyncPayload = parseEventPayload(latestM15CandleSyncOverall);
-    const latestPrice = Number(latestPricePayload?.price);
+    const latestPrice = latestQuoteForFeed ? (latestQuoteForFeed.last || latestQuoteForFeed.bid) : Number(latestPricePayload?.price);
     const latestCandleCount = Number(latestCandleSyncPayload?.count);
-    const latestM5CandleCount = Number(latestM5CandleSyncPayload?.count);
-    const latestM15CandleCount = Number(latestM15CandleSyncPayload?.count);
+    const latestM5CandleCount = latestQuoteForFeed?.barsM5 ? latestQuoteForFeed.barsM5.length : Number(latestM5CandleSyncPayload?.count);
+    const latestM15CandleCount = latestQuoteForFeed?.barsM15 ? latestQuoteForFeed.barsM15.length : Number(latestM15CandleSyncPayload?.count);
     const mt5RealtimeState =
-      isPriceFeedLive && isM5CandleSyncLive
+      (isPriceFeedLive && isM5CandleSyncLive) || latestQuoteForFeed !== null
         ? 'LIVE'
         : isPriceFeedLive
           ? 'PRICE_ONLY'
@@ -2756,7 +2919,7 @@ export async function GET(request?: Request) {
             ? 'รับแท่ง M5 อยู่ / รอราคาสด'
             : 'ยังไม่รับค่าล่าสุด',
       message: mt5RealtimeState === 'LIVE'
-        ? 'MT5 VPS ส่งทั้งราคาสดและแท่ง M5 เข้าระบบตามปกติ'
+        ? 'MT5 ส่งทั้งราคาสดและแท่งเทียนเข้าระบบตามปกติ'
         : mt5RealtimeState === 'PRICE_ONLY'
           ? 'ราคาสดจาก MT5 ยังเข้าอยู่ แต่แท่ง M5 ยังไม่ sync ล่าสุด ควรตรวจ EA ฝั่ง candle sync'
           : mt5RealtimeState === 'CANDLE_ONLY'
@@ -3035,6 +3198,8 @@ export async function GET(request?: Request) {
       winCount,
       lossCount,
       ownerMetrics,
+      lossReviewState: marketIntelligence['XAUUSD']?.lossReviewState || null,
+      executionGate: marketIntelligence['XAUUSD']?.executionGate || null,
       marketIntelligence,
       mt5Connection: {
         isLive: isMt5Live,

@@ -31,32 +31,41 @@ export async function GET() {
     return res;
   }
 
-
   let currentStatus = dbUser.subscriptionStatus;
   
   if (currentStatus === 'active' && dbUser.subscriptionEndsAt && dbUser.subscriptionEndsAt < new Date()) {
     currentStatus = 'expired';
-    // Optionally update DB here so it persists
     await prisma.user.update({
       where: { id: dbUser.id },
       data: { subscriptionStatus: 'expired' }
     });
   }
 
+  // Fetch VIP community invite links from system settings
+  const settings = await prisma.systemSetting.findMany({
+    where: { key: { in: ['TELEGRAM_VIP_LINK', 'LINE_VIP_LINK'] } }
+  });
+  const settingsMap = new Map(settings.map(s => [s.key, s.value]));
+  const telegramVipLink = settingsMap.get('TELEGRAM_VIP_LINK') || 'https://t.me/+GoldAISignalVIP';
+  const lineVipLink = settingsMap.get('LINE_VIP_LINK') || 'https://line.me/R/ti/p/@413aryiz';
+
   const response = NextResponse.json({
     authenticated: true,
     user: {
       id: dbUser.id,
       email: dbUser.email,
+      displayName: dbUser.displayName || dbUser.email.split('@')[0],
       role: dbUser.role,
       subscriptionPlan: dbUser.subscriptionPlan,
       subscriptionStatus: currentStatus,
       subscriptionEndsAt: dbUser.subscriptionEndsAt,
       isAffiliate: dbUser.isAffiliate,
+      referralCode: dbUser.referralCode,
+      telegramVipLink,
+      lineVipLink,
     }
   }, { status: 200 });
 
   response.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
   return response;
 }
-

@@ -331,7 +331,7 @@ export class StrategyResearchService {
         symbol: {
           in: [
             'XAUUSD', 'GOLD', 'GOLD#', 'GOLD.a', 'GOLDm', 'GOLDmicro', 'GOLD.ecn', 'GOLD.r', 'GOLD_M',
-            'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
+            'XAUUSD#', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw', 'XAUUSD_M', 'XAUUSD.ecn'
           ]
         },
         result: { in: ['WIN', 'LOSS', 'BE'] },
@@ -417,17 +417,17 @@ export class StrategyResearchService {
     const searchSymbol = 'XAU';
     const [m5Candles, m15Candles, h1Candles] = await Promise.all([
       prisma.candle.findMany({
-        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M5' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw'] }, timeframe: 'M5' },
         orderBy: { time: 'desc' },
         take: 9000,
       }),
       prisma.candle.findMany({
-        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'M15' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw'] }, timeframe: 'M15' },
         orderBy: { time: 'desc' },
         take: 3000,
       }),
       prisma.candle.findMany({
-        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSD.raw'] }, timeframe: 'H1' },
+        where: { symbol: { in: ['XAUUSD', 'GOLD', 'XAUUSD.iux', 'XAUUSD.a', 'XAUUSDm', 'XAUUSDc', 'XAUUSDc.iux', 'XAUUSD.c', 'GOLDc', 'XAUUSD.raw'] }, timeframe: 'H1' },
         orderBy: { time: 'desc' },
         take: 1000,
       }),

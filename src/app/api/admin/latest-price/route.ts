@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PaperTradeService } from '@/lib/services/paper-trade.service';
+import { GeminiTradePlanService } from '@/lib/services/gemini-trade-plan.service';
 
 const isMarketOpen = () => {
   const now = new Date();
@@ -58,37 +59,62 @@ export async function GET() {
         'XAUUSD.iux',
         'XAUUSD.a',
         'XAUUSDm',
+        'XAUUSDc',
+        'XAUUSDc.iux',
+        'XAUUSD.c',
+        'GOLDc',
         'XAUUSD.raw',
+        'XAUUSD_M',
+        'XAUUSD.ecn',
       ],
     };
 
-    // 1. Find latest price event from tradingview or mt5_sync
-    const latestEvent = await prisma.webhookEvent.findFirst({
-      where: {
-        symbol: xauSymbolsFilter,
-        status: 'processed',
-        source: { in: ['tradingview', 'mt5_sync'] },
-      },
-      orderBy: { receivedAt: 'desc' },
-    });
+    // 1. Direct MT5 Quote Bridge / Wine Quote File Check (Primary & Real-Time)
+    const liveQuote = await GeminiTradePlanService.fetchQuote().catch(() => null);
 
     let currentPrice: number | null = null;
     let eventPriceTime: Date | null = null;
+    let quoteBias: string | null = null;
 
-    if (latestEvent) {
-      try {
-        const payload = JSON.parse(latestEvent.rawPayload);
-        const price = Number(payload.price);
-        if (Number.isFinite(price) && price > 0) {
-          currentPrice = price;
-          eventPriceTime = latestEvent.receivedAt;
+    if (liveQuote && (liveQuote.last || liveQuote.bid)) {
+      currentPrice = liveQuote.last || liveQuote.bid;
+      eventPriceTime = liveQuote.timestamp
+        ? new Date(liveQuote.timestamp.replace(/\./g, '-'))
+        : new Date();
+      if (!Number.isFinite(eventPriceTime.getTime())) {
+        eventPriceTime = new Date();
+      }
+      const trendM15 = liveQuote.indicators?.m15?.trend;
+      const trendM5 = liveQuote.indicators?.m5?.trend;
+      quoteBias = trendM15 || trendM5 || null;
+    }
+
+    // 2. Secondary: Find latest price event from tradingview or mt5_sync webhook
+    if (currentPrice === null) {
+      const latestEvent = await prisma.webhookEvent.findFirst({
+        where: {
+          symbol: xauSymbolsFilter,
+          status: 'processed',
+          source: { in: ['tradingview', 'mt5_sync'] },
+        },
+        orderBy: { receivedAt: 'desc' },
+      });
+
+      if (latestEvent) {
+        try {
+          const payload = JSON.parse(latestEvent.rawPayload);
+          const price = Number(payload.price);
+          if (Number.isFinite(price) && price > 0) {
+            currentPrice = price;
+            eventPriceTime = latestEvent.receivedAt;
+          }
+        } catch {
+          // Fallback to candle close below
         }
-      } catch {
-        // Fallback to candle close below
       }
     }
 
-    // 2. Fetch candles under all normalized Gold symbols
+    // 3. Fetch candles under all normalized Gold symbols
     const [m15Candles, h1Candles] = await Promise.all([
       prisma.candle.findMany({
         where: { symbol: xauSymbolsFilter, timeframe: 'M15' },
@@ -109,10 +135,10 @@ export async function GET() {
 
     const latestMarketUpdate = eventPriceTime || m15Candles[0]?.time || h1Candles[0]?.time || null;
     const dataAgeMs = latestMarketUpdate ? Date.now() - latestMarketUpdate.getTime() : null;
-    const isLive = currentPrice !== null && dataAgeMs !== null && dataAgeMs < 30 * 60 * 1000;
+    const isLive = currentPrice !== null && (liveQuote !== null || (dataAgeMs !== null && dataAgeMs < 30 * 60 * 1000));
 
-    let bias = 'NEUTRAL';
-    if (currentPrice !== null && h1Candles.length >= 20 && m15Candles.length >= 20) {
+    let bias = quoteBias || 'NEUTRAL';
+    if (!quoteBias && currentPrice !== null && h1Candles.length >= 20 && m15Candles.length >= 20) {
       const ema20M15 = calcEMA(m15Candles, 20);
       const ema20H1 = calcEMA(h1Candles, 20);
       const h1Trend = currentPrice > ema20H1 ? 'BULLISH' : 'BEARISH';
@@ -139,7 +165,7 @@ export async function GET() {
       } else if (prevCandle && (currentPrice > prevCandle.high || consecutiveSurges >= 3)) {
         bias = 'BULLISH';
       }
-    } else if (currentPrice !== null && h1Candles.length > 0) {
+    } else if (!quoteBias && currentPrice !== null && h1Candles.length > 0) {
       const avg = h1Candles.reduce((sum, candle) => sum + candle.close, 0) / h1Candles.length;
       bias = currentPrice > avg ? 'BULLISH' : 'BEARISH';
     }
@@ -164,7 +190,7 @@ export async function GET() {
         bias,
         isLive,
         updatedAt: latestMarketUpdate?.toISOString() ?? null,
-        dataAgeSeconds: dataAgeMs === null ? null : Math.max(0, Math.round(dataAgeMs / 1000)),
+        dataAgeSeconds: liveQuote ? 0 : (dataAgeMs === null ? null : Math.max(0, Math.round(dataAgeMs / 1000))),
       },
     }, { headers: noStoreHeaders });
   } catch (err: any) {

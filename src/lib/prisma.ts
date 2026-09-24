@@ -36,15 +36,9 @@ export function createPrismaClient() {
   // deliberately non-secret and must never be used outside that build phase.
   let connectionString = configuredDatabaseUrl || 'mysql://build:build@127.0.0.1:3306/build';
 
-  // The checked-in/local env uses an SSH tunnel on 3307. Hostinger reaches
-  // MariaDB directly on 3306 and has no tunnel process.
+  // The checked-in/local env uses 3306 for local MAMP MySQL or 3306 for Hostinger
   if (isProd && connectionString.includes('127.0.0.1:3307')) {
     connectionString = connectionString.replace('127.0.0.1:3307', '127.0.0.1:3306');
-  }
-  
-  // On local development, route through SSH Tunnel on port 3307 to access Cloud MySQL
-  if (!isProd && connectionString.includes('127.0.0.1:3306')) {
-    connectionString = connectionString.replace('127.0.0.1:3306', '127.0.0.1:3307');
   }
 
   if (!connectionString.includes('allowPublicKeyRetrieval')) {

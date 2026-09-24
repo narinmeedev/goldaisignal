@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   RefreshCw,
+  Send,
   Settings,
   Sparkles,
   User,
@@ -140,37 +141,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, []);
 
   const navItems = useMemo(() => {
-    const customer = [
-      { label: 'ภาพรวม', href: '/admin', icon: Activity },
-      { label: 'แผนเทรด', href: '/admin#active-plan', icon: BarChart3 },
-      { label: 'ประวัติ', href: '/admin/trades', icon: History },
-      { label: 'ช่วยเหลือ', href: '/admin/support', icon: LifeBuoy },
+    if (user?.role === 'admin') {
+      return [
+        { label: 'แดชบอร์ด', href: '/admin', icon: Activity },
+        { label: 'ส่งสัญญาณ', href: '/admin/broadcast', icon: Send },
+        { label: 'สมาชิก', href: '/admin/users', icon: Users },
+        { label: 'ตรวจสลิป', href: '/admin/payments', icon: CreditCard },
+      ];
+    }
+    return [
+      { label: 'VIP Hub', href: '/admin', icon: Activity },
+      { label: 'สถิติการเทรด', href: '/admin/trades', icon: History },
+      { label: 'การชำระเงิน', href: '/admin/billing', icon: CreditCard },
+      { label: 'แนะนำเพื่อน', href: '/admin/affiliate', icon: WalletCards },
     ];
-    return customer;
-  }, []);
+  }, [user?.role]);
 
   const moreItems = useMemo(() => {
     const customer = [
-      { label: 'การชำระเงิน', href: '/admin/billing', icon: CreditCard },
-      { label: 'บัญชีของฉัน', href: '/admin/profile', icon: User },
+      { label: 'การชำระเงิน / ต่ออายุ', href: '/admin/billing', icon: CreditCard },
+      { label: 'แนะนำเพื่อน (Affiliate 35%)', href: '/admin/affiliate', icon: WalletCards },
+      { label: 'ข้อมูลบัญชี', href: '/admin/profile', icon: User },
+      { label: 'ติดต่อทีมงาน', href: '/admin/support', icon: LifeBuoy },
     ];
-    if (user?.isAffiliate) customer.unshift({ label: 'รายได้แนะนำเพื่อน', href: '/admin/affiliate', icon: WalletCards });
     if (user?.role !== 'admin') return customer;
     return [
-      { label: 'แนวรับและแนวต้าน', href: '/admin/zones', icon: Layers3 },
-      { label: 'ผลวัดประสิทธิภาพ', href: '/admin/performance', icon: BarChart3 },
-      ...customer,
-      { label: 'จัดการผู้ใช้', href: '/admin/users', icon: Users },
-      { label: 'ตรวจสอบการชำระเงิน', href: '/admin/payments', icon: CreditCard },
+      { label: 'ส่งสัญญาณ VIP (Broadcast)', href: '/admin/broadcast', icon: Send },
+      { label: 'จัดการสมาชิก', href: '/admin/users', icon: Users },
+      { label: 'ตรวจสลิปโอนเงิน', href: '/admin/payments', icon: CreditCard },
       { label: 'จัดการ Affiliate', href: '/admin/affiliate-manager', icon: WalletCards },
-      { label: 'บันทึกระบบ', href: '/admin/logs', icon: History },
-      { label: 'ตั้งค่าระบบ', href: '/admin/settings', icon: Settings },
+      { label: 'ประวัติไม้เทรด', href: '/admin/trades', icon: History },
+      { label: 'ตั้งค่าระบบ & VIP Links', href: '/admin/settings', icon: Settings },
+      { label: 'บันทึกระบบ (Logs)', href: '/admin/logs', icon: History },
+      { label: 'ข้อมูลบัญชี', href: '/admin/profile', icon: User },
     ];
-  }, [user?.isAffiliate, user?.role]);
+  }, [user?.role]);
 
   const isActive = (href: string, label: string) => {
     if (href === '/admin') return pathname === '/admin';
-    if (label === 'แผนเทรด') return false;
     return pathname.startsWith(href);
   };
 
