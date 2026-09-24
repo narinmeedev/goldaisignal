@@ -293,11 +293,11 @@ export default function UserDashboard() {
           </Link>
 
           <Link
-            href="/admin/logs"
+            href="/admin/profile"
             className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-sm font-medium text-neutral-300 transition hover:border-neutral-700 hover:text-neutral-100"
           >
             <span className="flex items-center gap-2.5">
-              <Clock className="h-4 w-4 text-neutral-400" /> บันทึกกิจกรรมระบบ (Logs)
+              <ShieldCheck className="h-4 w-4 text-neutral-400" /> ข้อมูลบัญชีของฉัน (Profile)
             </span>
             <ChevronRight className="h-4 w-4 text-neutral-500" />
           </Link>

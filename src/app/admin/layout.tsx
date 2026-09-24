@@ -6,18 +6,13 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
-  BarChart3,
   CreditCard,
-  History,
-  Layers3,
   LifeBuoy,
   Loader2,
   LogOut,
   Menu,
   RefreshCw,
-  Send,
   Settings,
-  Sparkles,
   User,
   Users,
   WalletCards,
@@ -66,9 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authLoading, setAuthLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [price, setPrice] = useState<PriceState>({ price: null, bias: 'NEUTRAL', isLive: false, updatedAt: null });
-  const [isQwenAnalyzing, setIsQwenAnalyzing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -143,17 +136,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = useMemo(() => {
     if (user?.role === 'admin') {
       return [
-        { label: 'แดชบอร์ด', href: '/admin', icon: Activity },
-        { label: 'ส่งสัญญาณ', href: '/admin/broadcast', icon: Send },
-        { label: 'สมาชิก', href: '/admin/users', icon: Users },
-        { label: 'ตรวจสลิป', href: '/admin/payments', icon: CreditCard },
+        { label: 'จัดการสมาชิก', href: '/admin/users', icon: Users },
+        { label: 'ตรวจสลิปโอนเงิน', href: '/admin/payments', icon: CreditCard },
+        { label: 'จัดการ Affiliate', href: '/admin/affiliate-manager', icon: WalletCards },
+        { label: 'ตั้งค่าระบบ', href: '/admin/settings', icon: Settings },
+        { label: 'ข้อมูลบัญชี', href: '/admin/profile', icon: User },
       ];
     }
     return [
       { label: 'VIP Hub', href: '/admin', icon: Activity },
-      { label: 'สถิติการเทรด', href: '/admin/trades', icon: History },
       { label: 'การชำระเงิน', href: '/admin/billing', icon: CreditCard },
       { label: 'แนะนำเพื่อน', href: '/admin/affiliate', icon: WalletCards },
+      { label: 'ข้อมูลบัญชี', href: '/admin/profile', icon: User },
     ];
   }, [user?.role]);
 
@@ -166,13 +160,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     ];
     if (user?.role !== 'admin') return customer;
     return [
-      { label: 'ส่งสัญญาณ VIP (Broadcast)', href: '/admin/broadcast', icon: Send },
       { label: 'จัดการสมาชิก', href: '/admin/users', icon: Users },
       { label: 'ตรวจสลิปโอนเงิน', href: '/admin/payments', icon: CreditCard },
       { label: 'จัดการ Affiliate', href: '/admin/affiliate-manager', icon: WalletCards },
-      { label: 'ประวัติไม้เทรด', href: '/admin/trades', icon: History },
-      { label: 'ตั้งค่าระบบ & VIP Links', href: '/admin/settings', icon: Settings },
-      { label: 'บันทึกระบบ (Logs)', href: '/admin/logs', icon: History },
+      { label: 'ตั้งค่าระบบ', href: '/admin/settings', icon: Settings },
       { label: 'ข้อมูลบัญชี', href: '/admin/profile', icon: User },
     ];
   }, [user?.role]);
@@ -208,31 +199,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       router.refresh();
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  const runQwen = async () => {
-    setIsQwenAnalyzing(true);
-    try {
-      await fetch('/api/admin/qwen-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: 'GOLD#' }),
-      });
-      window.location.reload();
-    } finally {
-      setIsQwenAnalyzing(false);
-    }
-  };
-
-  const resetStats = async () => {
-    if (!confirm('ยืนยันการรีเซ็ตสถิติวัดผลทั้งหมดเพื่อเริ่มนับใหม่?')) return;
-    setIsResetting(true);
-    try {
-      const response = await fetch('/api/admin/trades', { method: 'DELETE' });
-      if (response.ok) window.location.reload();
-    } finally {
-      setIsResetting(false);
     }
   };
 
@@ -331,12 +297,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               const Icon = item.icon;
               return <Link key={item.href} href={item.href} onClick={() => setAccountOpen(false)} className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-[12px] text-[#bdc5ce] hover:bg-[#19222c] hover:text-white"><Icon className="h-4 w-4 text-[#87929e]" />{item.label}</Link>;
             })}
-            {user?.role === 'admin' && (
-              <div className="mt-2 border-t border-[#29323c] pt-2">
-                <button type="button" onClick={runQwen} disabled={isQwenAnalyzing} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[12px] text-[#bdc5ce] hover:bg-[#19222c] hover:text-white disabled:opacity-50"><Sparkles className="h-4 w-4 text-amber-400" />วิเคราะห์แผนด้วย Qwen</button>
-                <button type="button" onClick={resetStats} disabled={isResetting} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[12px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"><History className="h-4 w-4" />รีเซ็ตสถิติวัดผล</button>
-              </div>
-            )}
           </div>
         </div>
       )}

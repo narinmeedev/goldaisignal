@@ -2,18 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import {
-  AlertTriangle,
   Bell,
   CreditCard,
-  Globe,
   Loader2,
-  MessageCircle,
   Save,
   Send,
   ServerCog,
   Settings,
-  ShieldCheck,
-  Smartphone,
   Wallet,
 } from 'lucide-react';
 import {
@@ -196,41 +191,6 @@ export default function SettingsPage() {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'ส่งข้อความ Telegram ไม่สำเร็จ' });
     } finally {
       setTestingTelegram(false);
-    }
-  };
-
-  const [resettingPlan, setResettingPlan] = useState(false);
-  const [resettingAll, setResettingAll] = useState(false);
-
-  const resetActivePlan = async () => {
-    if (!confirm('ยืนยันการล้างแคชแผนปัจจุบันเพื่อคำนวณใหม่? (สถิติย้อนหลังจะไม่ถูกลบ)')) return;
-    setResettingPlan(true);
-    setNotice(null);
-    try {
-      const response = await fetch('/api/admin/trades?mode=active_plan_only', { method: 'DELETE' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'ล้างแผนไม่สำเร็จ');
-      setNotice({ type: 'success', text: data.message || 'ล้างแคชแผนปัจจุบันเรียบร้อยแล้ว' });
-    } catch (error) {
-      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'ล้างแผนไม่สำเร็จ' });
-    } finally {
-      setResettingPlan(false);
-    }
-  };
-
-  const resetAllTrades = async () => {
-    if (!confirm('⚠️ ยืนยันการล้างประวัติการเทรดและสถิติทั้งหมด?\n\nสถิติเดิมจะถูกล้างทั้งหมดเพื่อเริ่มนับ Win Rate ใหม่อย่างแม่นยำ 100%')) return;
-    setResettingAll(true);
-    setNotice(null);
-    try {
-      const response = await fetch('/api/admin/trades?mode=all', { method: 'DELETE' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'รีเซ็ตไม่สำเร็จ');
-      setNotice({ type: 'success', text: data.message || 'ล้างประวัติการเทรดทั้งหมดเรียบร้อยแล้ว' });
-    } catch (error) {
-      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'รีเซ็ตไม่สำเร็จ' });
-    } finally {
-      setResettingAll(false);
     }
   };
 
@@ -508,96 +468,20 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* 5. MAINTENANCE & NEWS BIAS */}
+      {/* 5. MAINTENANCE MODE */}
       <section className="rounded-xl border border-neutral-800 bg-neutral-900 p-6 space-y-4">
         <div className="flex items-start justify-between gap-5">
           <div className="flex gap-3">
             <ServerCog className="mt-0.5 h-5 w-5 text-amber-400" />
             <div>
-              <h2 className="font-bold text-base text-neutral-100">5. โหมดปิดปรับปรุง & ข่าวผันผวน</h2>
-              <p className="mt-1 text-xs text-neutral-400">ปิดการแสดงแผนชั่วคราว หรือระบุความเสี่ยงข่าวกล่องแดงเพื่อสั่งระบบแจ้งเตือน</p>
+              <h2 className="font-bold text-base text-neutral-100">5. โหมดปิดปรับปรุงระบบ (Maintenance Mode)</h2>
+              <p className="mt-1 text-xs text-neutral-400">ปิดการแสดงแดชบอร์ดชั่วคราวสำหรับสมาชิกเมื่อต้องบำรุงรักษาระบบ</p>
             </div>
           </div>
           <label className="relative mt-1 inline-flex shrink-0 cursor-pointer items-center">
             <input type="checkbox" checked={form.maintenanceMode} onChange={(e) => update('maintenanceMode', e.target.checked)} className="peer sr-only" />
             <span className="h-6 w-11 rounded-full bg-neutral-700 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-rose-500 peer-checked:after:translate-x-5" />
           </label>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-[220px_1fr] pt-2 border-t border-neutral-800">
-          <div>
-            <label className="text-xs text-neutral-300">ทิศทางข่าว (Fundamental Bias)</label>
-            <select
-              value={form.fundamentalBias}
-              onChange={(e) => update('fundamentalBias', e.target.value)}
-              className={`${inputClass} mt-1`}
-            >
-              <option value="NEUTRAL">ไม่ระบุทิศทาง</option>
-              <option value="BULLISH">ข่าวหนุนราคาขึ้น</option>
-              <option value="BEARISH">ข่าวกดราคาลง</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-neutral-300">ข้อความเตือนความเสี่ยงข่าว</label>
-            <input
-              type="text"
-              value={form.newsWarning}
-              onChange={(e) => update('newsWarning', e.target.value)}
-              className={`${inputClass} mt-1`}
-              placeholder="เช่น มีประกาศตัวเลข CPI 19:30 น. เสี่ยง Slippage สูง"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* 6. ALGORITHM RESET CONTROLS */}
-      <section className="rounded-xl border border-amber-500/30 bg-neutral-900 p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <ServerCog className="h-5 w-5 text-amber-400" />
-          <div>
-            <h2 className="font-bold text-amber-300">6. การจัดการแผนเทรด & รีเซ็ตสถิติ</h2>
-            <p className="mt-0.5 text-xs text-neutral-400">
-              ล้างแคชแผนปัจจุบันเพื่อคำนวณใหม่ หรือล้างสถิติเก่าเพื่อเริ่มนับ Win Rate จากศูนย์
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-neutral-800">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 flex flex-col justify-between">
-            <div>
-              <h3 className="text-xs font-bold text-neutral-200">ล้างแคชแผนปัจจุบัน (Force Re-Evaluate)</h3>
-              <p className="mt-1 text-[11px] text-neutral-400">
-                ล้างแผนที่กำลังค้างอยู่ เพื่อให้ระบบคำนวณแผนใหม่ตามโครงสร้างราคา MT5 ล่าสุด (ไม่ลบสถิติย้อนหลัง)
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={resetActivePlan}
-              disabled={resettingPlan || resettingAll}
-              className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 text-xs font-bold text-sky-300 hover:bg-sky-500/20 disabled:opacity-50"
-            >
-              {resettingPlan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-              ล้างแผนปัจจุบันและคำนวณใหม่
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-rose-500/20 bg-rose-950/10 p-4 flex flex-col justify-between">
-            <div>
-              <h3 className="text-xs font-bold text-rose-300">ล้างประวัติสถิติทั้งหมด (Full Reset)</h3>
-              <p className="mt-1 text-[11px] text-neutral-400">
-                ลบประวัติไม้เทรดเก่าทั้งหมด เพื่อเริ่มต้นนับ Win Rate จากศูนย์ 100%
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={resetAllTrades}
-              disabled={resettingPlan || resettingAll}
-              className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/20 px-3 text-xs font-bold text-rose-300 hover:bg-rose-500/30 disabled:opacity-50"
-            >
-              {resettingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-              ล้างประวัติและเริ่มวัดผลใหม่
-            </button>
-          </div>
         </div>
       </section>
 
