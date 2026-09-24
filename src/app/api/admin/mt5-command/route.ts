@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
     const payload = token ? await verifyToken(token) : null;
-    if (!payload?.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
+    if (!payload?.userId || payload.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403, headers: noStoreHeaders });
     }
 
     const body = await req.json();

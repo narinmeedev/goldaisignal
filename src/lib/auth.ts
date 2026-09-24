@@ -55,3 +55,21 @@ export const verifyVerificationToken = async (token: string) => {
     return null;
   }
 };
+
+export const hashOtp = (email: string, otpCode: string): string => {
+  const secret = process.env.JWT_SECRET || 'super-secret-jwt-key-with-more-than-32-chars-for-goldai-signal-lab-2026';
+  return require('crypto')
+    .createHmac('sha256', secret)
+    .update(`${email.toLowerCase().trim()}:${otpCode.trim()}`)
+    .digest('hex');
+};
+
+export const verifyOtpHash = (email: string, submittedOtp: string, expectedHash: string): boolean => {
+  if (!submittedOtp || !expectedHash) return false;
+  const computed = hashOtp(email, submittedOtp);
+  try {
+    return require('crypto').timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expectedHash, 'hex'));
+  } catch {
+    return false;
+  }
+};

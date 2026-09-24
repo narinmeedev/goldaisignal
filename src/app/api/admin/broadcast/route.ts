@@ -59,8 +59,8 @@ export async function POST(req: Request) {
       where: { key: { in: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'] } },
     });
     const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
-    const botToken = settingsMap.get('TELEGRAM_BOT_TOKEN') || process.env.TELEGRAM_BOT_TOKEN || '8604313550:AAFa9n2qYp46R_9r7v219p02g3';
-    const chatId = settingsMap.get('TELEGRAM_CHAT_ID') || process.env.TELEGRAM_CHAT_ID || '-1003445775510';
+    const botToken = settingsMap.get('TELEGRAM_BOT_TOKEN') || process.env.TELEGRAM_BOT_TOKEN || '';
+    const chatId = settingsMap.get('TELEGRAM_CHAT_ID') || process.env.TELEGRAM_CHAT_ID || '';
 
     // Send Telegram Broadcast
     if ((target === 'ALL' || target === 'TELEGRAM') && botToken && chatId) {

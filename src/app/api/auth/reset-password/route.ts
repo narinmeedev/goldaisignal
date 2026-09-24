@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { hashPassword, verifyVerificationToken } from '@/lib/auth';
+import { hashPassword, verifyOtpHash, verifyVerificationToken } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
@@ -30,7 +30,18 @@ export async function POST(req: Request) {
     }
 
     // Check email and OTP matching
-    if (payload.email !== email || payload.otpCode !== otp) {
+    if (payload.email !== email) {
+      return NextResponse.json(
+        { error: 'ข้อมูลอีเมลไม่ตรงกับรหัสยืนยัน' },
+        { status: 400 }
+      );
+    }
+
+    const isValidOtp = payload.otpHmac
+      ? verifyOtpHash(email, otp, payload.otpHmac)
+      : payload.otpCode === otp;
+
+    if (!isValidOtp) {
       return NextResponse.json(
         { error: 'รหัสยืนยัน OTP ไม่ถูกต้อง' },
         { status: 400 }

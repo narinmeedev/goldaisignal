@@ -41,10 +41,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing file or amount' }, { status: 400 });
     }
 
-    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    if (!allowedTypes.has(file.type)) {
-      return NextResponse.json({ error: 'รองรับสลิปไฟล์ JPG, PNG หรือ WEBP เท่านั้น' }, { status: 400 });
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Verify magic bytes header
+    let safeExt: string | null = null;
+    if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      safeExt = 'jpg';
+    } else if (
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      safeExt = 'png';
+    } else if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      safeExt = 'webp';
     }
+
+    if (!safeExt) {
+      return NextResponse.json({ error: 'ไฟล์สลิปไม่ถูกต้อง หรือไม่ใช่รูปภาพ JPG/PNG/WEBP จริง' }, { status: 400 });
+    }
+
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: 'ไฟล์สลิปต้องมีขนาดไม่เกิน 10 MB' }, { status: 400 });
     }
@@ -54,16 +83,10 @@ export async function POST(req: Request) {
     if (!Number.isFinite(submittedAmount) || submittedAmount < amount) {
       return NextResponse.json({ error: `ยอดชำระไม่ถูกต้อง ราคาสมาชิกของคุณคือ ฿${amount}/เดือน` }, { status: 400 });
     }
-    
-    // Check if bucket exists, if not, try to create it (Admin key required usually, but we will try)
-    // Actually, it's safer to just attempt upload and catch error.
-    
-    const fileExt = file.name.split('.').pop() || 'png';
-    const fileName = `${user.userId}_${Date.now()}.${fileExt}`;
-    const filePath = `payments/${fileName}`;
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+
+    const cleanUserId = user.userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const randomHex = Math.random().toString(36).substring(2, 10);
+    const fileName = `slip_${cleanUserId}_${Date.now()}_${randomHex}.${safeExt}`;
 
     // Save file locally to public/uploads
     const uploadDir = path.join(process.cwd(), 'public', 'uploads');

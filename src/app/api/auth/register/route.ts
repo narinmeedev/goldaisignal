@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { signToken, verifyVerificationToken } from '@/lib/auth';
+import { signToken, verifyOtpHash, verifyVerificationToken } from '@/lib/auth';
 import { minisaas } from '@/lib/minisaas';
 import { getTrialDurationDays } from '@/lib/billing';
 
@@ -29,7 +29,10 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (payload.otpCode !== otp) {
+    const isValidOtp = payload.otpHmac
+      ? verifyOtpHash(email, otp, payload.otpHmac)
+      : payload.otpCode === otp;
+    if (!isValidOtp) {
       return NextResponse.json({ error: 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง' }, { status: 400 });
     }
     if (Date.now() > payload.otpExpiresAt) {

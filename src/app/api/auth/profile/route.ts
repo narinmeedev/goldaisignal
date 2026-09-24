@@ -80,6 +80,13 @@ export async function POST(req: Request) {
 
     // 1. Email change validation
     if (email && email !== dbUser.email) {
+      if (!currentPassword) {
+        return NextResponse.json({ error: 'กรุณากรอกรหัสผ่านปัจจุบันเพื่อยืนยันการเปลี่ยนอีเมล' }, { status: 400 });
+      }
+      const isPasswordValid = await verifyPassword(currentPassword, dbUser.passwordHash);
+      if (!isPasswordValid) {
+        return NextResponse.json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' }, { status: 400 });
+      }
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) {
         return NextResponse.json({ error: 'อีเมลนี้ถูกใช้งานโดยบัญชีอื่นแล้ว' }, { status: 400 });
